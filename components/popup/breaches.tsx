@@ -323,8 +323,8 @@ export function BreachesDialog() {
       setAvgNonQuotationHT(nqCount ? nqTotal / nqCount : 0);
       setAvgQuotationHT(qCount ? qTotal / qCount : 0);
       setAvgSpfHT(spfCount ? spfTotal / spfCount : 0);
-    } catch {
-      console.error("CSR metrics error");
+    } catch (error) {
+      console.error("CSR metrics error:", error);
     } finally {
       setLoadingCsrMetrics(false);
     }
