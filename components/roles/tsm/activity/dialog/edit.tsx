@@ -296,7 +296,7 @@ export default function TaskListEditDialog({
 
         const whtBase = vatType === "vat_inc" ? totalPriceWithDelivery / 1.12 : totalPriceWithDelivery;
         const whtAmount = whtType !== "none" ? totalPriceWithDelivery * (whtRate / vatMultiplier) : 0;
-        const netAmountToCollect = totalPriceWithDelivery - whtAmount;
+        const netAmountToCollect = whtBase - whtAmount;
 
         return {
             referenceNo: revision.quotation_number || revision.version || "DRAFT-XXXX",
@@ -402,9 +402,11 @@ export default function TaskListEditDialog({
             whtLabel: whtTypeState === "wht_1" ? "EWT 1% (Goods)" : whtTypeState === "wht_2" ? "EWT 2% (Services)" : "None",
             whtBase: vatTypeState === "vat_inc" ? totalPriceWithDelivery / 1.12 : totalPriceWithDelivery,
             whtAmount: whtTypeState !== "none" ? (totalPriceWithDelivery / 1.12) * (whtTypeState === "wht_1" ? 0.01 : 0.02) : 0,
-            netAmountToCollect: totalPriceWithDelivery - (
-                whtTypeState !== "none" ? (totalPriceWithDelivery / 1.12) * (whtTypeState === "wht_1" ? 0.01 : 0.02) : 0
-            ),
+            netAmountToCollect: (() => {
+                const base = vatTypeState === "vat_inc" ? totalPriceWithDelivery / 1.12 : totalPriceWithDelivery;
+                const wht = whtTypeState !== "none" ? base * (whtTypeState === "wht_1" ? 0.01 : 0.02) : 0;
+                return Math.round((base - wht) * 100) / 100;
+            })(),
             salesRepresentative: salesRepresentativeName,
             salesemail,
             salescontact: contact ?? "",

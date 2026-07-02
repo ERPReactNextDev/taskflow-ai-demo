@@ -115,9 +115,12 @@ export const Preview: React.FC<PreviewProps> = ({
 
     // Round components to 2 decimal places to ensure summary adds up exactly
     const vatAmount = parseFloat((totalInvoiceAmount * (12 / 112)).toFixed(2));
-    const netOfVat = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
+    const netOfVat  = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
     const whtAmount = payload.whtType !== "none" ? parseFloat((netOfVat * (payload.whtType === "wht_1" ? 0.01 : 0.02)).toFixed(2)) : 0;
-    const finalAmountDue = totalInvoiceAmount - whtAmount;
+    // VAT-inclusive: client pays net-of-VAT (VAT is separated out), then less WHT if any.
+    // Non-VAT / zero-rated: client pays the full invoice amount, less WHT if any.
+    const baseAmountDue = payload.vatType === "vat_inc" ? netOfVat : totalInvoiceAmount;
+    const finalAmountDue = parseFloat((baseAmountDue - whtAmount).toFixed(2));
 
     // ── QR Code Security ──────────────────────────────────────────────────────
     const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
