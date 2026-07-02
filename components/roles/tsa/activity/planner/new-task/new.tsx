@@ -479,6 +479,7 @@ export const NewTask: React.FC<NewTaskProps> = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           account_reference_number: ticket.account_reference_number,
+          ticket_reference_number: ticket.ticket_reference_number,
           referenceid: userDetails.referenceid,
           tsm: userDetails.tsm,
           manager: userDetails.manager,

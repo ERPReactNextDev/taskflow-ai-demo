@@ -1228,13 +1228,14 @@ export default function TaskListEditDialog({
       const restockingFeeNum = parseFloat(restockingFeeState) || 0;
       const totalPriceWithDelivery = subtotal + deliveryFeeNum + restockingFeeNum;
       // Calculate EWT deduction if applicable
+      // VAT-inclusive: EWT is on net-of-VAT base; final amount is also net-of-VAT less EWT
+      const netOfVatSave = vatTypeState === "vat_inc"
+        ? totalPriceWithDelivery / 1.12
+        : totalPriceWithDelivery;
       const whtAmount = whtTypeState !== "none"
-        ? (vatTypeState === "vat_inc"
-          ? totalPriceWithDelivery / 1.12
-          : totalPriceWithDelivery
-        ) * (whtTypeState === "wht_1" ? 0.01 : 0.02)
+        ? parseFloat((netOfVatSave * (whtTypeState === "wht_1" ? 0.01 : 0.02)).toFixed(2))
         : 0;
-      const totalQuotationAmount = Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
+      const totalQuotationAmount = Math.round((netOfVatSave - whtAmount) * 100) / 100;
 
       const bodyData: Completed & {
         vat_type?: "vat_inc" | "vat_exe" | "zero_rated";
@@ -1417,7 +1418,8 @@ export default function TaskListEditDialog({
       ? Math.round((whtBase * (whtTypeState === "wht_1" ? 0.01 : 0.02)) * 100) / 100
       : 0;
       
-    const netAmountToCollect = Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
+    // VAT-inclusive: client pays net-of-VAT less any WHT; non-VAT: full invoice less WHT
+    const netAmountToCollect = Math.round((whtBase - whtAmount) * 100) / 100;
 
     return {
       referenceNo: activeItemAny.quotation_number ?? "DRAFT-XXXX",
@@ -3174,13 +3176,12 @@ ${payload.whtType && payload.whtType !== "none"
     const deliveryFeeNum = parseFloat(deliveryFeeState) || 0;
     const restockingFeeNum = parseFloat(restockingFeeState) || 0;
     const totalWithFees = subtotal + deliveryFeeNum + restockingFeeNum;
+    // VAT-inclusive: base for WHT and final amount is net-of-VAT
+    const baseAmount = vatTypeState === "vat_inc" ? totalWithFees / 1.12 : totalWithFees;
     const whtAmount = whtTypeState !== "none"
-      ? (vatTypeState === "vat_inc"
-        ? totalWithFees / 1.12
-        : totalWithFees
-      ) * (whtTypeState === "wht_1" ? 0.01 : 0.02)
+      ? baseAmount * (whtTypeState === "wht_1" ? 0.01 : 0.02)
       : 0;
-    return Math.round((totalWithFees - whtAmount) * 100) / 100;
+    return Math.round((baseAmount - whtAmount) * 100) / 100;
   }, [subtotal, deliveryFeeState, restockingFeeState, whtTypeState, vatTypeState]);
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
