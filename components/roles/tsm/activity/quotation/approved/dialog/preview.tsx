@@ -433,7 +433,7 @@ export const Preview: React.FC<PreviewProps> = ({ payload, quotationType }) => {
                                 label: "Payment",
                                 content: (
                                     <div className="p-2">
-                                        <p><span className="text-red-600 font-black">Change Payment Terms to 15 Days</span></p>
+                                        <p><span className="text-red-600 font-black">For Cash on Delivery</span></p>
                                         <p><strong>NOTE: Orders below 10,000 pesos can be paid in cash at the time of delivery. Exceeding 10,000 pesos should be transacted through bank deposit or mobile electronic transactions.</strong></p>
                                         <p>For special items,  Seventy Percent (70%) down payment, 30% upon delivery.</p>
                                         <p className="mt-5"><b>BANK DETAILS</b></p>
@@ -465,7 +465,7 @@ export const Preview: React.FC<PreviewProps> = ({ payload, quotationType }) => {
                                 label: "Validity",
                                 content: (
                                     <>
-                                        <p className="text-red-600 font-black underline">Until Dec. 31, 2026</p>
+                                        <p className="text-red-600 font-black underline">Thirty (30) calendar days from the date of this offer.</p>
                                         <p>In the event of changes in prevailing market conditions, duties, taxes, and all other importation charges, quoted prices are subject to change.</p>
                                     </>
                                 ),

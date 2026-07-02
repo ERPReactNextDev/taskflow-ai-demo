@@ -444,7 +444,7 @@ export const Preview: React.FC<PreviewProps> = ({ payload, quotationType }) => {
                                 label: "Payment",
                                 content: (
                                     <div className="p-2">
-                                        <p><span className="text-red-600 font-black">Change Payment Terms to 15 Days</span></p>
+                                        <p><span className="text-red-600 font-black">For Cash on Delivery</span></p>
                                         <p className="font-semibold mt-1">
                                             Orders below ₱10,000: cash on delivery accepted. Above ₱10,000: bank deposit or e-payment required.
                                         </p>
@@ -477,7 +477,7 @@ export const Preview: React.FC<PreviewProps> = ({ payload, quotationType }) => {
                                 label: "Validity",
                                 content: (
                                     <p>
-                                        <span className="text-red-600 font-black underline">Until Dec. 31, 2026</span> from the date of this offer.
+                                        <span className="text-red-600 font-black underline">Thirty (30) calendar days from the date of this offer.</span> from the date of this offer.
                                         Quoted prices subject to change with market conditions.
                                     </p>
                                 ),

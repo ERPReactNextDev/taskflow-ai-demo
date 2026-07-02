@@ -999,7 +999,7 @@ export default function TaskListEditDialog({
           <div class="terms-grid">
             <div class="terms-label">Payment:</div>
             <div class="terms-val">
-              <p><strong style="color:red;">Change Payment Terms to 15 Days</strong></p>
+              <p><strong style="color:red;">For Cash on Delivery</strong></p>
               <p><strong>NOTE: Orders below ₱10,000 can be paid in cash.</strong></p>
               <p><strong>BANK DETAILS — Payee to: ${companyLabel}</strong></p>
               <div class="bank-grid">
@@ -1008,7 +1008,7 @@ export default function TaskListEditDialog({
               </div>
             </div>
             <div class="terms-label">Validity:</div>
-            <div class="terms-val"><p><b style="color:red;"><u>Until Dec. 31, 2026</u></b></p></div>
+            <div class="terms-val"><p><b style="color:red;"><u>Thirty (30) calendar days from the date of this offer.</u></b></p></div>
             <div class="terms-label">Cancellation:</div>
             <div class="terms-val terms-highlight">
               <p>1. Above quoted items are non-cancellable.</p>

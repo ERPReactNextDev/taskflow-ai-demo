@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { NewlyApprovedDialog } from "@/components/roles/tsa/newly-approved-dialog";
+//import { NewlyApprovedDialog } from "@/components/roles/tsa/newly-approved-dialog";
 
 // ─── Inner layout — uses hooks so needs Suspense wrapper ─────────────────────
 
@@ -40,7 +40,7 @@ function TsaLayoutInner({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
-      {referenceid && <NewlyApprovedDialog referenceid={referenceid} />}
+      {/*{referenceid && <NewlyApprovedDialog referenceid={referenceid} />}*/}
     </>
   );
 }

@@ -206,6 +206,11 @@ export async function GET(req: Request) {
         quotationsCount,
         clientVisits: clientVisitsRes.count ?? 0,
         status,
+        // Conversion pipeline counts (used by KpiWeightedScores & SalesPipelineCard)
+        quoteToSOQuotationCount,
+        quoteToSOSalesOrderCount,
+        soToSISalesOrderCount,
+        soToSIDeliveredCount,
       },
       { status: 200 }
     );
