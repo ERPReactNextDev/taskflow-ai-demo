@@ -1571,15 +1571,17 @@ Procurement
     const subtotalWithFees = roundedProductTotal + deliveryFeeNumber + restockingFeeNumber;
 
     // Calculate EWT deduction
-    const whtBase = vatType === "vat_inc"
-      ? subtotalWithFees / 1.12
-      : subtotalWithFees;
+    // Net-of-VAT is always subtotalWithFees / 1.12 (strips the embedded VAT)
+    const netOfVatSave = subtotalWithFees / 1.12;
     const whtRate = whtType === "wht_1" ? 0.01 : whtType === "wht_2" ? 0.02 : 0;
-    const whtAmount = Math.round((whtBase * whtRate) * 100) / 100;
+    // WHT is always on the net-of-VAT base
+    const whtAmount = Math.round((netOfVatSave * whtRate) * 100) / 100;
 
-    // Quotation amount should be the NET amount (after EWT deduction)
-    // This is what gets saved to the database
-    const finalAmount = Math.round((subtotalWithFees - whtAmount) * 100) / 100;
+    // vat_inc: customer pays full VAT-inclusive total minus WHT
+    // vat_exe / zero_rated: customer pays net-of-VAT minus WHT
+    const finalAmount = (vatType === "vat_exe" || vatType === "zero_rated")
+      ? Math.round((netOfVatSave - whtAmount) * 100) / 100
+      : Math.round((subtotalWithFees - whtAmount) * 100) / 100;
 
     setQuotationAmount(finalAmount.toFixed(2));
   }, [selectedProducts, deliveryFee, restockingFee, discount, vatType, whtType]);
@@ -1988,17 +1990,32 @@ Procurement
 
     const whtRate = whtType === "wht_1" ? 0.01 : whtType === "wht_2" ? 0.02 : 0;
 
+    // totalInvoiceAmount = the VAT-inclusive gross (what appears as "Total Invoice Amount")
+    // quotationAmount (netAmountToCollect) was already stored as:
+    //   vat_inc  → subtotalWithFees - wht  (full VAT-inclusive minus WHT)
+    //   vat_exe  → netOfVat - wht          (net-of-VAT minus WHT)
+    // Back-calculate totalInvoiceAmount from netAmountToCollect:
     let totalInvoiceAmount: number;
     if (whtRate === 0) {
-      totalInvoiceAmount = netAmountToCollect;
-    } else if (vatType === "vat_inc") {
-      totalInvoiceAmount = netAmountToCollect / (1 - (whtRate / 1.12));
+      // No WHT: for vat_inc totalPrice = netAmountToCollect (already inclusive)
+      //         for vat_exe totalPrice = netAmountToCollect * 1.12 (gross up to show VAT-inc equivalent)
+      totalInvoiceAmount = (vatType === "vat_exe" || vatType === "zero_rated")
+        ? Math.round((netAmountToCollect * 1.12) * 100) / 100
+        : netAmountToCollect;
     } else {
-      totalInvoiceAmount = netAmountToCollect / (1 - whtRate);
+      // WHT present — whtBase is always netOfVat (totalInvoiceAmount / 1.12)
+      // netAmountToCollect = totalInvoiceAmount - wht = totalInvoiceAmount - (totalInvoiceAmount/1.12)*whtRate
+      // for vat_inc:  netAmountToCollect = TIA - (TIA/1.12)*whtRate  → TIA = netAmountToCollect / (1 - whtRate/1.12)
+      // for vat_exe:  netAmountToCollect = TIA/1.12 - (TIA/1.12)*whtRate = (TIA/1.12)*(1-whtRate)
+      //              → TIA = netAmountToCollect / ((1-whtRate)/1.12) = netAmountToCollect * 1.12 / (1-whtRate)
+      totalInvoiceAmount = (vatType === "vat_exe" || vatType === "zero_rated")
+        ? netAmountToCollect * 1.12 / (1 - whtRate)
+        : netAmountToCollect / (1 - (whtRate / 1.12));
     }
     totalInvoiceAmount = Math.round(totalInvoiceAmount * 100) / 100;
 
-    const whtBase = vatType === "vat_inc" ? totalInvoiceAmount / 1.12 : totalInvoiceAmount;
+    // WHT base is always net-of-VAT (totalInvoiceAmount / 1.12)
+    const whtBase = totalInvoiceAmount / 1.12;
     const whtAmount = Math.round((whtBase * whtRate) * 100) / 100;
 
     return {

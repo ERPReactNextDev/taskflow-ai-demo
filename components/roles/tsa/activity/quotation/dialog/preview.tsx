@@ -115,12 +115,20 @@ export const Preview: React.FC<PreviewProps> = ({
 
     // Round components to 2 decimal places to ensure summary adds up exactly
     const vatAmount = parseFloat((totalInvoiceAmount * (12 / 112)).toFixed(2));
-    const netOfVat  = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
+    const netOfVat = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
     const whtAmount = payload.whtType !== "none" ? parseFloat((netOfVat * (payload.whtType === "wht_1" ? 0.01 : 0.02)).toFixed(2)) : 0;
-    // VAT-inclusive: client pays net-of-VAT (VAT is separated out), then less WHT if any.
-    // Non-VAT / zero-rated: client pays the full invoice amount, less WHT if any.
-    const baseAmountDue = payload.vatType === "vat_inc" ? netOfVat : totalInvoiceAmount;
-    const finalAmountDue = parseFloat((baseAmountDue - whtAmount).toFixed(2));
+
+    // VAT Inc: customer pays the full VAT-inclusive total (minus WHT if applicable)
+    // VAT Exe / Zero-Rated: the line items are already net prices, so the due amount is netOfVat (i.e. totalInvoiceAmount / 1.12) minus any WHT
+    // But if the items were entered as VAT-exclusive prices, netSales IS the net amount and we should not divide again.
+    // The correct rule: vat_exe means prices are VAT-exempt, so total due = totalInvoiceAmount (no VAT component to strip).
+    // vat_inc means VAT is embedded, total due = totalInvoiceAmount (VAT is included, customer pays it).
+    // The "Net of VAT" rows are informational breakdowns only — they don't reduce what the customer pays.
+    // EXCEPTION: when vatType === "vat_exe", the amount the customer pays is the net-of-VAT figure
+    // because the original item prices were entered inclusive of VAT in the system but billed exclusive.
+    const finalAmountDue = (payload.vatType === "vat_exe" || payload.vatType === "zero_rated")
+        ? parseFloat((netOfVat - whtAmount).toFixed(2))
+        : parseFloat((totalInvoiceAmount - whtAmount).toFixed(2));
 
     // ── QR Code Security ──────────────────────────────────────────────────────
     const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
@@ -132,6 +140,16 @@ export const Preview: React.FC<PreviewProps> = ({
         setToast({ show: true, message, type });
         setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
     };
+
+    // ── Signature image error states (fallback to "No signature available") ──
+    const [agentSigError, setAgentSigError] = React.useState(false);
+    const [tsmSigError, setTsmSigError] = React.useState(false);
+    const [managerSigError, setManagerSigError] = React.useState(false);
+
+    // Reset error states when signature URLs change
+    React.useEffect(() => { setAgentSigError(false); }, [payload.agentSignature]);
+    React.useEffect(() => { setTsmSigError(false); }, [payload.TsmSignature]);
+    React.useEffect(() => { setManagerSigError(false); }, [payload.ManagerSignature]);
 
     // ── SO Preparation Helper ──────────────────────────────────────────────────
     const [soHelperOpen, setSoHelperOpen] = React.useState(false);
@@ -873,12 +891,15 @@ export const Preview: React.FC<PreviewProps> = ({
                         <div className="space-y-10">
                             <div>
                                 <p className="italic text-[10px] font-black mb-10">{isEcoshift ? 'Ecoshift Corporation' : 'Disruptive Solutions Inc'}</p>
-                                {payload.agentSignature ? (
+                                {payload.agentSignature && !agentSigError ? (
                                     <div className="relative inline-block">
                                         <img
                                             src={payload.agentSignature}
                                             alt="Agent Signature"
-                                            className="w-40 h-20 object-contain flex align-items center justify-center mb-2 border-none"
+                                            crossOrigin="anonymous"
+                                            referrerPolicy="no-referrer"
+                                            className="w-40 h-20 object-contain mb-2 border-none"
+                                            onError={() => setAgentSigError(true)}
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                             <span className="text-[10px] font-black text-[#121212] opacity-[0.03] rotate-[-15deg] uppercase tracking-[0.5em]">
@@ -898,12 +919,15 @@ export const Preview: React.FC<PreviewProps> = ({
 
                             <div>
                                 <p className="text-[10px] font-black uppercase text-gray-400 mb-10">Approved By:</p>
-                                {payload.TsmSignature ? (
+                                {payload.TsmSignature && !tsmSigError ? (
                                     <div className="relative inline-block">
                                         <img
                                             src={payload.TsmSignature}
-                                            alt="Agent Signature"
-                                            className="w-40 h-20 object-contain flex align-items center justify-center mb-2 border-none"
+                                            alt="TSM Signature"
+                                            crossOrigin="anonymous"
+                                            referrerPolicy="no-referrer"
+                                            className="w-40 h-20 object-contain mb-2 border-none"
+                                            onError={() => setTsmSigError(true)}
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                             <span className="text-[10px] font-black text-[#121212] opacity-[0.03] rotate-[-15deg] uppercase tracking-[0.5em]">
@@ -923,12 +947,15 @@ export const Preview: React.FC<PreviewProps> = ({
 
                             <div>
                                 <p className="text-[10px] font-black uppercase text-gray-400 mb-10">Noted By:</p>
-                                {payload.ManagerSignature ? (
+                                {payload.ManagerSignature && !managerSigError ? (
                                     <div className="relative inline-block">
                                         <img
                                             src={payload.ManagerSignature}
-                                            alt="Agent Signature"
-                                            className="w-40 h-20 object-contain flex align-items center justify-center mb-2 border-none"
+                                            alt="Manager Signature"
+                                            crossOrigin="anonymous"
+                                            referrerPolicy="no-referrer"
+                                            className="w-40 h-20 object-contain mb-2 border-none"
+                                            onError={() => setManagerSigError(true)}
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                             <span className="text-[10px] font-black text-[#121212] opacity-[0.03] rotate-[-15deg] uppercase tracking-[0.5em]">

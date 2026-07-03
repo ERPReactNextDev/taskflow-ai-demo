@@ -19,18 +19,34 @@ function normalizeField(value: any): string {
   return "";
 }
 
-function getPrefix(companyName: string, region: string) {
-  // First two letters of company name, uppercase
-  const companyPart = companyName.trim().substring(0, 2).toUpperCase();
-
-  // Region uppercase, remove spaces
+/**
+ * Build the prefix from the first 3 letters of the company name + region.
+ * e.g. "Ecoshift Corporation" + "NCR" → "ECO-NCR"
+ */
+function getPrefix(companyName: string, region: string): string {
+  const companyPart = companyName.trim().substring(0, 3).toUpperCase();
   const regionPart = region.trim().toUpperCase().replace(/\s+/g, "");
-
   return `${companyPart}-${regionPart}`;
 }
 
-async function getNextSequenceNumber(prefix: string) {
-  // Search last highest account_reference_number that starts with prefix + '-'
+/**
+ * Check whether a given account_reference_number already exists in the DB.
+ */
+async function referenceNumberExists(refNumber: string): Promise<boolean> {
+  const result = await Xchire_sql`
+    SELECT 1
+    FROM accounts
+    WHERE account_reference_number = ${refNumber}
+    LIMIT 1;
+  `;
+  return result.length > 0;
+}
+
+/**
+ * Get the next sequential number for a given prefix by finding the current max.
+ * Returns 1 if no records exist for the prefix yet.
+ */
+async function getNextSequenceNumber(prefix: string): Promise<number> {
   const lastEntry = await Xchire_sql`
     SELECT account_reference_number
     FROM accounts
@@ -39,16 +55,53 @@ async function getNextSequenceNumber(prefix: string) {
     LIMIT 1;
   `;
 
-  if (lastEntry.length === 0) {
-    return 1; // start from 1 if none found
+  if (lastEntry.length === 0) return 1;
+
+  const lastNumberStr = lastEntry[0].account_reference_number.substring(
+    prefix.length + 1
+  );
+  const lastNumber = parseInt(lastNumberStr, 10);
+  return isNaN(lastNumber) ? 1 : lastNumber + 1;
+}
+
+/**
+ * Generate a unique account_reference_number for the given prefix.
+ *
+ * Strategy:
+ *  1. Try the next sequential number (current max + 1).
+ *  2. If that somehow already exists (race condition / manual insert),
+ *     fall back to a random 10-digit suffix and keep retrying until
+ *     a free one is found (max 10 attempts before throwing).
+ */
+async function generateUniqueRefNumber(prefix: string): Promise<string> {
+  // Step 1: sequential attempt
+  const nextSeq = await getNextSequenceNumber(prefix);
+  const seqCandidate = `${prefix}-${nextSeq.toString().padStart(10, "0")}`;
+
+  if (!(await referenceNumberExists(seqCandidate))) {
+    return seqCandidate;
   }
 
-  // Extract number part after prefix + '-'
-  const lastNumberStr = lastEntry[0].account_reference_number.substring(prefix.length + 1);
+  // Step 2: random fallback — keep generating until we find one that's free
+  const MAX_ATTEMPTS = 10;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    // Random 10-digit number (100000000 – 9999999999)
+    const randomSuffix = Math.floor(
+      1_000_000_000 + Math.random() * 8_999_999_999
+    )
+      .toString()
+      .padStart(10, "0");
 
-  const lastNumber = parseInt(lastNumberStr, 10);
-  if (isNaN(lastNumber)) return 1;
-  return lastNumber + 1;
+    const candidate = `${prefix}-${randomSuffix}`;
+
+    if (!(await referenceNumberExists(candidate))) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    `Unable to generate a unique account reference number for prefix "${prefix}" after ${MAX_ATTEMPTS} attempts.`
+  );
 }
 
 export async function POST(req: Request) {
@@ -72,21 +125,23 @@ export async function POST(req: Request) {
       industry,
       status,
       company_group,
-      tin_number
+      tin_number,
     } = body;
 
     if (!referenceid || !company_name || !type_client || !region) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields: referenceid, company_name, type_client or region." },
+        {
+          success: false,
+          error:
+            "Missing required fields: referenceid, company_name, type_client or region.",
+        },
         { status: 400 }
       );
     }
 
-    // Generate account_reference_number
+    // Generate a guaranteed-unique account_reference_number
     const prefix = getPrefix(company_name, region);
-    const nextSeq = await getNextSequenceNumber(prefix);
-    const seqStr = nextSeq.toString().padStart(10, "0");
-    const account_reference_number = `${prefix}-${seqStr}`;
+    const account_reference_number = await generateUniqueRefNumber(prefix);
 
     // Normalize array or string fields
     const normalizedContactPerson = normalizeField(contact_person);

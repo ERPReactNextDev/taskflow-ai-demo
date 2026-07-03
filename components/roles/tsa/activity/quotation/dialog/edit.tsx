@@ -1227,15 +1227,16 @@ export default function TaskListEditDialog({
       const deliveryFeeNum = parseFloat(deliveryFeeState) || 0;
       const restockingFeeNum = parseFloat(restockingFeeState) || 0;
       const totalPriceWithDelivery = subtotal + deliveryFeeNum + restockingFeeNum;
-      // Calculate EWT deduction if applicable
-      // VAT-inclusive: EWT is on net-of-VAT base; final amount is also net-of-VAT less EWT
-      const netOfVatSave = vatTypeState === "vat_inc"
-        ? totalPriceWithDelivery / 1.12
-        : totalPriceWithDelivery;
+      // Net-of-VAT is always totalPriceWithDelivery / 1.12 (strips the embedded VAT)
+      const netOfVatSave = totalPriceWithDelivery / 1.12;
       const whtAmount = whtTypeState !== "none"
         ? parseFloat((netOfVatSave * (whtTypeState === "wht_1" ? 0.01 : 0.02)).toFixed(2))
         : 0;
-      const totalQuotationAmount = Math.round((netOfVatSave - whtAmount) * 100) / 100;
+      // vat_inc: customer pays full VAT-inclusive total minus WHT
+      // vat_exe / zero_rated: customer pays net-of-VAT minus WHT
+      const totalQuotationAmount = (vatTypeState === "vat_exe" || vatTypeState === "zero_rated")
+        ? Math.round((netOfVatSave - whtAmount) * 100) / 100
+        : Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
 
       const bodyData: Completed & {
         vat_type?: "vat_inc" | "vat_exe" | "zero_rated";
@@ -1410,16 +1411,19 @@ export default function TaskListEditDialog({
     
     const displayDate = activeItemAny.date_updated ?? activeItemAny.date_created ?? activeItemAny.start_date ?? new Date();
     
-    const whtBase = vatTypeState === "vat_inc"
-      ? totalPriceWithDelivery / 1.12
-      : totalPriceWithDelivery;
-    
+    // Net-of-VAT is always totalPriceWithDelivery / 1.12 (strips embedded VAT)
+    const netOfVat = totalPriceWithDelivery / 1.12;
+    // WHT is always applied on the net-of-VAT base
+    const whtBase = netOfVat;
     const whtAmount = whtTypeState !== "none"
       ? Math.round((whtBase * (whtTypeState === "wht_1" ? 0.01 : 0.02)) * 100) / 100
       : 0;
       
-    // VAT-inclusive: client pays net-of-VAT less any WHT; non-VAT: full invoice less WHT
-    const netAmountToCollect = Math.round((whtBase - whtAmount) * 100) / 100;
+    // vat_inc: client pays full VAT-inclusive amount minus WHT
+    // vat_exe / zero_rated: client pays net-of-VAT minus WHT
+    const netAmountToCollect = (vatTypeState === "vat_exe" || vatTypeState === "zero_rated")
+      ? Math.round((netOfVat - whtAmount) * 100) / 100
+      : Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
 
     return {
       referenceNo: activeItemAny.quotation_number ?? "DRAFT-XXXX",
@@ -3176,12 +3180,18 @@ ${payload.whtType && payload.whtType !== "none"
     const deliveryFeeNum = parseFloat(deliveryFeeState) || 0;
     const restockingFeeNum = parseFloat(restockingFeeState) || 0;
     const totalWithFees = subtotal + deliveryFeeNum + restockingFeeNum;
-    // VAT-inclusive: base for WHT and final amount is net-of-VAT
-    const baseAmount = vatTypeState === "vat_inc" ? totalWithFees / 1.12 : totalWithFees;
+    // Net-of-VAT base is always totalWithFees / 1.12 (strips the embedded VAT)
+    const netOfVat = totalWithFees / 1.12;
+    // WHT is always calculated on the net-of-VAT base
     const whtAmount = whtTypeState !== "none"
-      ? baseAmount * (whtTypeState === "wht_1" ? 0.01 : 0.02)
+      ? netOfVat * (whtTypeState === "wht_1" ? 0.01 : 0.02)
       : 0;
-    return Math.round((baseAmount - whtAmount) * 100) / 100;
+    // vat_inc: customer pays the full VAT-inclusive total minus WHT
+    // vat_exe / zero_rated: customer pays net-of-VAT minus WHT
+    const base = (vatTypeState === "vat_exe" || vatTypeState === "zero_rated")
+      ? netOfVat
+      : totalWithFees;
+    return Math.round((base - whtAmount) * 100) / 100;
   }, [subtotal, deliveryFeeState, restockingFeeState, whtTypeState, vatTypeState]);
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
