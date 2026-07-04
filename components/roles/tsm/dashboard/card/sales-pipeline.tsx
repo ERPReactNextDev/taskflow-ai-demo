@@ -67,7 +67,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   const quotesPercentage = quotesTarget > 0 ? Math.round((quotesCount / quotesTarget) * 100) : 0;
   const callsToQuotePercentage = obCallsCount > 0 ? Math.round((callsToQuotesCount / obCallsCount) * 100) : 0;
   const callsToQuoteTargetPercentage = 20;
-  const callsToQuoteAchievementPercentage = callsToQuoteTargetPercentage > 0 ? Math.round((callsToQuotePercentage / callsToQuoteTargetPercentage) * 100) : 0;
+  const callsToQuoteAchievementPercentage = callsToQuoteTargetPercentage > 0 ? Math.min(100, Math.round((callsToQuotePercentage / callsToQuoteTargetPercentage) * 100)) : 0;
 
   // Calculate rating for OB Calls
   let obCallsRating = 1;
@@ -108,7 +108,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   // Calculate Quote → SO
   const quoteToSOPercentage = quoteToSOQuotationCount > 0 ? Math.round((quoteToSOSalesOrderCount / quoteToSOQuotationCount) * 100) : 0;
   const quoteToSOTargetPercentage = 30;
-  const quoteToSOAchievementPercentage = quoteToSOTargetPercentage > 0 ? Math.round((quoteToSOPercentage / quoteToSOTargetPercentage) * 100) : 0;
+  const quoteToSOAchievementPercentage = quoteToSOTargetPercentage > 0 ? Math.min(100, Math.round((quoteToSOPercentage / quoteToSOTargetPercentage) * 100)) : 0;
 
   // Calculate rating for Quote → SO
   let quoteToSORating = 1;
@@ -125,7 +125,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   // Calculate SO → SI
   const soToSIPercentage = soToSISalesOrderCount > 0 ? Math.round((soToSIDeliveredCount / soToSISalesOrderCount) * 100) : 0;
   const soToSITargetPercentage = 70;
-  const soToSIAchievementPercentage = soToSITargetPercentage > 0 ? Math.round((soToSIPercentage / soToSITargetPercentage) * 100) : 0;
+  const soToSIAchievementPercentage = soToSITargetPercentage > 0 ? Math.min(100, Math.round((soToSIPercentage / soToSITargetPercentage) * 100)) : 0;
 
   // Calculate rating for SO → SI
   let soToSIRating = 1;

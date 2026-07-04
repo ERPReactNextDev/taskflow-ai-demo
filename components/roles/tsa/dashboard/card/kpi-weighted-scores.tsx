@@ -240,7 +240,7 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
   quotesCount: propQuotesCount,
   quotesTarget: propQuotesTarget,
   callsToQuotesCount: propCallsToQuotesCount,
-  obCallsForRatio: propObCallsForRatio,
+  obCallsForRatio: _propObCallsForRatio,  // kept for API compat, unused internally
   quoteToSOSalesOrderCount: propQuoteToSOSalesOrderCount,
   quoteToSOQuotationCount: propQuoteToSOQuotationCount,
   soToSIDeliveredCount: propSoToSIDeliveredCount,
@@ -433,57 +433,68 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
 
   // --- Calculate all the KPI scores ---
   // 1. Sales SO/SI — 50%
-  const salesPct =
-    data.runningTarget > 0
-      ? (data.totalActualSales / data.runningTarget) * 100
-      : 0;
+  const salesPct = Math.min(
+    100,
+    data.runningTarget > 0 ? (data.totalActualSales / data.runningTarget) * 100 : 0
+  );
   const salesRating = standardRating(salesPct);
   const salesW = 0.5 * salesRating;
 
   // 2. OB Calls — 10%
-  const obPct =
-    data.obCallsTarget > 0 ? (data.obCallsCount / data.obCallsTarget) * 100 : 0;
+  const obPct = Math.min(
+    100,
+    data.obCallsTarget > 0 ? (data.obCallsCount / data.obCallsTarget) * 100 : 0
+  );
   const obRating = standardRating(obPct);
   const obW = 0.1 * obRating;
 
   // 3. Quotes Generated — 10%
-  const quotesPct =
-    data.quotesTarget > 0 ? (data.quotesCount / data.quotesTarget) * 100 : 0;
+  const quotesPct = Math.min(
+    100,
+    data.quotesTarget > 0 ? (data.quotesCount / data.quotesTarget) * 100 : 0
+  );
   const quotesRating = standardRating(quotesPct);
   const quotesW = 0.1 * quotesRating;
 
   // 4. Conversion Metrics — combined 5%
+  // Raw conversion %s (used for rating — can exceed target)
   const c2qRawPct =
     data.obCallsCount > 0
       ? (data.callsToQuotesCount / data.obCallsCount) * 100
       : 0;
   const c2qRating = callsToQuoteRating(c2qRawPct);
-  const c2qAchievePct = (c2qRawPct / 20) * 100;
+  // Achievement % capped at 100 — how close to the target (20%), max 100%
+  const c2qAchievePct = Math.min(100, (c2qRawPct / 20) * 100);
 
   const q2soPct =
     data.quoteToSOQuotationCount > 0
       ? (data.quoteToSOSalesOrderCount / data.quoteToSOQuotationCount) * 100
       : 0;
   const q2soRating = quoteToSORating(q2soPct);
-  const q2soAchievePct = (q2soPct / 30) * 100;
+  // Achievement % capped at 100 — how close to the target (30%), max 100%
+  const q2soAchievePct = Math.min(100, (q2soPct / 30) * 100);
 
   const s2siPct =
     data.soToSISalesOrderCount > 0
       ? (data.soToSIDeliveredCount / data.soToSISalesOrderCount) * 100
       : 0;
   const s2siRating = soToSIRating(s2siPct);
-  const s2siAchievePct = (s2siPct / 70) * 100;
+  // Achievement % capped at 100 — how close to the target (70%), max 100%
+  const s2siAchievePct = Math.min(100, (s2siPct / 70) * 100);
 
   const convRating = Math.round((c2qRating + q2soRating + s2siRating) / 3);
-  const convAchievePct =
-    (c2qAchievePct + q2soAchievePct + s2siAchievePct) / 3;
+  // Average of the three capped achievement %s — also capped at 100%
+  const convAchievePct = Math.min(
+    100,
+    (c2qAchievePct + q2soAchievePct + s2siAchievePct) / 3
+  );
   const convW = 0.05 * convRating;
 
   // 5. Client Visits — 10%
-  const cvPct =
-    data.clientVisitsTarget > 0
-      ? (data.clientVisitsCount / data.clientVisitsTarget) * 100
-      : 0;
+  const cvPct = Math.min(
+    100,
+    data.clientVisitsTarget > 0 ? (data.clientVisitsCount / data.clientVisitsTarget) * 100 : 0
+  );
   const cvRating = standardRating(cvPct);
   const cvW = 0.1 * cvRating;
 
@@ -511,10 +522,10 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
   const csrW = 0.05 * csrRating;
 
   // 7. New Account Development — 10%, target 2/month
-  const naPct =
-    data.newAccountTarget > 0
-      ? (data.newAccountCount / data.newAccountTarget) * 100
-      : 0;
+  const naPct = Math.min(
+    100,
+    data.newAccountTarget > 0 ? (data.newAccountCount / data.newAccountTarget) * 100 : 0
+  );
   const naRating = standardRating(naPct);
   const naW = 0.1 * naRating;
 
