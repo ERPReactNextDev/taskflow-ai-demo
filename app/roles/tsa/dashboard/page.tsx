@@ -170,7 +170,7 @@ const DEFAULT_VISIBILITY: CardVisibility = {
   summaryCards:                 true,
   salesPipeline:                true,
   siSoAchievement:              false,
-  monthlySiTrend:               false,
+  monthlySiTrend:               true,
   tsaPerformance:               false,
   kpiScores:                    true,
   // Activity pattern
@@ -736,27 +736,36 @@ function DashboardContent() {
 
   const fetchNewAccount = useCallback(async () => {
     const { referenceid } = userDetails;
-    if (!referenceid) { setNewAccountCount(0); setNewAccountTarget(3); return; } // Default to 3
+    if (!referenceid) { setNewAccountCount(0); setNewAccountTarget(3); return; }
     setLoadingNewAccount(true);
     try {
-      // New Account Development is monthly only
+      // Use the selected date range if set; otherwise default to current month
       const now = new Date();
-      const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-      
+      const defaultMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const defaultMonthEnd   = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
+
+      const from = dateCreatedFilterRange?.from ? toDateStr(dateCreatedFilterRange.from) : defaultMonthStart;
+      const to   = dateCreatedFilterRange?.to   ? toDateStr(dateCreatedFilterRange.to)   : defaultMonthEnd;
+
+      // Count uses the full selected range (both from and to always passed)
+      const countUrl = `/api/account-development-plan/count?referenceid=${encodeURIComponent(referenceid)}&from=${from}&to=${to}`;
+      // Target uses only "from" to determine which month's target row to look up (never prorated)
+      const targetUrl = `/api/sales-account-development?referenceid=${encodeURIComponent(referenceid)}&from=${from}`;
+
       const [countRes, targetRes] = await Promise.all([
-        fetch(`/api/account-development-plan/count?referenceid=${encodeURIComponent(referenceid)}&from=${monthStart}`),
-        fetch(`/api/sales-account-development?referenceid=${encodeURIComponent(referenceid)}`),
+        fetch(countUrl),
+        fetch(targetUrl),
       ]);
       const countData  = await countRes.json();
       const targetData = await targetRes.json();
       setNewAccountCount(Number(countData.count) || 0);
-      setNewAccountTarget(Number(targetData.target) || 3); // Default to 3 if no target found
+      setNewAccountTarget(Number(targetData.target) || 3);
     } catch (err) {
       console.error("Error fetching new account development:", err);
     } finally {
       setLoadingNewAccount(false);
     }
-  }, [userDetails.referenceid]);
+  }, [userDetails.referenceid, dateCreatedFilterRange]);
 
   const fetchHistory = useCallback(async () => {
     const { referenceid } = userDetails;

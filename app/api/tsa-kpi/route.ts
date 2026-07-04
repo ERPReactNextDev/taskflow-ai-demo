@@ -18,15 +18,13 @@ export async function GET(req: Request) {
     const year = from
       ? new Date(from).getFullYear().toString()
       : new Date().getFullYear().toString();
-    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 
-    // Helper to build query params
-    const buildParams = (baseParams: Record<string, string>) => {
-      const params = new URLSearchParams(baseParams);
-      if (from) params.append("from", from);
-      if (to) params.append("to", to);
-      return params.toString();
-    };
+    // Derive the month scope for New Account Dev:
+    // Use the "from" date's month if provided, otherwise current month.
+    // Always pass both from+to so the count API scopes to the correct month.
+    const refDate = from ? new Date(from) : now;
+    const naFrom  = from ?? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-01`;
+    const naTo    = to   ?? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-${String(new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
 
     // --- Fetch all data in parallel ---
     const [
@@ -66,9 +64,9 @@ export async function GET(req: Request) {
       fetch(`${url.origin}/api/history-so-to-si?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       // 5. Client Visits
       fetch(`${url.origin}/api/fetch-tasklog-supabase?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
-      // 7. New Account Dev (monthly only)
-      fetch(`${url.origin}/api/account-development-plan/count?referenceid=${encodeURIComponent(referenceid)}&from=${monthStart}`),
-      fetch(`${url.origin}/api/sales-account-development?referenceid=${encodeURIComponent(referenceid)}`),
+      // 7. New Account Dev — scoped to the selected month (or current month if no range)
+      fetch(`${url.origin}/api/account-development-plan/count?referenceid=${encodeURIComponent(referenceid)}&from=${naFrom}&to=${naTo}`),
+      fetch(`${url.origin}/api/sales-account-development?referenceid=${encodeURIComponent(referenceid)}&from=${naFrom}`),
     ]);
 
     // --- Parse all responses ---

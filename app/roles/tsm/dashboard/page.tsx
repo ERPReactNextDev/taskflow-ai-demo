@@ -23,6 +23,7 @@ import { RunningSiCard } from "@/components/roles/tsm/dashboard/card/running-si"
 import { RunningSoCard } from "@/components/roles/tsm/dashboard/card/running-so";
 import { OutboundTouchbaseCountCard } from "@/components/roles/tsm/dashboard/card/outbound-touchbase-count";
 import { SalesPipelineCard } from "@/components/roles/tsm/dashboard/card/sales-pipeline";
+import { TsmKpiWeightedScores } from "@/components/roles/tsm/dashboard/card/kpi-weighted-scores";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,14 +42,17 @@ const VISIBILITY_KEY = "tsm_dashboard_visibility";
 
 interface CardVisibility {
   summaryCards: boolean;
+  kpiScores:    boolean;
 }
 
 const DEFAULT_VISIBILITY: CardVisibility = {
   summaryCards: true,
+  kpiScores:    true,
 };
 
 const CARD_LABELS: Record<keyof CardVisibility, string> = {
   summaryCards: "Summary Cards (Target, SI, SO, OB Calls)",
+  kpiScores:    "KPI Weighted Scores — Team View",
 };
 
 function loadVisibility(): CardVisibility {
@@ -81,8 +85,26 @@ function DashboardContent() {
     target_quota: "", firstname: "", lastname: "",
   });
   const [loadingUser, setLoadingUser] = useState(true);
+
+  // ── Date range — defaults to today, optional custom range ────────────────────
+  const todayStart = () => new Date(new Date().setHours(0, 0, 0, 0));
+  const todayEnd   = () => new Date(new Date().setHours(23, 59, 59, 999));
+
   const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] =
-    React.useState<DateRange | undefined>(undefined);
+    React.useState<DateRange | undefined>({
+      from: todayStart(),
+      to:   todayEnd(),
+    });
+
+  // When the user clears the date picker, reset back to today instead of undefined
+  useEffect(() => {
+    if (!dateCreatedFilterRange) {
+      setDateCreatedFilterRangeAction({
+        from: todayStart(),
+        to:   todayEnd(),
+      });
+    }
+  }, [dateCreatedFilterRange]);
 
   // ── Settings ────────────────────────────────────────────────────────────────
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -371,9 +393,8 @@ function DashboardContent() {
               <OutboundTouchbaseCountCard
                 referenceid={userDetails.referenceid}
                 count={outboundCallsCount}
-                target={outboundCallsTarget}
                 loading={loadingOutboundCalls}
-                loadingTarget={loadingOutboundCallsTarget}
+                dateRange={dateCreatedFilterRange}
                 userId={queryUserId}
               />
             </div>
@@ -398,6 +419,14 @@ function DashboardContent() {
             newAccountTarget={newAccountTarget}
             loadingNewAccount={loadingPipeline}
           />
+
+          {/* KPI Weighted Scores — Team View */}
+          {visibility.kpiScores && userDetails.referenceid && (
+            <TsmKpiWeightedScores
+              tsm={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+            />
+          )}
         </div>
 
       </SidebarInset>

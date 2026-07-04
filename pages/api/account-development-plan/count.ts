@@ -23,13 +23,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const now = new Date();
     
     if (from && to) {
+      // Explicit range provided — use it exactly
       startDate = from;
       endDate = to;
+    } else if (from) {
+      // Only "from" provided — scope to that calendar month
+      const d = new Date(from);
+      const year = d.getFullYear();
+      const month = d.getMonth(); // 0-indexed
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      startDate = from;
+      endDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
     } else {
-      // Default to full current year (YTD)
-      const targetYear = year ? parseInt(year) : now.getFullYear();
-      startDate = `${targetYear}-01-01`;
-      endDate = `${targetYear}-12-31`;
+      // No params — default to current calendar month
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+      endDate   = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
     }
 
     // Fetch count from account_development_plans table
