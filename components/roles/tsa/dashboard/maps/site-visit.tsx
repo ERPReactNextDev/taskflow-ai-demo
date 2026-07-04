@@ -78,7 +78,7 @@ export function SiteVisitCard({ referenceid, dateRange, name = "—" }: SiteVisi
         ).length;
 
         setVisitCount(logins);
-        setTarget(parseInt(targetData.target?.target ?? "0") || 0);
+        setTarget(parseInt(targetData.target?.target ?? "0") || 10); // Default to 10
       } catch (err: any) {
         setError(err.message);
       } finally {

@@ -46,11 +46,11 @@ interface SalesPipelineCardProps {
 
 export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   obCallsCount = 0,
-  obCallsTarget = 0,
+  obCallsTarget = 5, // Default target
   loadingObCalls = false,
   loadingObCallsTarget = false,
   quotesCount = 0,
-  quotesTarget = 120, // Default target
+  quotesTarget = 20, // Default target
   loadingQuotes = false,
   callsToQuotesCount = 0,
   loadingCallsToQuotes = false,
@@ -60,7 +60,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   soToSISalesOrderCount = 0,
   soToSIDeliveredCount = 0,
   newAccountCount = 0,
-  newAccountTarget = 2,
+  newAccountTarget = 3, // Default target
   loadingNewAccount = false,
 }) => {
   const obCallsPercentage = obCallsTarget > 0 ? Math.round((obCallsCount / obCallsTarget) * 100) : 0;
@@ -189,7 +189,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
             </div>
             <div className="text-xs font-medium text-gray-600">OB Calls</div>
             <div className="text-xs text-gray-500">
-              Target: {loadingObCallsTarget ? "..." : obCallsTarget}/mo • Achievement: {obCallsPercentage}% • Rating: {obCallsRating}
+              Target: {loadingObCallsTarget ? "..." : obCallsTarget} • Achievement: {obCallsPercentage}% • Rating: {obCallsRating}
             </div>
             <div className="w-full bg-gray-200 h-2 rounded-full">
               <div 
@@ -206,7 +206,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
             </div>
             <div className="text-xs font-medium text-gray-600">Quotes generated</div>
             <div className="text-xs text-gray-500">
-              Target: {quotesTarget}/mo • Achievement: {quotesPercentage}% • Rating: {quotesRating}
+              Target: {quotesTarget} • Achievement: {quotesPercentage}% • Rating: {quotesRating}
             </div>
             <div className="w-full bg-gray-200 h-2 rounded-full">
               <div 
@@ -268,7 +268,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
             </div>
             <div className="text-xs font-medium text-gray-600">New Account Dev.</div>
             <div className="text-xs text-gray-500">
-              Target: {newAccountTarget}/mo • Achievement: {newAccountPercentage}% • Rating: {newAccountRating}
+              Target: {newAccountTarget} • Achievement: {newAccountPercentage}% • Rating: {newAccountRating}
             </div>
             <div className="w-full bg-gray-200 h-2 rounded-full">
               <div

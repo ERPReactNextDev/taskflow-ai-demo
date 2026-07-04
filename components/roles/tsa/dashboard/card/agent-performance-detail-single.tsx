@@ -1,16 +1,29 @@
 "use client";
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { MapPin, User } from "lucide-react";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface DateRange {
+  from?: Date;
+  to?: Date;
+}
+
 interface AgentPerformanceDetailSingleProps {
+  /** ReferenceID of the TSA — used to self-fetch site visits */
+  referenceid?: string;
+  /** Date range filter forwarded to the site-visits API */
+  dateRange?: DateRange;
+
   name?: string;
   plan: number;
   siActual: number;
   soActual: number;
   siPercentage: number;
   obCalls: number;
-  siteVisits: number;
+  /** Optional fallback — used only if referenceid is not provided */
+  siteVisits?: number;
   siteVisitTarget: any;
   accountDevelopment: number;
   timeSpentMs: number;
@@ -21,7 +34,12 @@ interface AgentPerformanceDetailSingleProps {
   spfHandlingDuration: number;
 }
 
-// Helper function to format time spent (ms to Hh Mm Ss)
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 function formatTimeSpent(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
   const h = Math.floor(totalSec / 3600);
@@ -30,7 +48,6 @@ function formatTimeSpent(ms: number): string {
   return `${h}h ${m}m ${s}s`;
 }
 
-// Helper function to format hours to HH:MM:SS
 function formatHoursToHMS(hours: number): string {
   const totalSeconds = Math.round(hours * 3600);
   const h = Math.floor(totalSeconds / 3600);
@@ -39,7 +56,6 @@ function formatHoursToHMS(hours: number): string {
   return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-// Helper function to format currency
 function formatCurrency(amount: number): string {
   if (!amount) return "—";
   return `₱${amount.toLocaleString(undefined, {
@@ -48,14 +64,18 @@ function formatCurrency(amount: number): string {
   })}`;
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export const AgentPerformanceDetailSingle: React.FC<AgentPerformanceDetailSingleProps> = ({
+  referenceid,
+  dateRange,
   name = "—",
   plan = 0,
   siActual = 0,
   soActual = 0,
   siPercentage = 0,
   obCalls = 0,
-  siteVisits = 0,
+  siteVisits: siteVisitsProp = 0,
   siteVisitTarget,
   accountDevelopment = 0,
   timeSpentMs = 0,
@@ -66,6 +86,45 @@ export const AgentPerformanceDetailSingle: React.FC<AgentPerformanceDetailSingle
   spfHandlingDuration = 0,
 }) => {
   const target = siteVisitTarget?.target ? parseInt(siteVisitTarget.target) : 0;
+
+  // ── Self-fetch site visits from /api/fetch-tasklog-supabase ───────────────
+  const [siteVisitsCount, setSiteVisitsCount] = useState<number>(siteVisitsProp);
+  const [loadingSiteVisits, setLoadingSiteVisits] = useState(false);
+
+  const fetchSiteVisits = useCallback(async () => {
+    if (!referenceid) {
+      // Fall back to the prop value if no referenceid
+      setSiteVisitsCount(siteVisitsProp);
+      return;
+    }
+    setLoadingSiteVisits(true);
+    try {
+      const url = new URL("/api/fetch-tasklog-supabase", window.location.origin);
+      url.searchParams.append("referenceid", referenceid);
+      if (dateRange?.from) url.searchParams.append("from", toDateStr(dateRange.from));
+      if (dateRange?.to)   url.searchParams.append("to",   toDateStr(dateRange.to));
+
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("Failed to fetch site visits");
+      const data = await res.json();
+
+      // Count only Login status entries — same logic as the parent dashboard
+      const count = (data.siteVisits ?? []).filter((v: any) => v.Status === "Login").length;
+      setSiteVisitsCount(count);
+    } catch (err) {
+      console.error("AgentPerformanceDetailSingle: error fetching site visits", err);
+      setSiteVisitsCount(siteVisitsProp);
+    } finally {
+      setLoadingSiteVisits(false);
+    }
+  }, [referenceid, dateRange, siteVisitsProp]);
+
+  // Fetch on mount and whenever referenceid / dateRange changes
+  useEffect(() => {
+    fetchSiteVisits();
+  }, [fetchSiteVisits]);
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Card className="rounded-xl border shadow-sm">
       <CardContent className="p-4">
@@ -112,7 +171,11 @@ export const AgentPerformanceDetailSingle: React.FC<AgentPerformanceDetailSingle
                 <td className="text-right py-3 px-1 font-mono">{obCalls.toLocaleString()}</td>
                 <td className="text-right py-3 px-1 font-mono">{formatCurrency(quotationAmount)}</td>
                 <td className="text-right py-3 px-1 font-mono">
-                  <span>{siteVisits}/{target || "—"}</span>
+                  {loadingSiteVisits ? (
+                    <span className="text-gray-400 animate-pulse">…</span>
+                  ) : (
+                    <span>{siteVisitsCount}</span>
+                  )}
                 </td>
                 <td className="text-right py-3 px-1 font-mono">{accountDevelopment.toLocaleString()}</td>
                 <td className="text-right py-3 px-1 font-mono">{formatTimeSpent(timeSpentMs)}</td>

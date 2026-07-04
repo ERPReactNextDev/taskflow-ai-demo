@@ -11,24 +11,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const referenceid = req.query.referenceid as string;
     const month = req.query.month as string; // optional YYYY-MM
     const year = req.query.year as string; // optional YYYY
+    const from = req.query.from as string; // optional YYYY-MM-DD
+    const to = req.query.to as string; // optional YYYY-MM-DD
 
     if (!referenceid) {
       return res.status(400).json({ error: "Reference ID is required" });
     }
 
-    // Calculate date range — full current year (YTD)
-    const now        = new Date();
-    const targetYear = year ? parseInt(year) : now.getFullYear();
-    const yearStart  = `${targetYear}-01-01`;
-    const yearEnd    = `${targetYear}-12-31`;
+    // Calculate date range
+    let startDate, endDate;
+    const now = new Date();
+    
+    if (from && to) {
+      startDate = from;
+      endDate = to;
+    } else {
+      // Default to full current year (YTD)
+      const targetYear = year ? parseInt(year) : now.getFullYear();
+      startDate = `${targetYear}-01-01`;
+      endDate = `${targetYear}-12-31`;
+    }
 
-    // Fetch count from account_development_plans table for the full year
+    // Fetch count from account_development_plans table
     const { data: plans, error: plansError } = await supabase
       .from("account_development_plans")
       .select("id")
       .eq("referenceid", referenceid)
-      .gte("created_at", yearStart)
-      .lte("created_at", yearEnd);
+      .gte("created_at", startDate)
+      .lte("created_at", endDate);
 
     if (plansError) throw plansError;
 

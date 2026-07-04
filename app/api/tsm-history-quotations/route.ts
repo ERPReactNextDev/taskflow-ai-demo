@@ -31,17 +31,25 @@ export async function GET(req: Request) {
     const endDate = to ? `${to}T23:59:59Z` : null;
 
     let query = supabase.from("history")
-      .select("quotation_number", { count: "exact" })
+      .select("quotation_number")
       .in("referenceid", agentIds)
       .eq("type_activity", "Quotation Preparation")
-      .or("tsm_approved_status.eq.Approved By Sales Head,tsm_approved_status.eq.Approved")
+      .eq("status", "Quote-Done")
       .gte("date_created", startDate);
     if (endDate) query = query.lte("date_created", endDate);
 
-    const { error, count } = await query;
+    const { data, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ success: true, count: count || 0 }, { status: 200 });
+    // Count unique quotation numbers
+    const uniqueQuotations = new Set<string>();
+    data?.forEach(row => {
+      if (row.quotation_number) {
+        uniqueQuotations.add(row.quotation_number);
+      }
+    });
+
+    return NextResponse.json({ success: true, count: uniqueQuotations.size }, { status: 200 });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

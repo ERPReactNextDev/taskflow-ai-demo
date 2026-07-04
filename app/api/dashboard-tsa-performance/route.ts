@@ -50,9 +50,10 @@ export async function GET(req: Request) {
       return q;
     })();
     const quotationsQuery = (() => {
+      // Count ALL quotation preparations (not just approved ones).
+      // "Quotes Generated" = any quotation created this month, regardless of approval status.
       const q = supabase.from("history").select("quotation_number", { count: "exact" })
         .eq("referenceid", referenceid).eq("type_activity", "Quotation Preparation")
-        .or("tsm_approved_status.eq.Approved By Sales Head,tsm_approved_status.eq.Approved")
         .gte("date_created", monthStart);
       return q;
     })();

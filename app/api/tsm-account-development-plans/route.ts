@@ -17,18 +17,25 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, error: "Missing tsm." }, { status: 400 });
     }
 
-    // Count all records for this TSM in the current year — no date range filter
-    // (new account plans accumulate over the year, not filtered by current date selection)
-    const currentYear = new Date().getFullYear();
-    const yearStart   = `${currentYear}-01-01T00:00:00Z`;
-    const yearEnd     = `${currentYear}-12-31T23:59:59Z`;
+    // Use date range if provided, otherwise use current year
+    const now = new Date();
+    let startDate, endDate;
+    
+    if (from && to) {
+      startDate = `${from}T00:00:00Z`;
+      endDate = `${to}T23:59:59Z`;
+    } else {
+      const currentYear = now.getFullYear();
+      startDate = `${currentYear}-01-01T00:00:00Z`;
+      endDate = `${currentYear}-12-31T23:59:59Z`;
+    }
 
     const { count, error } = await supabase
       .from("account_development_plans")
       .select("id", { count: "exact", head: true })
       .eq("tsm", tsm)
-      .gte("created_at", yearStart)
-      .lte("created_at", yearEnd);
+      .gte("created_at", startDate)
+      .lte("created_at", endDate);
     if (error) throw error;
 
     return NextResponse.json({ success: true, count: count ?? 0 }, { status: 200 });

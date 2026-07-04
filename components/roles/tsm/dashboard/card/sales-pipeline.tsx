@@ -189,7 +189,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
             </div>
             <div className="text-xs font-medium text-gray-600">OB Calls</div>
             <div className="text-xs text-gray-500">
-              Target: {loadingObCallsTarget ? "..." : obCallsTarget}/mo • Achievement: {obCallsPercentage}% • Rating: {obCallsRating}
+              Target: {loadingObCallsTarget ? "..." : obCallsTarget} • Achievement: {obCallsPercentage}% • Rating: {obCallsRating}
             </div>
             <div className="w-full bg-gray-200 h-2 rounded-full">
               <div 
@@ -206,7 +206,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
             </div>
             <div className="text-xs font-medium text-gray-600">Quotes generated</div>
             <div className="text-xs text-gray-500">
-              Target: {quotesTarget}/mo • Achievement: {quotesPercentage}% • Rating: {quotesRating}
+              Target: {quotesTarget} • Achievement: {quotesPercentage}% • Rating: {quotesRating}
             </div>
             <div className="w-full bg-gray-200 h-2 rounded-full">
               <div 
@@ -268,7 +268,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
             </div>
             <div className="text-xs font-medium text-gray-600">New Account Dev.</div>
             <div className="text-xs text-gray-500">
-              Target: {newAccountTarget}/mo • Achievement: {newAccountPercentage}% • Rating: {newAccountRating}
+              Target: {newAccountTarget} • Achievement: {newAccountPercentage}% • Rating: {newAccountRating}
             </div>
             <div className="w-full bg-gray-200 h-2 rounded-full">
               <div
