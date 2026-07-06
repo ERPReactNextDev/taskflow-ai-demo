@@ -24,6 +24,7 @@ import { RunningSoCard } from "@/components/roles/tsm/dashboard/card/running-so"
 import { OutboundTouchbaseCountCard } from "@/components/roles/tsm/dashboard/card/outbound-touchbase-count";
 import { SalesPipelineCard } from "@/components/roles/tsm/dashboard/card/sales-pipeline";
 import { TsmKpiWeightedScores } from "@/components/roles/tsm/dashboard/card/kpi-weighted-scores";
+import { MonthlySiTrendCard } from "@/components/roles/tsm/dashboard/card/monthly-si-trend";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,16 +44,19 @@ const VISIBILITY_KEY = "tsm_dashboard_visibility";
 interface CardVisibility {
   summaryCards: boolean;
   kpiScores:    boolean;
+  siTrend:      boolean;
 }
 
 const DEFAULT_VISIBILITY: CardVisibility = {
   summaryCards: true,
   kpiScores:    true,
+  siTrend:      true,
 };
 
 const CARD_LABELS: Record<keyof CardVisibility, string> = {
   summaryCards: "Summary Cards (Target, SI, SO, OB Calls)",
   kpiScores:    "KPI Weighted Scores — Team View",
+  siTrend:      "Monthly SI Trend",
 };
 
 function loadVisibility(): CardVisibility {
@@ -420,6 +424,13 @@ function DashboardContent() {
             loadingNewAccount={loadingPipeline}
           />
 
+          {/* Monthly SI Trend — Team Total */}
+          {visibility.siTrend && userDetails.referenceid && (
+            <MonthlySiTrendCard
+              tsm={userDetails.referenceid}
+            />
+          )}
+
           {/* KPI Weighted Scores — Team View */}
           {visibility.kpiScores && userDetails.referenceid && (
             <TsmKpiWeightedScores
@@ -427,6 +438,7 @@ function DashboardContent() {
               dateRange={dateCreatedFilterRange}
             />
           )}
+
         </div>
 
       </SidebarInset>

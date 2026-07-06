@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -196,8 +196,7 @@ export async function GET(req: Request) {
       .select("referenceid, ob_target, month, year")
       .in("referenceid", agentIds)
       .in("month", targetMonths)
-      .in("year", targetYears)
-      .order("date_updated", { ascending: false });
+      .in("year", targetYears);
 
     // 5. Quotations — approved only, current month start → today (matches kpi-monthly-actuals)
     const quotesPromise = (() => {
@@ -216,8 +215,7 @@ export async function GET(req: Request) {
       .select("referenceid, quote_target, month, year")
       .in("referenceid", agentIds)
       .in("month", targetMonths)
-      .in("year", targetYears)
-      .order("date_updated", { ascending: false });
+      .in("year", targetYears);
 
     // 7. Pipeline activities — same monthly scope as OB/quotes (month start → today)
     const pipelinePromise = (() => {
@@ -251,8 +249,7 @@ export async function GET(req: Request) {
       .select("referenceid, target")
       .in("referenceid", agentIds)
       .eq("month", monthLabel(now))         // always current calendar month
-      .eq("year", now.getFullYear().toString())
-      .order("target", { ascending: false }); // highest first so first-seen wins in map
+      .eq("year", now.getFullYear().toString());
 
     // 11. Client visits — same monthly scope as OB/quotes (month start → today)
     // Mirrors fetch-tasklog-supabase exactly: no Status pre-filter, +08:00 timezone,

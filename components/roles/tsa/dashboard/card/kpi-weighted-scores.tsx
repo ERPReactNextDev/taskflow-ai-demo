@@ -345,38 +345,35 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
   };
   
   // --- Fetch OB Calls Target ---
+  // --- Fetch OB Calls Target ---
+  // Pass only "from" — targets are monthly commitments and must NOT be prorated
   const fetchObCallsTarget = async () => {
     if (!referenceid) return;
-    
     try {
-      const dateParams = new URLSearchParams();
-      if (dateCreatedFilterRange?.from) dateParams.append("from", toDateStr(dateCreatedFilterRange.from));
-      if (dateCreatedFilterRange?.to) dateParams.append("to", toDateStr(dateCreatedFilterRange.to));
-      const dateSuffix = dateParams.toString() ? `&${dateParams}` : "";
-      
-      const res = await fetch(`/api/sales-ob?referenceid=${encodeURIComponent(referenceid)}${dateSuffix}`);
+      const params = new URLSearchParams({ referenceid });
+      if (dateCreatedFilterRange?.from) params.append("from", toDateStr(dateCreatedFilterRange.from));
+      // Intentionally omit "to" to get the full monthly target, not a prorated fraction
+      const res = await fetch(`/api/sales-ob?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch OB target");
       const data = await res.json();
-      setObCallsTarget(Number(data.target) || 5);
+      setObCallsTarget(Number(data.target) || 0);
     } catch (err) {
       console.error("Error fetching OB calls target:", err);
     }
   };
   
   // --- Fetch Quotes Target ---
+  // Pass only "from" — targets are monthly commitments and must NOT be prorated
   const fetchQuotesTarget = async () => {
     if (!referenceid) return;
-    
     try {
-      const dateParams = new URLSearchParams();
-      if (dateCreatedFilterRange?.from) dateParams.append("from", toDateStr(dateCreatedFilterRange.from));
-      if (dateCreatedFilterRange?.to) dateParams.append("to", toDateStr(dateCreatedFilterRange.to));
-      const dateSuffix = dateParams.toString() ? `&${dateParams}` : "";
-      
-      const res = await fetch(`/api/sales-quotation?referenceid=${encodeURIComponent(referenceid)}${dateSuffix}`);
+      const params = new URLSearchParams({ referenceid });
+      if (dateCreatedFilterRange?.from) params.append("from", toDateStr(dateCreatedFilterRange.from));
+      // Intentionally omit "to" to get the full monthly target, not a prorated fraction
+      const res = await fetch(`/api/sales-quotation?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch quotes target");
       const data = await res.json();
-      setQuotesTarget(Number(data.quoteTarget) || 80);
+      setQuotesTarget(Number(data.quoteTarget) || 0);
     } catch (err) {
       console.error("Error fetching quotes target:", err);
     }
@@ -393,8 +390,8 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
 
   // --- Use fallback props if provided, otherwise use API data ---
   const finalClientVisitsTarget = propClientVisitsTarget ?? (siteVisitTarget || 10);
-  const finalObCallsTarget = propObCallsTarget ?? (obCallsTarget || 5);
-  const finalQuotesTarget = propQuotesTarget ?? (quotesTarget || 80);
+  const finalObCallsTarget = propObCallsTarget ?? (obCallsTarget || 0);
+  const finalQuotesTarget = propQuotesTarget ?? (quotesTarget || 0);
   
   const data = propRunningTarget !== undefined
     ? {

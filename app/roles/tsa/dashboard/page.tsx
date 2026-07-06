@@ -641,9 +641,9 @@ function DashboardContent() {
   const [kpiMonthlyActuals, setKpiMonthlyActuals] = useState({
     totalActualSales:         0,
     obCallsCount:             0,
-    obCallsTarget:            5, // Default OB target
+    obCallsTarget:            0,
     quotesCount:              0,
-    quotesTarget:             80, // Default quote target
+    quotesTarget:             0,
     callsToQuotesCount:       0,
     quoteToSOQuotationCount:  0,
     quoteToSOSalesOrderCount: 0,
