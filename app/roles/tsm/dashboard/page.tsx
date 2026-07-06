@@ -239,7 +239,7 @@ function DashboardContent() {
 
   // ── Pipeline (Quotes, Calls→Quote, Quote→SO, SO→SI, New Account) ────────────
   const [quotesCount,             setQuotesCount]             = useState<number>(0);
-  const [quoteTarget,             setQuoteTarget]             = useState<number>(120);
+  const [quoteTarget, setQuoteTarget] = useState<number>(0);
   const [callsToQuotesCount,      setCallsToQuotesCount]      = useState<number>(0);
   const [quoteToSOQuotationCount, setQuoteToSOQuotationCount] = useState<number>(0);
   const [quoteToSOSalesOrderCount,setQuoteToSOSalesOrderCount]= useState<number>(0);
@@ -279,7 +279,7 @@ function DashboardContent() {
       ]);
 
       setQuotesCount(Number(quotesData.count) || 0);
-      setQuoteTarget(Number(quoteTargetData.quoteTarget) || 120);
+      setQuoteTarget(Number(quoteTargetData.quoteTarget) || 0);
       setCallsToQuotesCount(Number(c2qData.count) || 0);
       setQuoteToSOQuotationCount(Number(q2soData.quoteToSOQuotationCount) || 0);
       setQuoteToSOSalesOrderCount(Number(q2soData.quoteToSOSalesOrderCount) || 0);
@@ -401,12 +401,12 @@ function DashboardContent() {
           )}
 
           <SalesPipelineCard
+            tsm={userDetails.referenceid}
+            dateRange={dateCreatedFilterRange}
             obCallsCount={outboundCallsCount}
-            obCallsTarget={outboundCallsTarget}
             loadingObCalls={loadingOutboundCalls}
             loadingObCallsTarget={loadingOutboundCallsTarget}
             quotesCount={quotesCount}
-            quotesTarget={quoteTarget}
             loadingQuotes={loadingPipeline}
             callsToQuotesCount={callsToQuotesCount}
             loadingCallsToQuotes={loadingPipeline}

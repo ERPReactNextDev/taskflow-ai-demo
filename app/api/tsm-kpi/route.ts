@@ -137,7 +137,7 @@ export async function GET(req: Request) {
     const monthSlices = enumerateMonthSlices(from, to, refDate);
     const targetMonths = Array.from(new Set(monthSlices.map((slice) => slice.month)));
     const targetYears = Array.from(new Set(monthSlices.map((slice) => slice.year)));
-    const shouldProrateMonthlyTargets = Boolean(from && to);
+    const shouldProrateMonthlyTargets = false; // Targets are always full monthly values — never prorate
 
     // Monthly scope: always month-start → end-of-today
     const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
@@ -190,13 +190,14 @@ export async function GET(req: Request) {
         .lte("date_created", todayEnd);
     })();
 
-    // 4. OB targets per agent
+    // 4. OB targets per agent — order by date_updated DESC so latest row wins on duplicates
     const obTargetPromise = supabase
       .from("sales_ob")
       .select("referenceid, ob_target, month, year")
       .in("referenceid", agentIds)
       .in("month", targetMonths)
-      .in("year", targetYears);
+      .in("year", targetYears)
+      .order("date_updated", { ascending: false });
 
     // 5. Quotations — approved only, current month start → today (matches kpi-monthly-actuals)
     const quotesPromise = (() => {
@@ -209,13 +210,14 @@ export async function GET(req: Request) {
         .lte("date_created", todayEnd);
     })();
 
-    // 6. Quote targets per agent
+    // 6. Quote targets per agent — order by date_updated DESC so latest row wins on duplicates
     const quoteTargetPromise = supabase
       .from("sales_quotation")
       .select("referenceid, quote_target, month, year")
       .in("referenceid", agentIds)
       .in("month", targetMonths)
-      .in("year", targetYears);
+      .in("year", targetYears)
+      .order("date_updated", { ascending: false });
 
     // 7. Pipeline activities — same monthly scope as OB/quotes (month start → today)
     const pipelinePromise = (() => {
@@ -303,14 +305,18 @@ export async function GET(req: Request) {
       obMap[row.referenceid] = (obMap[row.referenceid] ?? 0) + 1;
     }
 
-    // OB target map: { referenceid → target }
+    // OB target map — first row per agent+month wins (latest due to ORDER BY date_updated DESC)
     const obTargetMap: Record<string, Array<{ month: string; year: string; targetValue: number }>> = {};
+    const obTargetSeen = new Set<string>();
     for (const row of obTargetData ?? []) {
+      const key = `${row.referenceid}|${row.month}|${row.year}`;
+      if (obTargetSeen.has(key)) continue; // skip older duplicates
+      obTargetSeen.add(key);
       if (!obTargetMap[row.referenceid]) obTargetMap[row.referenceid] = [];
       obTargetMap[row.referenceid].push({
         month: row.month,
         year: row.year,
-        targetValue: Number(row.ob_target) || 5,
+        targetValue: Number(row.ob_target) || 0,
       });
     }
 
@@ -321,14 +327,18 @@ export async function GET(req: Request) {
       if (row.quotation_number) quotesSetMap[row.referenceid].add(row.quotation_number);
     }
 
-    // Quote target map: { referenceid → target }
+    // Quote target map: { referenceid → rows } — first row per agent+month wins (latest due to ORDER BY date_updated DESC)
     const quoteTargetMap: Record<string, Array<{ month: string; year: string; targetValue: number }>> = {};
+    const quoteTargetSeen = new Set<string>(); // deduplicate: referenceid+month+year
     for (const row of quoteTargetData ?? []) {
+      const key = `${row.referenceid}|${row.month}|${row.year}`;
+      if (quoteTargetSeen.has(key)) continue; // skip older duplicates
+      quoteTargetSeen.add(key);
       if (!quoteTargetMap[row.referenceid]) quoteTargetMap[row.referenceid] = [];
       quoteTargetMap[row.referenceid].push({
         month: row.month,
         year: row.year,
-        targetValue: Number(row.quote_target) || 80,
+        targetValue: Number(row.quote_target) || 0,
       });
     }
 
