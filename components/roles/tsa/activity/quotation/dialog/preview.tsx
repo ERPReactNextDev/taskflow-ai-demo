@@ -113,22 +113,23 @@ export const Preview: React.FC<PreviewProps> = ({
     const tradeDiscount = parseFloat((grossTotal - netSales).toFixed(2));
     const totalInvoiceAmount = parseFloat((netSales + (Number(payload.deliveryFee) || 0) + (Number(payload.restockingFee) || 0)).toFixed(2));
 
-    // Round components to 2 decimal places to ensure summary adds up exactly
-    const vatAmount = parseFloat((totalInvoiceAmount * (12 / 112)).toFixed(2));
-    const netOfVat = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
-    const whtAmount = payload.whtType !== "none" ? parseFloat((netOfVat * (payload.whtType === "wht_1" ? 0.01 : 0.02)).toFixed(2)) : 0;
-
-    // VAT Inc: customer pays the full VAT-inclusive total (minus WHT if applicable)
-    // VAT Exe / Zero-Rated: the line items are already net prices, so the due amount is netOfVat (i.e. totalInvoiceAmount / 1.12) minus any WHT
-    // But if the items were entered as VAT-exclusive prices, netSales IS the net amount and we should not divide again.
-    // The correct rule: vat_exe means prices are VAT-exempt, so total due = totalInvoiceAmount (no VAT component to strip).
-    // vat_inc means VAT is embedded, total due = totalInvoiceAmount (VAT is included, customer pays it).
-    // The "Net of VAT" rows are informational breakdowns only — they don't reduce what the customer pays.
-    // EXCEPTION: when vatType === "vat_exe", the amount the customer pays is the net-of-VAT figure
-    // because the original item prices were entered inclusive of VAT in the system but billed exclusive.
-    const finalAmountDue = (payload.vatType === "vat_exe" || payload.vatType === "zero_rated")
+    let vatAmount, netOfVat, whtAmount, finalAmountDue;
+    
+    if (payload.vatType === "zero_rated") {
+      // Zero-rated: no VAT, no WHT
+      vatAmount = 0;
+      netOfVat = totalInvoiceAmount;
+      whtAmount = 0;
+      finalAmountDue = totalInvoiceAmount;
+    } else {
+      // vat_inc / vat_exe: normal behavior
+      vatAmount = parseFloat((totalInvoiceAmount * (12 / 112)).toFixed(2));
+      netOfVat = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
+      whtAmount = payload.whtType !== "none" ? parseFloat((netOfVat * (payload.whtType === "wht_1" ? 0.01 : 0.02)).toFixed(2)) : 0;
+      finalAmountDue = payload.vatType === "vat_exe"
         ? parseFloat((netOfVat - whtAmount).toFixed(2))
         : parseFloat((totalInvoiceAmount - whtAmount).toFixed(2));
+    }
 
     // ── QR Code Security ──────────────────────────────────────────────────────
     const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);

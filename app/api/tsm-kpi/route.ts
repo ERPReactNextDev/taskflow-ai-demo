@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+﻿﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -9,7 +9,7 @@ const supabase = createClient(
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function toISO(date: string, eod = false): string {
-  return eod ? `${date}T23:59:59Z` : `${date}T00:00:00Z`;
+  return eod ? `${date}T23:59:59+08:00` : `${date}T00:00:00+08:00`;
 }
 
 function monthLabel(d: Date): string {
@@ -128,29 +128,49 @@ export async function GET(req: Request) {
 
     // ── Date scoping ──────────────────────────────────────────────────────────
     // OB Calls, Quotes, Conversion metrics, and Client Visits are ALWAYS scoped
-    // to the current calendar month (month start → today), regardless of the
-    // date-range picker. This matches exactly how kpi-monthly-actuals works for
-    // the TSA KpiWeightedScores card.
+    // to the selected date range (from/to), falling back to current calendar
+    // month (month start → today) when no range is given. All date filters use
+    // +08:00 (local) timezone consistently so counts line up with how the data
+    // was actually created — mixing Z (UTC) and +08:00 was the root cause of
+    // counts silently coming back as 0 when a range was picked.
     const now        = new Date();
     const year       = now.getFullYear().toString();
     const refDate    = from ? new Date(`${from}T00:00:00Z`) : now;
-    const monthSlices = enumerateMonthSlices(from, to, refDate);
-    const targetMonths = Array.from(new Set(monthSlices.map((slice) => slice.month)));
-    const targetYears = Array.from(new Set(monthSlices.map((slice) => slice.year)));
+    // Targets (OB, Quote, Site Visit) always use current month, date range only affects actuals
+    const monthSlices = [
+      {
+        year: now.getFullYear().toString(),
+        month: monthLabel(now),
+        daysInMonth: getDaysInMonth(now.getFullYear(), now.getMonth()),
+        coveredDays: getDaysInMonth(now.getFullYear(), now.getMonth()),
+      },
+    ];
+    const targetMonths = [monthLabel(now)];
+    const targetYears = [now.getFullYear().toString()];
     const shouldProrateMonthlyTargets = false; // Targets are always full monthly values — never prorate
 
-    // Monthly scope: always month-start → end-of-today
+    // Monthly scope: always month-start → end-of-today (local, +08:00)
     const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
-    const monthStart   = `${now.getFullYear()}-${currentMonth}-01T00:00:00Z`;
-    const todayEnd     = `${now.getFullYear()}-${currentMonth}-${String(now.getDate()).padStart(2, "0")}T23:59:59Z`;
+    const monthStart   = `${now.getFullYear()}-${currentMonth}-01T00:00:00+08:00`;
+    const todayEnd     = `${now.getFullYear()}-${currentMonth}-${String(now.getDate()).padStart(2, "0")}T23:59:59+08:00`;
 
     // New Account Dev scoped to the selected month (or current month)
     const naFrom = from ?? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-01`;
     const naTo   = to   ?? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-${String(new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
 
     // SI / SO use the full date range (YTD when no filter)
-    const siStartDate = from ? `${from}T00:00:00Z` : `${now.getFullYear()}-01-01T00:00:00Z`;
-    const siEndDate   = to   ? `${to}T23:59:59Z`   : todayEnd;
+    const siStartDate = from ? `${from}T00:00:00+08:00` : `${now.getFullYear()}-01-01T00:00:00+08:00`;
+    const siEndDate   = to   ? `${to}T23:59:59+08:00`   : todayEnd;
+
+    // OB Calls / Quotes / Client Visits / Pipeline: selected range, else current month
+    const obStart        = from ? `${from}T00:00:00+08:00` : monthStart;
+    const obEnd          = to   ? `${to}T23:59:59+08:00`   : todayEnd;
+    const quotesStart     = from ? `${from}T00:00:00+08:00` : monthStart;
+    const quotesEnd       = to   ? `${to}T23:59:59+08:00`   : todayEnd;
+    const pipelineStart   = from ? `${from}T00:00:00+08:00` : monthStart;
+    const pipelineEnd     = to   ? `${to}T23:59:59+08:00`   : todayEnd;
+    const clientVisitsStart = from ? `${from}T00:00:00+08:00` : monthStart;
+    const clientVisitsEnd   = to   ? `${to}T23:59:59+08:00`   : todayEnd;
 
     // ── Fetch agents ──────────────────────────────────────────────────────────
     const agents = await getAgents(tsm);
@@ -170,61 +190,69 @@ export async function GET(req: Request) {
       .eq("year", year);
 
     // 2. SI (actual sales) — YTD or selected range, matches TSA annual quota target
-    const siPromise = (() => {
-      let q = supabase.from("history")
-        .select("referenceid, actual_sales")
-        .in("referenceid", agentIds)
-        .eq("type_activity", "Delivered / Closed Transaction")
-        .gte("date_created", siStartDate)
-        .lte("date_created", siEndDate);
-      return q;
-    })();
+    const siPromise = supabase
+      .from("history")
+      .select("referenceid, actual_sales")
+      .in("referenceid", agentIds)
+      .eq("type_activity", "Delivered / Closed Transaction")
+      .gte("date_created", siStartDate)
+      .lte("date_created", siEndDate);
 
-    // 3. OB calls — always current month start → today (matches kpi-monthly-actuals)
-    const obPromise = (() => {
-      return supabase.from("history")
-        .select("referenceid")
-        .in("referenceid", agentIds)
-        .eq("source", "Outbound - Touchbase")
-        .gte("date_created", monthStart)
-        .lte("date_created", todayEnd);
-    })();
+    // 3. OB calls — scoped to the selected date range (or current month if no range)
+    const obPromise = supabase
+      .from("history")
+      .select("referenceid")
+      .in("referenceid", agentIds)
+      .eq("source", "Outbound - Touchbase")
+      .gte("date_created", obStart)
+      .lte("date_created", obEnd);
 
-    // 4. OB targets per agent — order by date_updated DESC so latest row wins on duplicates
+    // 4. OB targets per agent — order by date_updated DESC so latest row wins on duplicates.
+    //    Secondary order by id DESC is a deterministic tie-breaker: when duplicate rows share
+    //    the same (or null) date_updated, Postgres does not guarantee row order on its own —
+    //    without this, the "latest wins" dedup below could non-deterministically pick a stale
+    //    row on one request and the fresh row on the next (same query, different result).
     const obTargetPromise = supabase
       .from("sales_ob")
-      .select("referenceid, ob_target, month, year")
+      .select("id, referenceid, ob_target, month, year")
       .in("referenceid", agentIds)
-      .in("month", targetMonths)
-      .in("year", targetYears);
+      .eq("month", monthLabel(now))         // always current calendar month
+      .eq("year", now.getFullYear().toString())
+      .order("date_updated", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: false }); // ✅ FIX: deterministic tie-breaker
 
-    // 5. Quotations — approved only, current month start → today (matches kpi-monthly-actuals)
-    const quotesPromise = (() => {
-      return supabase.from("history")
-        .select("referenceid, quotation_number")
-        .in("referenceid", agentIds)
-        .eq("type_activity", "Quotation Preparation")
-        .or("tsm_approved_status.eq.Approved By Sales Head,tsm_approved_status.eq.Approved")
-        .gte("date_created", monthStart)
-        .lte("date_created", todayEnd);
-    })();
+    // 5. Quotations — approved only, scoped to the selected date range
+    //    (or current month if no range — matches kpi-monthly-actuals)
+    const quotesPromise = supabase
+      .from("history")
+      .select("referenceid, quotation_number")
+      .in("referenceid", agentIds)
+      .eq("type_activity", "Quotation Preparation")
+      .or("tsm_approved_status.eq.Approved By Sales Head,tsm_approved_status.eq.Approved")
+      .gte("date_created", quotesStart)
+      .lte("date_created", quotesEnd);
 
-    // 6. Quote targets per agent — order by date_updated DESC so latest row wins on duplicates
+    // 6. Quote targets per agent — fetch all months in the target range (like obTargetPromise)
+    // Secondary order by id DESC is a deterministic tie-breaker: if there are duplicate rows
+    // for the same referenceid+month+year with equal (or null) date_updated, ordering by
+    // date_updated alone is not enough — Postgres can return them in any order, which is
+    // exactly why "120" vs "4" was flip-flopping between identical requests.
     const quoteTargetPromise = supabase
       .from("sales_quotation")
-      .select("referenceid, quote_target, month, year")
+      .select("id, referenceid, quote_target, month, year")
       .in("referenceid", agentIds)
-      .in("month", targetMonths)
-      .in("year", targetYears);
+      .eq("month", monthLabel(now))         // always current calendar month
+      .eq("year", now.getFullYear().toString())
+      .order("date_updated", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: false }); // ✅ FIX: deterministic tie-breaker — this is the real fix
 
-    // 7. Pipeline activities — same monthly scope as OB/quotes (month start → today)
-    const pipelinePromise = (() => {
-      return supabase.from("history")
-        .select("referenceid, activity_reference_number, source, type_activity")
-        .in("referenceid", agentIds)
-        .gte("date_created", monthStart)
-        .lte("date_created", todayEnd);
-    })();
+    // 7. Pipeline activities — same scope as OB/quotes
+    const pipelinePromise = supabase
+      .from("history")
+      .select("referenceid, activity_reference_number, source, type_activity")
+      .in("referenceid", agentIds)
+      .gte("date_created", pipelineStart)
+      .lte("date_created", pipelineEnd);
 
     // 8. New account counts by agent in selected month
     const naCountPromise = supabase
@@ -251,17 +279,13 @@ export async function GET(req: Request) {
       .eq("month", monthLabel(now))         // always current calendar month
       .eq("year", now.getFullYear().toString());
 
-    // 11. Client visits — same monthly scope as OB/quotes (month start → today)
-    // Mirrors fetch-tasklog-supabase exactly: no Status pre-filter, +08:00 timezone,
-    // no hard limit — count Login rows in the result map.
-    const cvMonthStart = monthStart.replace("T00:00:00Z", "T00:00:00+08:00");
-    const cvTodayEnd   = todayEnd.replace("T23:59:59Z",   "T23:59:59+08:00");
+    // 11. Client visits — scoped to the selected date range (or current month if no range)
     const clientVisitsPromise = supabase
       .from("tasklog")
       .select(`"ReferenceID", "Status"`)
       .in("ReferenceID", agentIds)
-      .gte("date_created", cvMonthStart)
-      .lte("date_created", cvTodayEnd);
+      .gte("date_created", clientVisitsStart)
+      .lte("date_created", clientVisitsEnd);
 
     const [
       { data: quotasData },
@@ -302,7 +326,7 @@ export async function GET(req: Request) {
       obMap[row.referenceid] = (obMap[row.referenceid] ?? 0) + 1;
     }
 
-    // OB target map — first row per agent+month wins (latest due to ORDER BY date_updated DESC)
+    // OB target map — first row per agent+month wins (latest due to ORDER BY date_updated DESC, id DESC)
     const obTargetMap: Record<string, Array<{ month: string; year: string; targetValue: number }>> = {};
     const obTargetSeen = new Set<string>();
     for (const row of obTargetData ?? []) {
@@ -324,7 +348,7 @@ export async function GET(req: Request) {
       if (row.quotation_number) quotesSetMap[row.referenceid].add(row.quotation_number);
     }
 
-    // Quote target map: { referenceid → rows } — first row per agent+month wins (latest due to ORDER BY date_updated DESC)
+    // Quote target map: { referenceid → rows } — first row per agent+month wins (latest due to ORDER BY date_updated DESC, id DESC)
     const quoteTargetMap: Record<string, Array<{ month: string; year: string; targetValue: number }>> = {};
     const quoteTargetSeen = new Set<string>(); // deduplicate: referenceid+month+year
     for (const row of quoteTargetData ?? []) {
@@ -385,6 +409,14 @@ export async function GET(req: Request) {
       const ref = row.ReferenceID;
       if (ref) clientVisitsCountMap[ref] = (clientVisitsCountMap[ref] ?? 0) + 1;
     }
+
+    // DEBUG: log target rows for diagnosis (safe to remove once verified in prod)
+    console.log(
+      "[tsm-kpi] from=%s to=%s targetMonths=%s targetYears=%s obTargetData=%s quoteTargetData=%s",
+      from, to, JSON.stringify(targetMonths), JSON.stringify(targetYears),
+      JSON.stringify(obTargetData?.map(r => ({ ref: r.referenceid, ob: r.ob_target, m: r.month, y: r.year }))),
+      JSON.stringify(quoteTargetData?.map(r => ({ ref: r.referenceid, qt: r.quote_target, m: r.month, y: r.year })))
+    );
 
     // ── Assemble per-agent result ─────────────────────────────────────────────
     const result = agents.map(({ referenceid, name }) => {

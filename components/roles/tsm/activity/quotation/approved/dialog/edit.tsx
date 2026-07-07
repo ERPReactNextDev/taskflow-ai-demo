@@ -107,7 +107,13 @@ interface TaskListEditDialogProps {
     agentContactNumber?: string;
     agentEmailAddress?: string;
     tsmName?: string;
+    tsmSignature?: string;
+    tsmContactNumber?: string;
+    tsmEmailAddress?: string;
     managerName?: string;
+    managerSignature?: string;
+    managerContactNumber?: string;
+    managerEmailAddress?: string;
 
     signature?: string;
     email?: string;
@@ -168,7 +174,13 @@ export default function TaskListEditDialog({
     agentContactNumber,
     agentEmailAddress,
     tsmName,
+    tsmSignature,
+    tsmContactNumber,
+    tsmEmailAddress,
     managerName,
+    managerSignature,
+    managerContactNumber,
+    managerEmailAddress,
     signature,
     vatType,
 }: TaskListEditDialogProps) {
@@ -330,9 +342,9 @@ export default function TaskListEditDialog({
             agentEmailAddress: agentEmailAddress ?? null,
             tsmName: tsmName ?? null,
             managerName: managerName || managername || null,
-            signature: null,
-            tsmemail: email ?? null,
-            tsmcontact: contact ?? null,
+            signature: tsmSignature ?? signature ?? null,
+            tsmemail: tsmEmailAddress ?? tsmemail ?? email ?? null,
+            tsmcontact: tsmContactNumber ?? tsmcontact ?? contact ?? null,
         };
     };
 
@@ -422,11 +434,11 @@ export default function TaskListEditDialog({
             signature:
                 item.tsm_approved_status === "Approved" ||
                     item.tsm_approved_status === "Approved By Sales Head"
-                    ? (signature ?? null)
+                    ? (tsmSignature ?? signature ?? null)
                     : null,
 
-            tsmemail: email ?? null,
-            tsmcontact: contact ?? null,
+            tsmemail: tsmEmailAddress ?? tsmemail ?? email ?? null,
+            tsmcontact: tsmContactNumber ?? tsmcontact ?? contact ?? null,
         };
     };
 

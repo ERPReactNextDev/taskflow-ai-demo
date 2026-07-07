@@ -1570,18 +1570,23 @@ Procurement
     const restockingFeeNumber = parseFloat(restockingFee) || 0;
     const subtotalWithFees = roundedProductTotal + deliveryFeeNumber + restockingFeeNumber;
 
-    // Calculate EWT deduction
-    // Net-of-VAT is always subtotalWithFees / 1.12 (strips the embedded VAT)
-    const netOfVatSave = subtotalWithFees / 1.12;
-    const whtRate = whtType === "wht_1" ? 0.01 : whtType === "wht_2" ? 0.02 : 0;
-    // WHT is always on the net-of-VAT base
-    const whtAmount = Math.round((netOfVatSave * whtRate) * 100) / 100;
-
-    // vat_inc: customer pays full VAT-inclusive total minus WHT
-    // vat_exe / zero_rated: customer pays net-of-VAT minus WHT
-    const finalAmount = (vatType === "vat_exe" || vatType === "zero_rated")
-      ? Math.round((netOfVatSave - whtAmount) * 100) / 100
-      : Math.round((subtotalWithFees - whtAmount) * 100) / 100;
+    let netOfVatSave, whtRate, whtAmount, finalAmount;
+    
+    if (vatType === "zero_rated") {
+      // Zero-rated: no VAT deduction, no WHT deduction
+      netOfVatSave = subtotalWithFees;
+      whtRate = 0;
+      whtAmount = 0;
+      finalAmount = Math.round(subtotalWithFees * 100) / 100;
+    } else {
+      // vat_inc / vat_exe: normal behavior
+      netOfVatSave = subtotalWithFees / 1.12;
+      whtRate = whtType === "wht_1" ? 0.01 : whtType === "wht_2" ? 0.02 : 0;
+      whtAmount = Math.round((netOfVatSave * whtRate) * 100) / 100;
+      finalAmount = vatType === "vat_exe"
+        ? Math.round((netOfVatSave - whtAmount) * 100) / 100
+        : Math.round((subtotalWithFees - whtAmount) * 100) / 100;
+    }
 
     setQuotationAmount(finalAmount.toFixed(2));
   }, [selectedProducts, deliveryFee, restockingFee, discount, vatType, whtType]);
@@ -1995,28 +2000,27 @@ Procurement
     //   vat_inc  → subtotalWithFees - wht  (full VAT-inclusive minus WHT)
     //   vat_exe  → netOfVat - wht          (net-of-VAT minus WHT)
     // Back-calculate totalInvoiceAmount from netAmountToCollect:
-    let totalInvoiceAmount: number;
-    if (whtRate === 0) {
-      // No WHT: for vat_inc totalPrice = netAmountToCollect (already inclusive)
-      //         for vat_exe totalPrice = netAmountToCollect * 1.12 (gross up to show VAT-inc equivalent)
-      totalInvoiceAmount = (vatType === "vat_exe" || vatType === "zero_rated")
-        ? Math.round((netAmountToCollect * 1.12) * 100) / 100
-        : netAmountToCollect;
+    let totalInvoiceAmount: number, whtBase: number, whtAmount: number;
+    if (vatType === "zero_rated") {
+      // Zero-rated: no VAT, no WHT
+      totalInvoiceAmount = netAmountToCollect;
+      whtBase = netAmountToCollect;
+      whtAmount = 0;
     } else {
-      // WHT present — whtBase is always netOfVat (totalInvoiceAmount / 1.12)
-      // netAmountToCollect = totalInvoiceAmount - wht = totalInvoiceAmount - (totalInvoiceAmount/1.12)*whtRate
-      // for vat_inc:  netAmountToCollect = TIA - (TIA/1.12)*whtRate  → TIA = netAmountToCollect / (1 - whtRate/1.12)
-      // for vat_exe:  netAmountToCollect = TIA/1.12 - (TIA/1.12)*whtRate = (TIA/1.12)*(1-whtRate)
-      //              → TIA = netAmountToCollect / ((1-whtRate)/1.12) = netAmountToCollect * 1.12 / (1-whtRate)
-      totalInvoiceAmount = (vatType === "vat_exe" || vatType === "zero_rated")
-        ? netAmountToCollect * 1.12 / (1 - whtRate)
-        : netAmountToCollect / (1 - (whtRate / 1.12));
+      // vat_inc / vat_exe: normal behavior
+      if (whtRate === 0) {
+        totalInvoiceAmount = vatType === "vat_exe"
+          ? Math.round((netAmountToCollect * 1.12) * 100) / 100
+          : netAmountToCollect;
+      } else {
+        totalInvoiceAmount = vatType === "vat_exe"
+          ? netAmountToCollect * 1.12 / (1 - whtRate)
+          : netAmountToCollect / (1 - (whtRate / 1.12));
+      }
+      totalInvoiceAmount = Math.round(totalInvoiceAmount * 100) / 100;
+      whtBase = totalInvoiceAmount / 1.12;
+      whtAmount = Math.round((whtBase * whtRate) * 100) / 100;
     }
-    totalInvoiceAmount = Math.round(totalInvoiceAmount * 100) / 100;
-
-    // WHT base is always net-of-VAT (totalInvoiceAmount / 1.12)
-    const whtBase = totalInvoiceAmount / 1.12;
-    const whtAmount = Math.round((whtBase * whtRate) * 100) / 100;
 
     return {
       referenceNo: quotationNumber ?? "DRAFT-XXXX",

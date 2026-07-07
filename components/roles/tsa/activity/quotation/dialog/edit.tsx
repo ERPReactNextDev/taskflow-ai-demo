@@ -1227,16 +1227,24 @@ export default function TaskListEditDialog({
       const deliveryFeeNum = parseFloat(deliveryFeeState) || 0;
       const restockingFeeNum = parseFloat(restockingFeeState) || 0;
       const totalPriceWithDelivery = subtotal + deliveryFeeNum + restockingFeeNum;
-      // Net-of-VAT is always totalPriceWithDelivery / 1.12 (strips the embedded VAT)
-      const netOfVatSave = totalPriceWithDelivery / 1.12;
-      const whtAmount = whtTypeState !== "none"
-        ? parseFloat((netOfVatSave * (whtTypeState === "wht_1" ? 0.01 : 0.02)).toFixed(2))
-        : 0;
-      // vat_inc: customer pays full VAT-inclusive total minus WHT
-      // vat_exe / zero_rated: customer pays net-of-VAT minus WHT
-      const totalQuotationAmount = (vatTypeState === "vat_exe" || vatTypeState === "zero_rated")
-        ? Math.round((netOfVatSave - whtAmount) * 100) / 100
-        : Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
+      
+      let netOfVatSave, whtAmount, totalQuotationAmount;
+      
+      if (vatTypeState === "zero_rated") {
+        // Zero-rated: no VAT deduction, no WHT deduction
+        netOfVatSave = totalPriceWithDelivery;
+        whtAmount = 0;
+        totalQuotationAmount = Math.round(totalPriceWithDelivery * 100) / 100;
+      } else {
+        // vat_inc / vat_exe: normal behavior
+        netOfVatSave = totalPriceWithDelivery / 1.12;
+        whtAmount = whtTypeState !== "none"
+          ? parseFloat((netOfVatSave * (whtTypeState === "wht_1" ? 0.01 : 0.02)).toFixed(2))
+          : 0;
+        totalQuotationAmount = vatTypeState === "vat_exe"
+          ? Math.round((netOfVatSave - whtAmount) * 100) / 100
+          : Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
+      }
 
       const bodyData: Completed & {
         vat_type?: "vat_inc" | "vat_exe" | "zero_rated";
@@ -1411,19 +1419,25 @@ export default function TaskListEditDialog({
     
     const displayDate = activeItemAny.date_updated ?? activeItemAny.date_created ?? activeItemAny.start_date ?? new Date();
     
-    // Net-of-VAT is always totalPriceWithDelivery / 1.12 (strips embedded VAT)
-    const netOfVat = totalPriceWithDelivery / 1.12;
-    // WHT is always applied on the net-of-VAT base
-    const whtBase = netOfVat;
-    const whtAmount = whtTypeState !== "none"
-      ? Math.round((whtBase * (whtTypeState === "wht_1" ? 0.01 : 0.02)) * 100) / 100
-      : 0;
-      
-    // vat_inc: client pays full VAT-inclusive amount minus WHT
-    // vat_exe / zero_rated: client pays net-of-VAT minus WHT
-    const netAmountToCollect = (vatTypeState === "vat_exe" || vatTypeState === "zero_rated")
-      ? Math.round((netOfVat - whtAmount) * 100) / 100
-      : Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
+    let netOfVat, whtBase, whtAmount, netAmountToCollect;
+    
+    if (vatTypeState === "zero_rated") {
+      // Zero-rated: no VAT deduction, no WHT deduction
+      netOfVat = totalPriceWithDelivery;
+      whtBase = totalPriceWithDelivery;
+      whtAmount = 0;
+      netAmountToCollect = Math.round(totalPriceWithDelivery * 100) / 100;
+    } else {
+      // vat_inc / vat_exe: normal behavior
+      netOfVat = totalPriceWithDelivery / 1.12;
+      whtBase = netOfVat;
+      whtAmount = whtTypeState !== "none"
+        ? Math.round((whtBase * (whtTypeState === "wht_1" ? 0.01 : 0.02)) * 100) / 100
+        : 0;
+      netAmountToCollect = vatTypeState === "vat_exe"
+        ? Math.round((netOfVat - whtAmount) * 100) / 100
+        : Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
+    }
 
     return {
       referenceNo: activeItemAny.quotation_number ?? "DRAFT-XXXX",
@@ -3180,17 +3194,18 @@ ${payload.whtType && payload.whtType !== "none"
     const deliveryFeeNum = parseFloat(deliveryFeeState) || 0;
     const restockingFeeNum = parseFloat(restockingFeeState) || 0;
     const totalWithFees = subtotal + deliveryFeeNum + restockingFeeNum;
-    // Net-of-VAT base is always totalWithFees / 1.12 (strips the embedded VAT)
+    
+    if (vatTypeState === "zero_rated") {
+      // Zero-rated: no VAT deduction, no WHT deduction
+      return Math.round(totalWithFees * 100) / 100;
+    }
+    
+    // vat_inc / vat_exe: normal behavior
     const netOfVat = totalWithFees / 1.12;
-    // WHT is always calculated on the net-of-VAT base
     const whtAmount = whtTypeState !== "none"
       ? netOfVat * (whtTypeState === "wht_1" ? 0.01 : 0.02)
       : 0;
-    // vat_inc: customer pays the full VAT-inclusive total minus WHT
-    // vat_exe / zero_rated: customer pays net-of-VAT minus WHT
-    const base = (vatTypeState === "vat_exe" || vatTypeState === "zero_rated")
-      ? netOfVat
-      : totalWithFees;
+    const base = vatTypeState === "vat_exe" ? netOfVat : totalWithFees;
     return Math.round((base - whtAmount) * 100) / 100;
   }, [subtotal, deliveryFeeState, restockingFeeState, whtTypeState, vatTypeState]);
 
