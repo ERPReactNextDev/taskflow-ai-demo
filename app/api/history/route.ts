@@ -17,18 +17,32 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, error: "Missing reference ID." }, { status: 400 });
     }
 
-    const currentYear = new Date().getFullYear().toString();
-    const startDate   = from ? `${from}T00:00:00Z` : `${currentYear}-01-01T00:00:00Z`;
-    const endDate     = to   ? `${to}T23:59:59Z`   : null;
+    const now = new Date();
+    
+    // Helper to convert YYYY-MM-DD to local time range
+    function getLocalDateRange(dateStr: string): { start: Date; end: Date } {
+      const [year, month, day] = dateStr.split("-").map(Number);
+      const start = new Date(year, month - 1, day, 0, 0, 0, 0);
+      const end = new Date(year, month - 1, day, 23, 59, 59, 999);
+      return { start, end };
+    }
+
+    // Default range: start of current year
+    const defaultStart = new Date(now.getFullYear(), 0, 1);
+    const { start: startDate, end: endDate } = from 
+      ? getLocalDateRange(from)
+      : { start: defaultStart, end: null };
+    
+    const finalEndDate = to ? getLocalDateRange(to).end : endDate;
 
     let q = supabase
       .from("history")
       .select("actual_sales")
       .eq("referenceid", referenceId)
       .eq("type_activity", "Delivered / Closed Transaction")
-      .gte("date_created", startDate);
+      .gte("date_created", startDate.toISOString());
 
-    if (endDate) q = q.lte("date_created", endDate);
+    if (finalEndDate) q = q.lte("date_created", finalEndDate.toISOString());
 
     const { data, error } = await q;
     if (error) throw error;

@@ -26,15 +26,28 @@ export async function GET(req: Request) {
     if (agentIds.length === 0) return NextResponse.json({ success: true, count: 0 }, { status: 200 });
 
     const now = new Date();
-    const startDate = from ? `${from}T00:00:00Z`
-      : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01T00:00:00Z`;
-    const endDate = to ? `${to}T23:59:59Z` : null;
+    
+    // Helper to convert YYYY-MM-DD to local time range
+    function getLocalDateRange(dateStr: string): { start: Date; end: Date } {
+      const [year, month, day] = dateStr.split("-").map(Number);
+      const start = new Date(year, month - 1, day, 0, 0, 0, 0);
+      const end = new Date(year, month - 1, day, 23, 59, 59, 999);
+      return { start, end };
+    }
+
+    // Default range: start of current month
+    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { start: startDate, end: endDate } = from 
+      ? getLocalDateRange(from)
+      : { start: defaultStart, end: null };
+    
+    const finalEndDate = to ? getLocalDateRange(to).end : endDate;
 
     let query = supabase.from("history")
       .select("activity_reference_number, source, type_activity")
       .in("referenceid", agentIds)
-      .gte("date_created", startDate);
-    if (endDate) query = query.lte("date_created", endDate);
+      .gte("date_created", startDate.toISOString());
+    if (finalEndDate) query = query.lte("date_created", finalEndDate.toISOString());
 
     const { data, error } = await query;
     if (error) throw error;

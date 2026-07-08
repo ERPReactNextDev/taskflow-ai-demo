@@ -25,18 +25,31 @@ export async function GET(req: Request) {
     const agentIds = await getAgentIds(tsm);
     if (agentIds.length === 0) return NextResponse.json({ success: true, count: 0 }, { status: 200 });
 
-    const now       = new Date();
-    const startDate = from
-      ? `${from}T00:00:00Z`
-      : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01T00:00:00Z`;
-    const endDate   = to ? `${to}T23:59:59Z` : null;
+    const now = new Date();
+    
+    // Helper to convert YYYY-MM-DD to local time range (Asia/Manila)
+    function getLocalDateRange(dateStr: string): { start: Date; end: Date } {
+      const [year, month, day] = dateStr.split("-").map(Number);
+      const start = new Date(year, month - 1, day, 0, 0, 0, 0);
+      const end = new Date(year, month - 1, day, 23, 59, 59, 999);
+      return { start, end };
+    }
+
+    // Get default range (start of current month if no from/to)
+    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { start: startDate, end: endDate } = from 
+      ? getLocalDateRange(from)
+      : { start: defaultStart, end: null };
+    
+    // If we have a "to" date, use its local end time
+    const finalEndDate = to ? getLocalDateRange(to).end : endDate;
 
     let q = supabase.from("history")
       .select("id", { count: "exact", head: true })
       .in("referenceid", agentIds)
       .eq("source", "Outbound - Touchbase")
-      .gte("date_created", startDate);
-    if (endDate) q = q.lte("date_created", endDate);
+      .gte("date_created", startDate.toISOString());
+    if (finalEndDate) q = q.lte("date_created", finalEndDate.toISOString());
 
     const { count, error } = await q;
     if (error) throw error;

@@ -1,5 +1,6 @@
-﻿﻿import { NextResponse } from "next/server";
+﻿﻿﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { connectToDatabase } from "@/lib/mongodb";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,8 +9,24 @@ const supabase = createClient(
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function toISO(date: string, eod = false): string {
-  return eod ? `${date}T23:59:59+08:00` : `${date}T00:00:00+08:00`;
+/** Fetch all rows from Supabase (handles pagination for large datasets) */
+async function fetchAllRows<T = any>(
+  query: any
+): Promise<T[]> {
+  const PAGE_SIZE = 1000; // Supabase's default max is 1000
+  let allData: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return allData;
 }
 
 function monthLabel(d: Date): string {
@@ -17,53 +34,8 @@ function monthLabel(d: Date): string {
           "July","August","September","October","November","December"][d.getMonth()];
 }
 
-function parseDateParam(date: string): Date {
-  return new Date(`${date}T00:00:00Z`);
-}
-
 function getDaysInMonth(year: number, monthIndex: number): number {
   return new Date(year, monthIndex + 1, 0).getDate();
-}
-
-function enumerateMonthSlices(from: string | null, to: string | null, fallbackDate: Date) {
-  if (!from || !to) {
-    return [
-      {
-        year: fallbackDate.getFullYear().toString(),
-        month: monthLabel(fallbackDate),
-        daysInMonth: getDaysInMonth(fallbackDate.getFullYear(), fallbackDate.getMonth()),
-        coveredDays: getDaysInMonth(fallbackDate.getFullYear(), fallbackDate.getMonth()),
-      },
-    ];
-  }
-
-  const start = parseDateParam(from);
-  const end = parseDateParam(to);
-  const slices: Array<{ year: string; month: string; daysInMonth: number; coveredDays: number }> = [];
-  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-
-  while (cursor <= end) {
-    const year = cursor.getFullYear();
-    const monthIndex = cursor.getMonth();
-    const daysInMonth = getDaysInMonth(year, monthIndex);
-    const monthStart = new Date(year, monthIndex, 1);
-    const monthEnd = new Date(year, monthIndex, daysInMonth);
-    const rangeStart = start > monthStart ? start : monthStart;
-    const rangeEnd = end < monthEnd ? end : monthEnd;
-    const coveredDays =
-      Math.round((rangeEnd.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-
-    slices.push({
-      year: year.toString(),
-      month: monthLabel(cursor),
-      daysInMonth,
-      coveredDays,
-    });
-
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-
-  return slices;
 }
 
 function calculateRangedTarget(
@@ -98,15 +70,96 @@ function calculateRangedTarget(
   return total;
 }
 
+/** Calculate CSR metrics for an agent */
+async function calculateCsrMetrics(
+  referenceid: string,
+  fromDate: Date,
+  toDate: Date
+): Promise<{
+  avgResponseTime: number;
+  avgQuotationHT: number;
+  avgNonQuotationHT: number;
+}> {
+  try {
+    const db = await connectToDatabase();
+    const collection = db.collection("activity");
+
+    const filter = {
+      $or: [
+        { referenceid: referenceid },
+        { agent: referenceid },
+      ],
+    };
+
+    const data = await collection.find(filter).toArray();
+
+    const excluded = [
+      "CustomerFeedback/Recommendation", "Job Inquiry", "Job Applicants",
+      "Supplier/Vendor Product Offer", "Internal Whistle Blower",
+      "Threats/Extortion/Intimidation", "Prank Call",
+    ];
+
+    const fromTs = fromDate.getTime();
+    const toDateObj = new Date(toDate);
+    toDateObj.setHours(23, 59, 59, 999);
+    const toTs = toDateObj.getTime();
+
+    let rtTotal = 0, rtCount = 0;
+    let nqTotal = 0, nqCount = 0;
+    let qTotal = 0, qCount = 0;
+
+    data.forEach((row: any) => {
+      if (row.status !== "Closed" && row.status !== "Converted into Sales") return;
+      const created = new Date(row.date_created).getTime();
+      if (isNaN(created) || created < fromTs || created > toTs) return;
+      if (excluded.includes(row.wrap_up)) return;
+
+      const tsaAck = new Date(row.tsa_acknowledge_date).getTime();
+      const endorsed = new Date(row.ticket_endorsed).getTime();
+      if (!isNaN(tsaAck) && !isNaN(endorsed) && tsaAck >= endorsed) {
+        rtTotal += (tsaAck - endorsed) / 3600000;
+        rtCount++;
+      }
+
+      const received = new Date(row.ticket_received).getTime();
+      const tsaHandle = new Date(row.tsa_handling_time).getTime();
+      const tsmHandle = new Date(row.tsm_handling_time).getTime();
+      let baseHT = 0;
+      if (!isNaN(tsaHandle) && !isNaN(received) && tsaHandle >= received)
+        baseHT = (tsaHandle - received) / 3600000;
+      else if (!isNaN(tsmHandle) && !isNaN(received) && tsmHandle >= received)
+        baseHT = (tsmHandle - received) / 3600000;
+      if (!baseHT) return;
+
+      const remarks = (row.remarks || "").toUpperCase();
+      if (remarks === "QUOTATION FOR APPROVAL" || remarks === "SOLD") {
+        qTotal += baseHT; qCount++;
+      } else {
+        nqTotal += baseHT; nqCount++;
+      }
+    });
+
+    return {
+      avgResponseTime: rtCount ? rtTotal / rtCount : 0,
+      avgQuotationHT: qCount ? qTotal / qCount : 0,
+      avgNonQuotationHT: nqCount ? nqTotal / nqCount : 0,
+    };
+  } catch (err) {
+    console.error("Error calculating CSR metrics for", referenceid, err);
+    return { avgResponseTime: 0, avgQuotationHT: 0, avgNonQuotationHT: 0 };
+  }
+}
+
 /** Fetch active TSA referenceid list under a TSM */
 async function getAgents(tsm: string): Promise<{ referenceid: string; name: string }[]> {
-  const { data } = await supabase
+  const query = supabase
     .from("users")
     .select("ReferenceID, Firstname, Lastname")
     .eq("TSM", tsm)
     .eq("Role", "Territory Sales Associate")
     .not("Status", "in", '("Resigned","Terminated","Inactive")')
     .order("Lastname", { ascending: true });
+  const data = await fetchAllRows(query);
   return (data ?? []).map((a) => ({
     referenceid: a.ReferenceID,
     name: `${a.Firstname ?? ""} ${a.Lastname ?? ""}`.trim(),
@@ -127,15 +180,9 @@ export async function GET(req: Request) {
     }
 
     // ── Date scoping ──────────────────────────────────────────────────────────
-    // OB Calls, Quotes, Conversion metrics, and Client Visits are ALWAYS scoped
-    // to the selected date range (from/to), falling back to current calendar
-    // month (month start → today) when no range is given. All date filters use
-    // +08:00 (local) timezone consistently so counts line up with how the data
-    // was actually created — mixing Z (UTC) and +08:00 was the root cause of
-    // counts silently coming back as 0 when a range was picked.
-    const now        = new Date();
-    const year       = now.getFullYear().toString();
-    const refDate    = from ? new Date(`${from}T00:00:00Z`) : now;
+    const now         = new Date();
+    const year        = now.getFullYear().toString();
+    const refDate     = from ? new Date(from) : now;
     // Targets (OB, Quote, Site Visit) always use current month, date range only affects actuals
     const monthSlices = [
       {
@@ -149,28 +196,30 @@ export async function GET(req: Request) {
     const targetYears = [now.getFullYear().toString()];
     const shouldProrateMonthlyTargets = false; // Targets are always full monthly values — never prorate
 
-    // Monthly scope: always month-start → end-of-today (local, +08:00)
+    // Monthly scope: always month-start → end-of-today (date only)
     const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
-    const monthStart   = `${now.getFullYear()}-${currentMonth}-01T00:00:00+08:00`;
-    const todayEnd     = `${now.getFullYear()}-${currentMonth}-${String(now.getDate()).padStart(2, "0")}T23:59:59+08:00`;
+    const monthStartDate   = `${now.getFullYear()}-${currentMonth}-01`;
+    const todayDate         = `${now.getFullYear()}-${currentMonth}-${String(now.getDate()).padStart(2, "0")}`;
 
     // New Account Dev scoped to the selected month (or current month)
     const naFrom = from ?? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-01`;
-    const naTo   = to   ?? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-${String(new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
+    const naTo   = to ?? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-${String(new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
 
     // SI / SO use the full date range (YTD when no filter)
-    const siStartDate = from ? `${from}T00:00:00+08:00` : `${now.getFullYear()}-01-01T00:00:00+08:00`;
-    const siEndDate   = to   ? `${to}T23:59:59+08:00`   : todayEnd;
+    const siStart = from ? `${from}T00:00:00Z` : `${now.getFullYear()}-01-01T00:00:00Z`;
+    const siEnd   = to ? `${to}T23:59:59Z` : `${todayDate}T23:59:59Z`;
 
-    // OB Calls / Quotes / Client Visits / Pipeline: selected range, else current month
-    const obStart        = from ? `${from}T00:00:00+08:00` : monthStart;
-    const obEnd          = to   ? `${to}T23:59:59+08:00`   : todayEnd;
-    const quotesStart     = from ? `${from}T00:00:00+08:00` : monthStart;
-    const quotesEnd       = to   ? `${to}T23:59:59+08:00`   : todayEnd;
-    const pipelineStart   = from ? `${from}T00:00:00+08:00` : monthStart;
-    const pipelineEnd     = to   ? `${to}T23:59:59+08:00`   : todayEnd;
-    const clientVisitsStart = from ? `${from}T00:00:00+08:00` : monthStart;
-    const clientVisitsEnd   = to   ? `${to}T23:59:59+08:00`   : todayEnd;
+    // OB Calls / Quotes / Pipeline: selected range, else current month
+    const obStart = from ? `${from}T00:00:00Z` : `${monthStartDate}T00:00:00Z`;
+    const obEnd   = to ? `${to}T23:59:59Z` : `${todayDate}T23:59:59Z`;
+    const quotesStart = from ? `${from}T00:00:00Z` : `${monthStartDate}T00:00:00Z`;
+    const quotesEnd   = to ? `${to}T23:59:59Z` : `${todayDate}T23:59:59Z`;
+    const pipelineStart = from ? `${from}T00:00:00Z` : `${monthStartDate}T00:00:00Z`;
+    const pipelineEnd   = to ? `${to}T23:59:59Z` : `${todayDate}T23:59:59Z`;
+
+    // Client Visits (tasklog): use +08:00 timezone like fetch-tasklog-supabase
+    const clientVisitsStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
+    const clientVisitsEnd   = to ? `${to}T23:59:59+08:00` : `${todayDate}T23:59:59+08:00`;
 
     // ── Fetch agents ──────────────────────────────────────────────────────────
     const agents = await getAgents(tsm);
@@ -183,23 +232,23 @@ export async function GET(req: Request) {
     // ── Parallel data fetches ─────────────────────────────────────────────────
 
     // 1. Sales quotas per agent for the year
-    const quotasPromise = supabase
+    const quotasQuery = supabase
       .from("sales_quota")
       .select("referenceid, month, amount")
       .in("referenceid", agentIds)
       .eq("year", year);
 
     // 2. SI (actual sales) — YTD or selected range, matches TSA annual quota target
-    const siPromise = supabase
+    const siQuery = supabase
       .from("history")
       .select("referenceid, actual_sales")
       .in("referenceid", agentIds)
       .eq("type_activity", "Delivered / Closed Transaction")
-      .gte("date_created", siStartDate)
-      .lte("date_created", siEndDate);
+      .gte("date_created", siStart)
+      .lte("date_created", siEnd);
 
     // 3. OB calls — scoped to the selected date range (or current month if no range)
-    const obPromise = supabase
+    const obQuery = supabase
       .from("history")
       .select("referenceid")
       .in("referenceid", agentIds)
@@ -207,47 +256,47 @@ export async function GET(req: Request) {
       .gte("date_created", obStart)
       .lte("date_created", obEnd);
 
-    // 4. OB targets per agent — order by date_updated DESC so latest row wins on duplicates.
+    // 4. OB targets per agent — order by date_created DESC so latest row wins on duplicates.
     //    Secondary order by id DESC is a deterministic tie-breaker: when duplicate rows share
-    //    the same (or null) date_updated, Postgres does not guarantee row order on its own —
+    //    the same (or null) date_created, Postgres does not guarantee row order on its own —
     //    without this, the "latest wins" dedup below could non-deterministically pick a stale
     //    row on one request and the fresh row on the next (same query, different result).
-    const obTargetPromise = supabase
+    const obTargetQuery = supabase
       .from("sales_ob")
       .select("id, referenceid, ob_target, month, year")
       .in("referenceid", agentIds)
       .eq("month", monthLabel(now))         // always current calendar month
       .eq("year", now.getFullYear().toString())
-      .order("date_updated", { ascending: false, nullsFirst: false })
+      .order("date_created", { ascending: false, nullsFirst: false })
       .order("id", { ascending: false }); // ✅ FIX: deterministic tie-breaker
 
     // 5. Quotations — approved only, scoped to the selected date range
     //    (or current month if no range — matches kpi-monthly-actuals)
-    const quotesPromise = supabase
+    const quotesQuery = supabase
       .from("history")
       .select("referenceid, quotation_number")
       .in("referenceid", agentIds)
       .eq("type_activity", "Quotation Preparation")
-      .or("tsm_approved_status.eq.Approved By Sales Head,tsm_approved_status.eq.Approved")
+      .eq("status", "Quote-Done")
       .gte("date_created", quotesStart)
       .lte("date_created", quotesEnd);
 
     // 6. Quote targets per agent — fetch all months in the target range (like obTargetPromise)
     // Secondary order by id DESC is a deterministic tie-breaker: if there are duplicate rows
-    // for the same referenceid+month+year with equal (or null) date_updated, ordering by
-    // date_updated alone is not enough — Postgres can return them in any order, which is
+    // for the same referenceid+month+year with equal (or null) date_created, ordering by
+    // date_created alone is not enough — Postgres can return them in any order, which is
     // exactly why "120" vs "4" was flip-flopping between identical requests.
-    const quoteTargetPromise = supabase
+    const quoteTargetQuery = supabase
       .from("sales_quotation")
       .select("id, referenceid, quote_target, month, year")
       .in("referenceid", agentIds)
       .eq("month", monthLabel(now))         // always current calendar month
       .eq("year", now.getFullYear().toString())
-      .order("date_updated", { ascending: false, nullsFirst: false })
+      .order("date_created", { ascending: false, nullsFirst: false })
       .order("id", { ascending: false }); // ✅ FIX: deterministic tie-breaker — this is the real fix
 
     // 7. Pipeline activities — same scope as OB/quotes
-    const pipelinePromise = supabase
+    const pipelineQuery = supabase
       .from("history")
       .select("referenceid, activity_reference_number, source, type_activity")
       .in("referenceid", agentIds)
@@ -255,15 +304,15 @@ export async function GET(req: Request) {
       .lte("date_created", pipelineEnd);
 
     // 8. New account counts by agent in selected month
-    const naCountPromise = supabase
+    const naCountQuery = supabase
       .from("account_development_plans")
       .select("referenceid")
       .in("referenceid", agentIds)
-      .gte("created_at", toISO(naFrom))
-      .lte("created_at", toISO(naTo, true));
+      .gte("created_at", `${naFrom}T00:00:00Z`)
+      .lte("created_at", `${naTo}T23:59:59Z`);
 
     // 9. New account targets per agent
-    const naTargetPromise = supabase
+    const naTargetQuery = supabase
       .from("sales_account_development")
       .select("referenceid, target")
       .in("referenceid", agentIds)
@@ -272,7 +321,7 @@ export async function GET(req: Request) {
 
     // 10. Site visit targets per agent — deduplicated: take highest target per agent
     //     (multiple rows per agent can exist if target was updated; highest wins)
-    const siteVisitTargetPromise = supabase
+    const siteVisitTargetQuery = supabase
       .from("site_visit_target")
       .select("referenceid, target")
       .in("referenceid", agentIds)
@@ -280,7 +329,7 @@ export async function GET(req: Request) {
       .eq("year", now.getFullYear().toString());
 
     // 11. Client visits — scoped to the selected date range (or current month if no range)
-    const clientVisitsPromise = supabase
+    const clientVisitsQuery = supabase
       .from("tasklog")
       .select(`"ReferenceID", "Status"`)
       .in("ReferenceID", agentIds)
@@ -288,23 +337,39 @@ export async function GET(req: Request) {
       .lte("date_created", clientVisitsEnd);
 
     const [
-      { data: quotasData },
-      { data: siData },
-      { data: obData },
-      { data: obTargetData },
-      { data: quotesData },
-      { data: quoteTargetData },
-      { data: pipelineData },
-      { data: naCountData },
-      { data: naTargetData },
-      { data: siteVisitTargetData },
-      { data: clientVisitsData },
+      quotasData,
+      siData,
+      obData,
+      obTargetData,
+      quotesData,
+      quoteTargetData,
+      pipelineData,
+      naCountData,
+      naTargetData,
+      siteVisitTargetData,
+      clientVisitsData,
     ] = await Promise.all([
-      quotasPromise, siPromise, obPromise, obTargetPromise,
-      quotesPromise, quoteTargetPromise, pipelinePromise,
-      naCountPromise, naTargetPromise, siteVisitTargetPromise,
-      clientVisitsPromise,
+      fetchAllRows(quotasQuery),
+      fetchAllRows(siQuery),
+      fetchAllRows(obQuery),
+      fetchAllRows(obTargetQuery),
+      fetchAllRows(quotesQuery),
+      fetchAllRows(quoteTargetQuery),
+      fetchAllRows(pipelineQuery),
+      fetchAllRows(naCountQuery),
+      fetchAllRows(naTargetQuery),
+      fetchAllRows(siteVisitTargetQuery),
+      fetchAllRows(clientVisitsQuery),
     ]);
+
+    console.log("[tsm-kpi] Debug:");
+    console.log("- tsm:", tsm);
+    console.log("- from:", from, "to:", to);
+    console.log("- agents:", agents.map(a => `${a.referenceid} - ${a.name}`));
+    console.log("- agentIds:", agentIds);
+    console.log("- obStart:", obStart, "obEnd:", obEnd);
+    console.log("- obData count:", obData?.length, "sample:", obData?.slice(0, 5));
+    console.log("- pipelineData count:", pipelineData?.length);
 
     // ── Build per-agent KPI data ──────────────────────────────────────────────
 
@@ -325,8 +390,10 @@ export async function GET(req: Request) {
     for (const row of obData ?? []) {
       obMap[row.referenceid] = (obMap[row.referenceid] ?? 0) + 1;
     }
+    console.log("- obMap total:", Object.values(obMap).reduce((sum, c) => sum + c, 0));
+    console.log("- obMap breakdown:", obMap);
 
-    // OB target map — first row per agent+month wins (latest due to ORDER BY date_updated DESC, id DESC)
+    // OB target map — first row per agent+month wins (latest due to ORDER BY date_created DESC, id DESC)
     const obTargetMap: Record<string, Array<{ month: string; year: string; targetValue: number }>> = {};
     const obTargetSeen = new Set<string>();
     for (const row of obTargetData ?? []) {
@@ -348,7 +415,7 @@ export async function GET(req: Request) {
       if (row.quotation_number) quotesSetMap[row.referenceid].add(row.quotation_number);
     }
 
-    // Quote target map: { referenceid → rows } — first row per agent+month wins (latest due to ORDER BY date_updated DESC, id DESC)
+    // Quote target map: { referenceid → rows } — first row per agent+month wins (latest due to ORDER BY date_created DESC, id DESC)
     const quoteTargetMap: Record<string, Array<{ month: string; year: string; targetValue: number }>> = {};
     const quoteTargetSeen = new Set<string>(); // deduplicate: referenceid+month+year
     for (const row of quoteTargetData ?? []) {
@@ -418,9 +485,23 @@ export async function GET(req: Request) {
       JSON.stringify(quoteTargetData?.map(r => ({ ref: r.referenceid, qt: r.quote_target, m: r.month, y: r.year })))
     );
 
+    // ── Calculate CSR metrics for each agent (current month) ──────────────────
+    const csrFromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const csrToDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    const csrMetricsPromises = agents.map((agent) =>
+      calculateCsrMetrics(agent.referenceid, csrFromDate, csrToDate)
+    );
+    const csrMetricsResults = await Promise.all(csrMetricsPromises);
+    const csrMetricsMap: Record<string, { avgResponseTime: number; avgQuotationHT: number; avgNonQuotationHT: number }> = {};
+    agents.forEach((agent, index) => {
+      csrMetricsMap[agent.referenceid] = csrMetricsResults[index];
+    });
+
     // ── Assemble per-agent result ─────────────────────────────────────────────
     const result = agents.map(({ referenceid, name }) => {
       const groups = pipelineMap[referenceid];
+      const csrMetrics = csrMetricsMap[referenceid] || { avgResponseTime: 0, avgQuotationHT: 0, avgNonQuotationHT: 0 };
 
       let c2qCount = 0, q2soQuotation = 0, q2soSalesOrder = 0;
       let soToSISalesOrder = 0, soToSIDelivered = 0;
@@ -463,9 +544,9 @@ export async function GET(req: Request) {
         newAccountTarget:         naTargetMap[referenceid]        ?? 2,
         clientVisitsCount:        clientVisitsCountMap[referenceid] ?? 0,
         clientVisitsTarget:       siteVisitTargetMap[referenceid] ?? 10,
-        avgResponseTime:          0,
-        avgQuotationHT:           0,
-        avgNonQuotationHT:        0,
+        avgResponseTime:          csrMetrics.avgResponseTime,
+        avgQuotationHT:           csrMetrics.avgQuotationHT,
+        avgNonQuotationHT:        csrMetrics.avgNonQuotationHT,
       };
     });
 

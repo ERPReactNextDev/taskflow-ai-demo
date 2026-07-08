@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -16,7 +17,7 @@ import {
   CartesianGrid,
   Cell,
 } from "recharts";
-import { HelpCircle, X, ChevronRight } from "lucide-react";
+import { HelpCircle, X, ChevronRight, Settings } from "lucide-react";
 
 interface ChartDataItem {
   name: string;
@@ -378,7 +379,15 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   newAccountTarget = 2,
   loadingNewAccount = false,
 }) => {
+  const router = useRouter();
   const [explainOpen, setExplainOpen] = useState(false);
+
+  const handleSettings = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id") || "";
+    router.push(`/roles/tsm/sales-quotation-settings${id ? `?id=${encodeURIComponent(id)}` : ""}`);
+  };
 
   // ── Self-fetch team OB and quotes targets ────────────────────────────────────
   const [teamObTarget,     setTeamObTarget]     = useState<number | null>(null);
@@ -512,15 +521,26 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
             <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
               Sales pipeline — conversion metrics
             </div>
-            <button
-              type="button"
-              onClick={() => setExplainOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest bg-gray-900 hover:bg-gray-700 text-white rounded-lg transition-colors shadow-sm"
-              title="Paano kinukwenta ang bawat metric?"
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              Explain
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSettings}
+                className="relative z-20 p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer"
+                aria-label="Sales quotation settings"
+                title="Manage sales quotation targets"
+                type="button"
+              >
+                <Settings className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setExplainOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest bg-gray-900 hover:bg-gray-700 text-white rounded-lg transition-colors shadow-sm"
+                title="Paano kinukwenta ang bawat metric?"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                Explain
+              </button>
+            </div>
           </div>
 
           {/* Metric tiles */}
