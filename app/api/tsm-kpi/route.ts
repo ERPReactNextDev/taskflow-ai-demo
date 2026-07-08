@@ -182,7 +182,6 @@ export async function GET(req: Request) {
     // ── Date scoping ──────────────────────────────────────────────────────────
     const now         = new Date();
     const year        = now.getFullYear().toString();
-    const refDate     = from ? new Date(from) : now;
     // Targets (OB, Quote, Site Visit) always use current month, date range only affects actuals
     const monthSlices = [
       {
@@ -196,26 +195,31 @@ export async function GET(req: Request) {
     const targetYears = [now.getFullYear().toString()];
     const shouldProrateMonthlyTargets = false; // Targets are always full monthly values — never prorate
 
-    // Monthly scope: always month-start → end-of-today (date only)
-    const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
-    const monthStartDate   = `${now.getFullYear()}-${currentMonth}-01`;
-    const todayDate         = `${now.getFullYear()}-${currentMonth}-${String(now.getDate()).padStart(2, "0")}`;
+    // Derive today's date string in Manila time (YYYY-MM-DD)
+    const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }); // e.g. "2026-07-08"
+    const [manilaYear, manilaMonthNum] = manilaToday.split("-");
+    const monthStartDate = `${manilaYear}-${manilaMonthNum}-01`;
+    const todayDate      = manilaToday;
 
-    // New Account Dev scoped to the selected month (or current month)
-    const naFrom = from ?? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-01`;
-    const naTo   = to ?? `${refDate.getFullYear()}-${String(refDate.getMonth() + 1).padStart(2, "0")}-${String(new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
+    // New Account Dev scoped to the selected month (or current month in Manila time)
+    const naRefDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
+    const naRefStr  = naRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const [naYear, naMonth] = naRefStr.split("-");
+    const naDaysInMonth = new Date(Number(naYear), Number(naMonth), 0).getDate();
+    const naFrom = from ?? `${naYear}-${naMonth}-01`;
+    const naTo   = to   ?? `${naYear}-${naMonth}-${String(naDaysInMonth).padStart(2, "0")}`;
 
     // SI / SO use the full date range (YTD when no filter)
-    const siStart = from ? `${from}T00:00:00Z` : `${now.getFullYear()}-01-01T00:00:00Z`;
-    const siEnd   = to ? `${to}T23:59:59Z` : `${todayDate}T23:59:59Z`;
+    const siStart = from ? `${from}T00:00:00+08:00` : `${now.getFullYear()}-01-01T00:00:00+08:00`;
+    const siEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
 
     // OB Calls / Quotes / Pipeline: selected range, else current month
-    const obStart = from ? `${from}T00:00:00Z` : `${monthStartDate}T00:00:00Z`;
-    const obEnd   = to ? `${to}T23:59:59Z` : `${todayDate}T23:59:59Z`;
-    const quotesStart = from ? `${from}T00:00:00Z` : `${monthStartDate}T00:00:00Z`;
-    const quotesEnd   = to ? `${to}T23:59:59Z` : `${todayDate}T23:59:59Z`;
-    const pipelineStart = from ? `${from}T00:00:00Z` : `${monthStartDate}T00:00:00Z`;
-    const pipelineEnd   = to ? `${to}T23:59:59Z` : `${todayDate}T23:59:59Z`;
+    const obStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
+    const obEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
+    const quotesStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
+    const quotesEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
+    const pipelineStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
+    const pipelineEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
 
     // Client Visits (tasklog): use +08:00 timezone like fetch-tasklog-supabase
     const clientVisitsStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
@@ -308,16 +312,16 @@ export async function GET(req: Request) {
       .from("account_development_plans")
       .select("referenceid")
       .in("referenceid", agentIds)
-      .gte("created_at", `${naFrom}T00:00:00Z`)
-      .lte("created_at", `${naTo}T23:59:59Z`);
+      .gte("created_at", `${naFrom}T00:00:00+08:00`)
+      .lte("created_at", `${naTo}T23:59:59.999+08:00`);
 
     // 9. New account targets per agent
     const naTargetQuery = supabase
       .from("sales_account_development")
       .select("referenceid, target")
       .in("referenceid", agentIds)
-      .eq("month", monthLabel(refDate))
-      .eq("year", refDate.getFullYear().toString());
+      .eq("month", monthLabel(naRefDate))
+      .eq("year", naRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4));
 
     // 10. Site visit targets per agent — deduplicated: take highest target per agent
     //     (multiple rows per agent can exist if target was updated; highest wins)

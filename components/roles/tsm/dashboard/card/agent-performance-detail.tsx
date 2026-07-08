@@ -23,17 +23,41 @@ interface AgentRow {
   soActual: number;
   siPercentage: number;
   obCalls: number;
+  quotationAmount: number;
   siteVisits: number;
   accountDevelopment: number;
+  timeSpentMs: number;
+  avgResponseTime: number;
+  avgNonQuotationHT: number;
+  avgQuotationHT: number;
+  avgSpfHT: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function toDateStr(d: Date): string { return d.toISOString().slice(0, 10); }
+function toDateStr(d: Date): string {
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+}
 
 function fmtPeso(n: number): string {
   if (!n) return "—";
   return `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtTimeMs(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${h}h ${m}m ${s}s`;
+}
+
+function fmtHoursHMS(hours: number): string {
+  const totalSec = Math.round(hours * 3600);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -70,19 +94,24 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Totals row
+  // ── Totals row ────────────────────────────────────────────────────────────
   const totals = agents.reduce(
     (acc, a) => ({
       plan:               acc.plan               + a.plan,
       siActual:           acc.siActual           + a.siActual,
       soActual:           acc.soActual           + a.soActual,
       obCalls:            acc.obCalls            + a.obCalls,
+      quotationAmount:    acc.quotationAmount    + a.quotationAmount,
       siteVisits:         acc.siteVisits         + a.siteVisits,
       accountDevelopment: acc.accountDevelopment + a.accountDevelopment,
+      timeSpentMs:        acc.timeSpentMs        + a.timeSpentMs,
     }),
-    { plan: 0, siActual: 0, soActual: 0, obCalls: 0, siteVisits: 0, accountDevelopment: 0 }
+    { plan: 0, siActual: 0, soActual: 0, obCalls: 0, quotationAmount: 0, siteVisits: 0, accountDevelopment: 0, timeSpentMs: 0 }
   );
   const totalSiPct = totals.plan > 0 ? Math.round((totals.siActual / totals.plan) * 100) : 0;
+
+  const thCls = "text-right py-2 px-1 font-medium text-gray-500 whitespace-nowrap";
+  const tdCls = "text-right py-2.5 px-1 font-mono";
 
   return (
     <Card className="rounded-xl border shadow-sm">
@@ -120,13 +149,19 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
               <thead>
                 <tr className="border-b border-gray-200">
                   <th className="text-left py-2 px-1 font-medium text-gray-500 whitespace-nowrap">Agent</th>
-                  <th className="text-right py-2 px-1 font-medium text-gray-500 whitespace-nowrap">Plan</th>
-                  <th className="text-right py-2 px-1 font-medium text-gray-500 whitespace-nowrap">SI Actual</th>
-                  <th className="text-right py-2 px-1 font-medium text-gray-500 whitespace-nowrap">SO Actual</th>
-                  <th className="text-right py-2 px-1 font-medium text-gray-500 whitespace-nowrap">SI %</th>
-                  <th className="text-right py-2 px-1 font-medium text-gray-500 whitespace-nowrap">OB Calls</th>
-                  <th className="text-right py-2 px-1 font-medium text-gray-500 whitespace-nowrap">Site Visits</th>
-                  <th className="text-right py-2 px-1 font-medium text-gray-500 whitespace-nowrap">Account Dev</th>
+                  <th className={thCls}>Plan</th>
+                  <th className={thCls}>SI Actual</th>
+                  <th className={thCls}>SO Actual</th>
+                  <th className={thCls}>SI %</th>
+                  <th className={thCls}>OB Calls</th>
+                  <th className={thCls}>Quotation Amount</th>
+                  <th className={thCls}>Site Visits</th>
+                  <th className={thCls}>Account Dev</th>
+                  <th className={thCls}>Time Spent</th>
+                  <th className={thCls}>TSA Response Time</th>
+                  <th className={thCls}>Non-Quotation HT</th>
+                  <th className={thCls}>Quotation HT</th>
+                  <th className={thCls}>SPF Handling Duration</th>
                 </tr>
               </thead>
 
@@ -139,10 +174,10 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                         <span className="font-medium text-gray-800 whitespace-nowrap uppercase">{agent.name}</span>
                       </div>
                     </td>
-                    <td className="text-right py-2.5 px-1 font-mono">{fmtPeso(agent.plan)}</td>
-                    <td className="text-right py-2.5 px-1 font-mono text-green-600">{fmtPeso(agent.siActual)}</td>
-                    <td className="text-right py-2.5 px-1 font-mono">{fmtPeso(agent.soActual)}</td>
-                    <td className="text-right py-2.5 px-1 font-mono font-medium">
+                    <td className={tdCls}>{fmtPeso(agent.plan)}</td>
+                    <td className={`${tdCls} text-green-600`}>{fmtPeso(agent.siActual)}</td>
+                    <td className={tdCls}>{fmtPeso(agent.soActual)}</td>
+                    <td className={`${tdCls} font-medium`}>
                       <span className={
                         agent.siPercentage >= 100 ? "text-green-600"
                         : agent.siPercentage >= 70 ? "text-yellow-600"
@@ -151,9 +186,15 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                         {agent.siPercentage}%
                       </span>
                     </td>
-                    <td className="text-right py-2.5 px-1 font-mono">{agent.obCalls}</td>
-                    <td className="text-right py-2.5 px-1 font-mono">{agent.siteVisits}</td>
-                    <td className="text-right py-2.5 px-1 font-mono">{agent.accountDevelopment}</td>
+                    <td className={tdCls}>{agent.obCalls}</td>
+                    <td className={tdCls}>{fmtPeso(agent.quotationAmount)}</td>
+                    <td className={tdCls}>{agent.siteVisits}</td>
+                    <td className={tdCls}>{agent.accountDevelopment}</td>
+                    <td className={tdCls}>{fmtTimeMs(agent.timeSpentMs)}</td>
+                    <td className={tdCls}>{fmtHoursHMS(agent.avgResponseTime)}</td>
+                    <td className={tdCls}>{fmtHoursHMS(agent.avgNonQuotationHT)}</td>
+                    <td className={tdCls}>{fmtHoursHMS(agent.avgQuotationHT)}</td>
+                    <td className={tdCls}>{fmtHoursHMS(agent.avgSpfHT)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -162,10 +203,10 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
               <tfoot>
                 <tr className="border-t-2 border-gray-200 bg-gray-50 font-bold">
                   <td className="py-2.5 px-1 text-xs font-black uppercase tracking-widest text-gray-600">Team Total</td>
-                  <td className="text-right py-2.5 px-1 font-mono">{fmtPeso(totals.plan)}</td>
-                  <td className="text-right py-2.5 px-1 font-mono text-green-700">{fmtPeso(totals.siActual)}</td>
-                  <td className="text-right py-2.5 px-1 font-mono">{fmtPeso(totals.soActual)}</td>
-                  <td className="text-right py-2.5 px-1 font-mono font-medium">
+                  <td className={tdCls}>{fmtPeso(totals.plan)}</td>
+                  <td className={`${tdCls} text-green-700`}>{fmtPeso(totals.siActual)}</td>
+                  <td className={tdCls}>{fmtPeso(totals.soActual)}</td>
+                  <td className={`${tdCls} font-medium`}>
                     <span className={
                       totalSiPct >= 100 ? "text-green-600"
                       : totalSiPct >= 70 ? "text-yellow-600"
@@ -174,9 +215,16 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                       {totalSiPct}%
                     </span>
                   </td>
-                  <td className="text-right py-2.5 px-1 font-mono">{totals.obCalls}</td>
-                  <td className="text-right py-2.5 px-1 font-mono">{totals.siteVisits}</td>
-                  <td className="text-right py-2.5 px-1 font-mono">{totals.accountDevelopment}</td>
+                  <td className={tdCls}>{totals.obCalls}</td>
+                  <td className={tdCls}>{fmtPeso(totals.quotationAmount)}</td>
+                  <td className={tdCls}>{totals.siteVisits}</td>
+                  <td className={tdCls}>{totals.accountDevelopment}</td>
+                  <td className={tdCls}>{fmtTimeMs(totals.timeSpentMs)}</td>
+                  {/* CSR metrics are averages — not meaningful to sum, show em dash */}
+                  <td className={tdCls}>—</td>
+                  <td className={tdCls}>—</td>
+                  <td className={tdCls}>—</td>
+                  <td className={tdCls}>—</td>
                 </tr>
               </tfoot>
             </table>

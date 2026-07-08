@@ -18,32 +18,31 @@ export async function GET(req: Request) {
     }
 
     const now = new Date();
-    
-    // Helper to convert YYYY-MM-DD to local time range (Asia/Manila)
-    function getLocalDateRange(dateStr: string): { start: Date; end: Date } {
-      const [year, month, day] = dateStr.split("-").map(Number);
-      const start = new Date(year, month - 1, day, 0, 0, 0, 0);
-      const end = new Date(year, month - 1, day, 23, 59, 59, 999);
-      return { start, end };
+
+    // Helper to convert YYYY-MM-DD to Asia/Manila time range as UTC ISO strings
+    function getManilaDateRange(dateStr: string): { start: string; end: string } {
+      // Asia/Manila is UTC+8, so midnight Manila = UTC-8h
+      return {
+        start: `${dateStr}T00:00:00+08:00`,
+        end:   `${dateStr}T23:59:59.999+08:00`,
+      };
     }
 
-    // Get default range (start of current month if no from/to)
-    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const { start: startDate, end: endDate } = from 
-      ? getLocalDateRange(from)
-      : { start: defaultStart, end: null };
-    
-    // If we have a "to" date, use its local end time
-    const finalEndDate = to ? getLocalDateRange(to).end : endDate;
+    // Default range: start of current month in Manila time
+    const manilaMonth = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 7);
+    const defaultStartISO = `${manilaMonth}-01T00:00:00+08:00`;
+
+    const startISO = from ? getManilaDateRange(from).start : defaultStartISO;
+    const endISO   = to   ? getManilaDateRange(to).end   : (from ? getManilaDateRange(from).end : null);
 
     let q = supabase
       .from("history")
       .select("*", { count: "exact" })
       .eq("referenceid", referenceid)
       .eq("source", "Outbound - Touchbase")
-      .gte("date_created", startDate.toISOString());
+      .gte("date_created", startISO);
 
-    if (finalEndDate) q = q.lte("date_created", finalEndDate.toISOString());
+    if (endISO) q = q.lte("date_created", endISO);
 
     const { error, count } = await q;
     if (error) throw error;

@@ -7,7 +7,7 @@ import { Info, X } from "lucide-react";
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
 }
 
 function fmt(n: number, decimals = 2): string {

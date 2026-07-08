@@ -18,22 +18,21 @@ export async function GET(req: Request) {
     }
 
     const now = new Date();
-    
-    // Helper to convert YYYY-MM-DD to local time range
-    function getLocalDateRange(dateStr: string): { start: Date; end: Date } {
-      const [year, month, day] = dateStr.split("-").map(Number);
-      const start = new Date(year, month - 1, day, 0, 0, 0, 0);
-      const end = new Date(year, month - 1, day, 23, 59, 59, 999);
-      return { start, end };
+
+    // Helper to convert YYYY-MM-DD to Asia/Manila time range as UTC ISO strings
+    function getManilaDateRange(dateStr: string): { start: string; end: string } {
+      return {
+        start: `${dateStr}T00:00:00+08:00`,
+        end:   `${dateStr}T23:59:59.999+08:00`,
+      };
     }
 
-    // Default range: start of current month
-    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const { start: startDate, end: endDate } = from 
-      ? getLocalDateRange(from)
-      : { start: defaultStart, end: null };
-    
-    const finalEndDate = to ? getLocalDateRange(to).end : endDate;
+    // Default range: start of current month in Manila time
+    const manilaMonth = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 7);
+    const defaultStartISO = `${manilaMonth}-01T00:00:00+08:00`;
+
+    const startISO = from ? getManilaDateRange(from).start : defaultStartISO;
+    const endISO   = to   ? getManilaDateRange(to).end   : (from ? getManilaDateRange(from).end : null);
 
     let query = supabase
       .from("history")
@@ -41,9 +40,9 @@ export async function GET(req: Request) {
       .eq("referenceid", referenceid)
       .eq("type_activity", "Quotation Preparation")
       .or("tsm_approved_status.eq.Approved By Sales Head,tsm_approved_status.eq.Approved")
-      .gte("date_created", startDate.toISOString());
+      .gte("date_created", startISO);
 
-    if (finalEndDate) query = query.lte("date_created", finalEndDate.toISOString());
+    if (endISO) query = query.lte("date_created", endISO);
 
     const { data, error } = await query;
     if (error) throw error;
