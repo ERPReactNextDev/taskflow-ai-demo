@@ -265,38 +265,29 @@ export default function TaskListEditDialog({
 
         const deliveryFeeNum = parseFloat(revision.delivery_fee) || 0;
         const restockingFeeNum = parseFloat(revision.restocking_fee) || 0;
-        // quotation_amount stored = net_sales + delivery + restocking - EWT
-        const quotationAmt = parseFloat(String(revision.quotation_amount)) || 0;
         const whtType = revision.quotation_vatable ?? "none";
         const vatType = revision.vat_type ?? "zero_rated";
         const whtLabel = whtType === "wht_1" ? "EWT 1% (Goods)" : whtType === "wht_2" ? "EWT 2% (Services)" : "None";
 
-        // Reverse engineer: total before EWT = quotation_amount + EWT
-        // First, we need to find what total was used to calculate EWT
-        // EWT is calculated on (net_sales + delivery + restocking) with VAT adjustment
-        // Since quotation_amount = total - EWT, we work backwards
-
-        // Estimate total before EWT by adding back approximate EWT
-        // EWT = (total / 1.12 if vat_inc else total) * rate
-        // So total ≈ quotation_amount + EWT
-
-        // Calculate total before EWT (totalPriceWithDelivery)
-        // For VAT Inc: EWT base = total / 1.12
-        // For non-VAT: EWT base = total
-        const whtRate = whtType === "wht_1" ? 0.01 : whtType === "wht_2" ? 0.02 : 0;
-        const vatMultiplier = vatType === "vat_inc" ? 1.12 : 1;
-
-        // quotation_amount = total - (total / vatMultiplier) * whtRate
-        // quotation_amount = total * (1 - whtRate / vatMultiplier)
-        // total = quotation_amount / (1 - whtRate / vatMultiplier)
-        const denominator = 1 - (whtRate / vatMultiplier);
-        const totalPriceWithDelivery = whtType !== "none" && denominator > 0
-            ? quotationAmt / denominator
-            : quotationAmt;
-
-        const whtBase = vatType === "vat_inc" ? totalPriceWithDelivery / 1.12 : totalPriceWithDelivery;
-        const whtAmount = whtType !== "none" ? totalPriceWithDelivery * (whtRate / vatMultiplier) : 0;
-        const netAmountToCollect = whtBase - whtAmount;
+        // Compute totals the same way preview.tsx does
+        const grossTotal = items.reduce((acc, item) => acc + ((Number(item.qty) || 0) * (item.unitPrice || 0)), 0);
+        const netSales = parseFloat(items.reduce((acc, item) => acc + (item.totalAmount || 0), 0).toFixed(2));
+        const totalInvoiceAmount = parseFloat((netSales + deliveryFeeNum + restockingFeeNum).toFixed(2));
+        
+        let vatAmount, netOfVat, whtAmount, finalAmountDue;
+        if (vatType === "zero_rated") {
+            vatAmount = 0;
+            netOfVat = totalInvoiceAmount;
+            whtAmount = 0;
+            finalAmountDue = totalInvoiceAmount;
+        } else {
+            vatAmount = parseFloat((totalInvoiceAmount * (12 / 112)).toFixed(2));
+            netOfVat = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
+            whtAmount = whtType !== "none" ? parseFloat((netOfVat * (whtType === "wht_1" ? 0.01 : 0.02)).toFixed(2)) : 0;
+            finalAmountDue = vatType === "vat_exe"
+                ? parseFloat((netOfVat - whtAmount).toFixed(2))
+                : parseFloat((totalInvoiceAmount - whtAmount).toFixed(2));
+        }
 
         return {
             referenceNo: revision.quotation_number || revision.version || "DRAFT-XXXX",
@@ -309,15 +300,15 @@ export default function TaskListEditDialog({
             subject: revision.quotation_subject || "For Quotation",
             items,
             vatTypeLabel: vatType === "vat_inc" ? "VAT Inc" : vatType === "vat_exe" ? "VAT Exe" : "Zero-Rated",
-            totalPrice: totalPriceWithDelivery,
+            totalPrice: totalInvoiceAmount,
             deliveryFee: revision.delivery_fee ?? "",
             vatType,
             restockingFee: restockingFeeNum,
             whtType,
             whtLabel,
-            whtBase,
-            whtAmount,
-            netAmountToCollect,
+            whtBase: netOfVat,
+            whtAmount: Number(whtAmount),
+            netAmountToCollect: Number(finalAmountDue),
             salesRepresentative: salesRepresentativeName,
             salesemail,
             salescontact: contact ?? "",
@@ -381,7 +372,26 @@ export default function TaskListEditDialog({
 
         const deliveryFeeNum = parseFloat(deliveryFeeState) || 0;
         const restockingFeeNum = parseFloat(restockingFeeState) || 0;
-        const totalPriceWithDelivery = (quotationAmount || 0) + deliveryFeeNum + restockingFeeNum;
+        
+        // Compute totals the same way preview.tsx does
+        const grossTotal = items.reduce((acc, item) => acc + ((Number(item.qty) || 0) * (item.unitPrice || 0)), 0);
+        const netSales = parseFloat(items.reduce((acc, item) => acc + (item.totalAmount || 0), 0).toFixed(2));
+        const totalInvoiceAmount = parseFloat((netSales + deliveryFeeNum + restockingFeeNum).toFixed(2));
+        
+        let vatAmount, netOfVat, whtAmount, finalAmountDue;
+        if (vatTypeState === "zero_rated") {
+            vatAmount = 0;
+            netOfVat = totalInvoiceAmount;
+            whtAmount = 0;
+            finalAmountDue = totalInvoiceAmount;
+        } else {
+            vatAmount = parseFloat((totalInvoiceAmount * (12 / 112)).toFixed(2));
+            netOfVat = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
+            whtAmount = whtTypeState !== "none" ? parseFloat((netOfVat * (whtTypeState === "wht_1" ? 0.01 : 0.02)).toFixed(2)) : 0;
+            finalAmountDue = vatTypeState === "vat_exe"
+                ? parseFloat((netOfVat - whtAmount).toFixed(2))
+                : parseFloat((totalInvoiceAmount - whtAmount).toFixed(2));
+        }
 
         return {
             referenceNo: quotationNumber || "DRAFT-XXXX",
@@ -393,20 +403,16 @@ export default function TaskListEditDialog({
             attention: contact_person,
             subject: quotationSubject || "For Quotation",
             items,
-            vatTypeLabel: vatType === "vat_inc" ? "VAT Inc" : vatType === "vat_exe" ? "VAT Exe" : "Zero-Rated",
-            totalPrice: totalPriceWithDelivery,
+            vatTypeLabel: vatTypeState === "vat_inc" ? "VAT Inc" : vatTypeState === "vat_exe" ? "VAT Exe" : "Zero-Rated",
+            totalPrice: totalInvoiceAmount,
             deliveryFee: deliveryFeeState ?? "",
             vatType: vatTypeState ?? null,
-            restockingFee: parseFloat(restockingFeeState) || 0,
+            restockingFee: restockingFeeNum,
             whtType: whtTypeState ?? "none",
             whtLabel: whtTypeState === "wht_1" ? "EWT 1% (Goods)" : whtTypeState === "wht_2" ? "EWT 2% (Services)" : "None",
-            whtBase: vatTypeState === "vat_inc" ? totalPriceWithDelivery / 1.12 : totalPriceWithDelivery,
-            whtAmount: whtTypeState !== "none" ? (totalPriceWithDelivery / 1.12) * (whtTypeState === "wht_1" ? 0.01 : 0.02) : 0,
-            netAmountToCollect: (() => {
-                const base = vatTypeState === "vat_inc" ? totalPriceWithDelivery / 1.12 : totalPriceWithDelivery;
-                const wht = whtTypeState !== "none" ? base * (whtTypeState === "wht_1" ? 0.01 : 0.02) : 0;
-                return Math.round((base - wht) * 100) / 100;
-            })(),
+            whtBase: netOfVat,
+            whtAmount: Number(whtAmount),
+            netAmountToCollect: Number(finalAmountDue),
             salesRepresentative: salesRepresentativeName,
             salesemail,
             salescontact: contact ?? "",
@@ -1261,13 +1267,7 @@ export default function TaskListEditDialog({
                             <XIcon className="w-3.5 h-3.5" />
                             Decline
                         </Button>
-                        <Button
-                            type="button"
-                            onClick={DownloadPDF}
-                            className="rounded-none h-9 px-6 bg-yellow-600 hover:bg-yellow-700 flex items-center gap-2"
-                        >
-                            <FileText className="w-3.5 h-3.5" /> PDF
-                        </Button>
+                        
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
