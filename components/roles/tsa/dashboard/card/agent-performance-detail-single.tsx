@@ -37,7 +37,7 @@ interface AgentPerformanceDetailSingleProps {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
 }
 
 function formatTimeSpent(ms: number): string {
@@ -91,6 +91,15 @@ export const AgentPerformanceDetailSingle: React.FC<AgentPerformanceDetailSingle
   const [siteVisitsCount, setSiteVisitsCount] = useState<number>(siteVisitsProp);
   const [loadingSiteVisits, setLoadingSiteVisits] = useState(false);
 
+  // ── Self-fetch CSR metrics from /api/act-fetch-activity-v2 ────────────────
+  const [csrMetrics, setCsrMetrics] = useState({
+    avgResponseTime: tsaResponseTime,
+    avgQuotationHT: quotationHT,
+    avgNonQuotationHT: nonQuotationHT,
+    avgSpfHT: spfHandlingDuration,
+  });
+  const [loadingCsr, setLoadingCsr] = useState(false);
+
   const fetchSiteVisits = useCallback(async () => {
     if (!referenceid) {
       // Fall back to the prop value if no referenceid
@@ -119,10 +128,99 @@ export const AgentPerformanceDetailSingle: React.FC<AgentPerformanceDetailSingle
     }
   }, [referenceid, dateRange, siteVisitsProp]);
 
+  const fetchCsrMetrics = useCallback(async () => {
+    if (!referenceid) {
+      setCsrMetrics({
+        avgResponseTime: tsaResponseTime,
+        avgQuotationHT: quotationHT,
+        avgNonQuotationHT: nonQuotationHT,
+        avgSpfHT: spfHandlingDuration,
+      });
+      return;
+    }
+    setLoadingCsr(true);
+    try {
+      const res = await fetch(`/api/act-fetch-activity-v2?referenceid=${encodeURIComponent(referenceid)}`);
+      if (!res.ok) throw new Error("Failed to fetch CSR metrics");
+      const result = await res.json();
+      const data: any[] = result.data || [];
+
+      const excluded = [
+        "CustomerFeedback/Recommendation", "Job Inquiry", "Job Applicants",
+        "Supplier/Vendor Product Offer", "Internal Whistle Blower",
+        "Threats/Extortion/Intimidation", "Prank Call",
+      ];
+
+      const now = new Date();
+      const fromStr = dateRange?.from ? toDateStr(dateRange.from) : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const toStr   = dateRange?.to   ? toDateStr(dateRange.to)   : now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+
+      const fromTs = new Date(`${fromStr}T00:00:00+08:00`).getTime();
+      const toDateObj = new Date(`${toStr}T23:59:59+08:00`);
+      const toTs = toDateObj.getTime();
+
+      let rtTotal = 0, rtCount = 0;
+      let nqTotal = 0, nqCount = 0;
+      let qTotal = 0, qCount = 0;
+      let spfTotal = 0, spfCount = 0;
+
+      data.forEach((row) => {
+        if (row.status !== "Closed" && row.status !== "Converted into Sales") return;
+        const created = new Date(row.date_created).getTime();
+        if (isNaN(created) || created < fromTs || created > toTs) return;
+        if (excluded.includes(row.wrap_up)) return;
+
+        const tsaAck = new Date(row.tsa_acknowledge_date).getTime();
+        const endorsed = new Date(row.ticket_endorsed).getTime();
+        if (!isNaN(tsaAck) && !isNaN(endorsed) && tsaAck >= endorsed) {
+          rtTotal += (tsaAck - endorsed) / 3600000;
+          rtCount++;
+        }
+
+        const received = new Date(row.ticket_received).getTime();
+        const tsaHandle = new Date(row.tsa_handling_time).getTime();
+        const tsmHandle = new Date(row.tsm_handling_time).getTime();
+        let baseHT = 0;
+        if (!isNaN(tsaHandle) && !isNaN(received) && tsaHandle >= received)
+          baseHT = (tsaHandle - received) / 3600000;
+        else if (!isNaN(tsmHandle) && !isNaN(received) && tsmHandle >= received)
+          baseHT = (tsmHandle - received) / 3600000;
+        if (!baseHT) return;
+
+        const remarks = (row.remarks || "").toUpperCase();
+        if (remarks === "QUOTATION FOR APPROVAL" || remarks === "SOLD") {
+          qTotal += baseHT; qCount++;
+        } else if (remarks.includes("SPF")) {
+          spfTotal += baseHT; spfCount++;
+        } else {
+          nqTotal += baseHT; nqCount++;
+        }
+      });
+
+      setCsrMetrics({
+        avgResponseTime: rtCount ? rtTotal / rtCount : 0,
+        avgQuotationHT: qCount ? qTotal / qCount : 0,
+        avgNonQuotationHT: nqCount ? nqTotal / nqCount : 0,
+        avgSpfHT: spfCount ? spfTotal / spfCount : 0,
+      });
+    } catch (err) {
+      console.error("AgentPerformanceDetailSingle: error fetching CSR metrics", err);
+      setCsrMetrics({
+        avgResponseTime: tsaResponseTime,
+        avgQuotationHT: quotationHT,
+        avgNonQuotationHT: nonQuotationHT,
+        avgSpfHT: spfHandlingDuration,
+      });
+    } finally {
+      setLoadingCsr(false);
+    }
+  }, [referenceid, dateRange, tsaResponseTime, quotationHT, nonQuotationHT, spfHandlingDuration]);
+
   // Fetch on mount and whenever referenceid / dateRange changes
   useEffect(() => {
     fetchSiteVisits();
-  }, [fetchSiteVisits]);
+    fetchCsrMetrics();
+  }, [fetchSiteVisits, fetchCsrMetrics]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -179,10 +277,34 @@ export const AgentPerformanceDetailSingle: React.FC<AgentPerformanceDetailSingle
                 </td>
                 <td className="text-right py-3 px-1 font-mono">{accountDevelopment.toLocaleString()}</td>
                 <td className="text-right py-3 px-1 font-mono">{formatTimeSpent(timeSpentMs)}</td>
-                <td className="text-right py-3 px-1 font-mono">{formatHoursToHMS(tsaResponseTime)}</td>
-                <td className="text-right py-3 px-1 font-mono">{formatHoursToHMS(nonQuotationHT)}</td>
-                <td className="text-right py-3 px-1 font-mono">{formatHoursToHMS(quotationHT)}</td>
-                <td className="text-right py-3 px-1 font-mono">{formatHoursToHMS(spfHandlingDuration)}</td>
+                <td className="text-right py-3 px-1 font-mono">
+                  {loadingCsr ? (
+                    <span className="text-gray-400 animate-pulse">…</span>
+                  ) : (
+                    formatHoursToHMS(csrMetrics.avgResponseTime)
+                  )}
+                </td>
+                <td className="text-right py-3 px-1 font-mono">
+                  {loadingCsr ? (
+                    <span className="text-gray-400 animate-pulse">…</span>
+                  ) : (
+                    formatHoursToHMS(csrMetrics.avgNonQuotationHT)
+                  )}
+                </td>
+                <td className="text-right py-3 px-1 font-mono">
+                  {loadingCsr ? (
+                    <span className="text-gray-400 animate-pulse">…</span>
+                  ) : (
+                    formatHoursToHMS(csrMetrics.avgQuotationHT)
+                  )}
+                </td>
+                <td className="text-right py-3 px-1 font-mono">
+                  {loadingCsr ? (
+                    <span className="text-gray-400 animate-pulse">…</span>
+                  ) : (
+                    formatHoursToHMS(csrMetrics.avgSpfHT)
+                  )}
+                </td>
               </tr>
             </tbody>
           </table>

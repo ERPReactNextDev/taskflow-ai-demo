@@ -17,6 +17,26 @@ const supabase = createClient(
  *   non-quotation HT, quotation HT, SPF handling duration.
  */
 
+// ── Pagination helper ─────────────────────────────────────────────────────────
+
+/** Fetch all rows from Supabase (handles pagination for large datasets) */
+async function fetchAllRows<T = any>(query: any): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  let allData: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return allData;
+}
+
 // ── CSR metrics (from MongoDB activity collection) ───────────────────────────
 
 const CSR_EXCLUDED = [
@@ -124,17 +144,16 @@ async function calcTimeSpentForAgents(
 ): Promise<Record<string, number>> {
   const result: Record<string, number> = {};
   try {
-    // Fetch activity rows with start_date & end_date for the date range
-    const { data, error } = await supabase
+    const query = supabase
       .from("activity")
       .select("referenceid, start_date, end_date, duration")
       .in("referenceid", agentIds)
       .gte("date_created", fromISO)
       .lte("date_created", toISO);
 
-    if (error) throw error;
+    const data = await fetchAllRows(query);
 
-    for (const row of data ?? []) {
+    for (const row of data) {
       const ref = row.referenceid;
       if (!ref) continue;
       let ms = 0;
@@ -230,7 +249,7 @@ export async function GET(req: Request) {
         .eq("type_activity", "Delivered / Closed Transaction")
         .gte("date_created", siStart);
       if (siEnd) q = q.lte("date_created", siEnd);
-      return q;
+      return fetchAllRows(q);
     })();
 
     // SO amount
@@ -241,57 +260,67 @@ export async function GET(req: Request) {
         .eq("status", "SO-Done")
         .gte("date_created", siStart);
       if (siEnd) q = q.lte("date_created", siEnd);
-      return q;
+      return fetchAllRows(q);
     })();
 
     // OB calls
-    const obQ = supabase.from("history")
-      .select("referenceid")
-      .in("referenceid", agentIds)
-      .eq("source", "Outbound - Touchbase")
-      .gte("date_created", rangeStart)
-      .lte("date_created", rangeEnd);
+    const obQ = fetchAllRows(
+      supabase.from("history")
+        .select("referenceid")
+        .in("referenceid", agentIds)
+        .eq("source", "Outbound - Touchbase")
+        .gte("date_created", rangeStart)
+        .lte("date_created", rangeEnd)
+    );
 
     // Quotation amount (Quote-Done, sum of quotation_amount)
-    const qaQ = supabase.from("history")
-      .select("referenceid, quotation_amount")
-      .in("referenceid", agentIds)
-      .eq("type_activity", "Quotation Preparation")
-      .eq("status", "Quote-Done")
-      .gte("date_created", rangeStart)
-      .lte("date_created", rangeEnd);
+    const qaQ = fetchAllRows(
+      supabase.from("history")
+        .select("referenceid, quotation_amount")
+        .in("referenceid", agentIds)
+        .eq("type_activity", "Quotation Preparation")
+        .eq("status", "Quote-Done")
+        .gte("date_created", rangeStart)
+        .lte("date_created", rangeEnd)
+    );
 
     // Site visits (tasklog Login entries)
-    const svQ = supabase
-      .from("tasklog")
-      .select(`"ReferenceID", "Status"`)
-      .in("ReferenceID", agentIds)
-      .gte("date_created", svStart)
-      .lte("date_created", svEnd);
+    const svQ = fetchAllRows(
+      supabase
+        .from("tasklog")
+        .select(`"ReferenceID", "Status"`)
+        .in("ReferenceID", agentIds)
+        .gte("date_created", svStart)
+        .lte("date_created", svEnd)
+    );
 
     // New account development
-    const naQ = supabase
-      .from("account_development_plans")
-      .select("referenceid")
-      .in("referenceid", agentIds)
-      .gte("created_at", naStart)
-      .lte("created_at", naEnd);
+    const naQ = fetchAllRows(
+      supabase
+        .from("account_development_plans")
+        .select("referenceid")
+        .in("referenceid", agentIds)
+        .gte("created_at", naStart)
+        .lte("created_at", naEnd)
+    );
 
     // Sales quota (annual plan)
-    const quotaQ = supabase
-      .from("sales_quota")
-      .select("referenceid, amount")
-      .in("referenceid", agentIds)
-      .eq("year", quotaYear);
+    const quotaQ = fetchAllRows(
+      supabase
+        .from("sales_quota")
+        .select("referenceid, amount")
+        .in("referenceid", agentIds)
+        .eq("year", quotaYear)
+    );
 
     const [
-      { data: siData   },
-      { data: soData   },
-      { data: obData   },
-      { data: qaData   },
-      { data: svData   },
-      { data: naData   },
-      { data: quotaData },
+      siData,
+      soData,
+      obData,
+      qaData,
+      svData,
+      naData,
+      quotaData,
       csrMap,
       timeSpentMap,
     ] = await Promise.all([
@@ -310,15 +339,13 @@ export async function GET(req: Request) {
     const naMap:    Record<string, number> = {};
     const quotaMap: Record<string, number> = {};
 
-    for (const r of siData    ?? []) siMap[r.referenceid]    = (siMap[r.referenceid]    ?? 0) + (Number(r.actual_sales)     || 0);
-    for (const r of soData    ?? []) soMap[r.referenceid]    = (soMap[r.referenceid]    ?? 0) + (Number(r.so_amount)        || 0);
-    for (const r of obData    ?? []) obMap[r.referenceid]    = (obMap[r.referenceid]    ?? 0) + 1;
-    for (const r of qaData    ?? []) qaMap[r.referenceid]    = (qaMap[r.referenceid]    ?? 0) + (Number(r.quotation_amount) || 0);
-    for (const r of svData    ?? []) {
-      if (r.Status === "Login") svMap[r.ReferenceID] = (svMap[r.ReferenceID] ?? 0) + 1;
-    }
-    for (const r of naData    ?? []) naMap[r.referenceid]    = (naMap[r.referenceid]    ?? 0) + 1;
-    for (const r of quotaData ?? []) quotaMap[r.referenceid] = (quotaMap[r.referenceid] ?? 0) + (Number(r.amount) || 0);
+    for (const r of siData)    siMap[r.referenceid]    = (siMap[r.referenceid]    ?? 0) + (Number(r.actual_sales)     || 0);
+    for (const r of soData)    soMap[r.referenceid]    = (soMap[r.referenceid]    ?? 0) + (Number(r.so_amount)        || 0);
+    for (const r of obData)    obMap[r.referenceid]    = (obMap[r.referenceid]    ?? 0) + 1;
+    for (const r of qaData)    qaMap[r.referenceid]    = (qaMap[r.referenceid]    ?? 0) + (Number(r.quotation_amount) || 0);
+    for (const r of svData)    { if (r.Status === "Login") svMap[r.ReferenceID] = (svMap[r.ReferenceID] ?? 0) + 1; }
+    for (const r of naData)    naMap[r.referenceid]    = (naMap[r.referenceid]    ?? 0) + 1;
+    for (const r of quotaData) quotaMap[r.referenceid] = (quotaMap[r.referenceid] ?? 0) + (Number(r.amount) || 0);
 
     // ── 5. Assemble result ────────────────────────────────────────────────────
     const result = agents.map(({ referenceid, name }) => {

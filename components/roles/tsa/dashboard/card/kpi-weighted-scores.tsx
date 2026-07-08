@@ -4,9 +4,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 
-/** Format a Date to YYYY-MM-DD for API params */
+/** Format a Date to YYYY-MM-DD for API params (Asia/Manila timezone) */
 function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
