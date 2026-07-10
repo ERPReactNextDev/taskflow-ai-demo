@@ -49,7 +49,7 @@ async function calcCsrMetrics(
       }
 
       const received  = new Date(row.ticket_received).getTime();
-      const tsaHandle = new Date(row.tsa_handling_time).getTime();
+      const tsaHandle = new Date(row.tsa_handling_time).getTime();  
       const tsmHandle = new Date(row.tsm_handling_time).getTime();
       let baseHT = 0;
       if (!isNaN(tsaHandle) && !isNaN(received) && tsaHandle >= received)
