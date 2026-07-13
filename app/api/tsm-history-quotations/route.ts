@@ -27,28 +27,20 @@ export async function GET(req: Request) {
 
     const now = new Date();
 
-    // Helper to convert YYYY-MM-DD to Asia/Manila time range as UTC ISO strings
-    function getManilaDateRange(dateStr: string): { start: string; end: string } {
-      return {
-        start: `${dateStr}T00:00:00+08:00`,
-        end:   `${dateStr}T23:59:59.999+08:00`,
-      };
-    }
-
-    // Default range: start of current month in Manila time
+    // Default range: start of current month in Manila time (date-only format)
     const manilaMonth = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 7);
-    const defaultStartISO = `${manilaMonth}-01T00:00:00+08:00`;
+    const defaultStartDate = `${manilaMonth}-01`;
 
-    const startISO = from ? getManilaDateRange(from).start : defaultStartISO;
-    const endISO   = to   ? getManilaDateRange(to).end   : (from ? getManilaDateRange(from).end : null);
+    const startDate = from || defaultStartDate;
+    const endDate   = to || (from ? from : null);
 
     let query = supabase.from("history")
       .select("quotation_number")
       .in("referenceid", agentIds)
       .eq("type_activity", "Quotation Preparation")
       .eq("status", "Quote-Done")
-      .gte("date_created", startISO);
-    if (endISO) query = query.lte("date_created", endISO);
+      .gte("date_created", startDate);
+    if (endDate) query = query.lte("date_created", endDate);
 
     const { data, error } = await query;
     if (error) throw error;

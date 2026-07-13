@@ -6,6 +6,24 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE!
 );
 
+/** Fetch all rows from Supabase (handles pagination for large datasets) */
+async function fetchAllRows<T = any>(query: any): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  let allData: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return allData;
+}
+
 /**
  * GET /api/kpi-monthly-actuals?referenceid=<id>
  *
@@ -48,15 +66,17 @@ export async function GET(req: Request) {
     const yearStart  = `${year}-01-01T00:00:00Z`;
 
     // Run all queries in parallel — single round-trip to Supabase
-    const [siRes, obRes, quotesRes, convRes] = await Promise.all([
+    const siQuery = supabase
+      .from("history")
+      .select("actual_sales")
+      .eq("referenceid", referenceid)
+      .eq("type_activity", "Delivered / Closed Transaction")
+      .gte("delivery_date", yearStart)
+      .lte("delivery_date", todayEnd);
+
+    const [siData, obRes, quotesRes, convRes] = await Promise.all([
       // 1. SI (Delivered / Closed) — YTD to match the annual sales quota target
-      supabase
-        .from("history")
-        .select("actual_sales")
-        .eq("referenceid", referenceid)
-        .eq("type_activity", "Delivered / Closed Transaction")
-        .gte("date_created", yearStart)
-        .lte("date_created", todayEnd),
+      fetchAllRows(siQuery),
 
       // 2. OB Calls this month
       supabase
@@ -78,22 +98,22 @@ export async function GET(req: Request) {
         .lte("date_created", todayEnd),
 
       // 4. Conversion ratios — fetch all relevant rows this month in one query
-      supabase
-        .from("history")
-        .select("activity_reference_number, source, type_activity")
-        .eq("referenceid", referenceid)
-        .gte("date_created", monthStart)
-        .lte("date_created", todayEnd),
+      fetchAllRows(
+        supabase
+          .from("history")
+          .select("activity_reference_number, source, type_activity")
+          .eq("referenceid", referenceid)
+          .gte("date_created", monthStart)
+          .lte("date_created", todayEnd)
+      ),
     ]);
 
-    // Check errors
-    if (siRes.error)    throw siRes.error;
+    // Check errors for non-fetchAllRows queries
     if (obRes.error)    throw obRes.error;
     if (quotesRes.error) throw quotesRes.error;
-    if (convRes.error)  throw convRes.error;
 
     // Aggregate SI total
-    const totalActualSales = (siRes.data ?? []).reduce(
+    const totalActualSales = (siData ?? []).reduce(
       (sum, row) => sum + (Number(row.actual_sales) || 0),
       0
     );
@@ -113,7 +133,7 @@ export async function GET(req: Request) {
     };
     const groups = new Map<string, ConvGroup>();
 
-    for (const row of convRes.data ?? []) {
+    for (const row of convRes ?? []) {
       if (!row.activity_reference_number) continue;
       if (!groups.has(row.activity_reference_number)) {
         groups.set(row.activity_reference_number, {

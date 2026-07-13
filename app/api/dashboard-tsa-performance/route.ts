@@ -32,17 +32,36 @@ export async function GET(req: Request) {
 
     // ── All queries run in parallel — no internal API calls ──────────────────
     // ── Build date-aware queries ──────────────────────────────────────────────
+    // Helper to fetch all rows (pagination)
+    async function fetchAllRows<T = any>(query: any): Promise<T[]> {
+      const PAGE_SIZE = 1000;
+      let allData: T[] = [];
+      let offset = 0;
+
+      while (true) {
+        const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allData = allData.concat(data);
+        if (data.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+
+      return allData;
+    }
+
+    // SI (actual sales) - based on delivery_date
     const siQuery = (() => {
       let q = supabase.from("history").select("actual_sales")
-        .eq("referenceid", referenceid).eq("type_activity", "Delivered / Closed Transaction").gte("date_created", yearStart);
-      if (rangeEnd) q = q.lte("date_created", rangeEnd);
-      return q;
+        .eq("referenceid", referenceid).eq("type_activity", "Delivered / Closed Transaction").gte("delivery_date", yearStart);
+      if (rangeEnd) q = q.lte("delivery_date", rangeEnd);
+      return fetchAllRows(q);
     })();
     const soQuery = (() => {
       let q = supabase.from("history").select("so_amount")
         .eq("referenceid", referenceid).eq("status", "SO-Done").gte("date_created", yearStart);
       if (rangeEnd) q = q.lte("date_created", rangeEnd);
-      return q;
+      return fetchAllRows(q);
     })();
     const obQuery = (() => {
       const q = supabase.from("history").select("id", { count: "exact", head: true })
@@ -77,8 +96,8 @@ export async function GET(req: Request) {
     const [
       userRes,
       quotaRes,
-      siRes,
-      soRes,
+      siData,
+      soData,
       outboundRes,
       quotationsRes,
       pipelineRes,
@@ -117,14 +136,12 @@ export async function GET(req: Request) {
     );
 
     // ── Running SI ────────────────────────────────────────────────────────────
-    if (siRes.error) throw siRes.error;
-    const runningSI = (siRes.data ?? []).reduce(
+    const runningSI = (siData ?? []).reduce(
       (sum, r) => sum + (Number(r.actual_sales) || 0), 0
     );
 
     // ── Running SO ────────────────────────────────────────────────────────────
-    if (soRes.error) throw soRes.error;
-    const runningSO = (soRes.data ?? []).reduce(
+    const runningSO = (soData ?? []).reduce(
       (sum, r) => sum + (Number(r.so_amount) || 0), 0
     );
 

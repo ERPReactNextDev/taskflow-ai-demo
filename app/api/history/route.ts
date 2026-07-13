@@ -6,6 +6,24 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE!
 );
 
+/** Fetch all rows from Supabase (handles pagination for large datasets) */
+async function fetchAllRows<T = any>(query: any): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  let allData: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return allData;
+}
+
 export async function GET(req: Request) {
   try {
     const Xchire_url  = new URL(req.url);
@@ -19,34 +37,29 @@ export async function GET(req: Request) {
 
     const now = new Date();
     
-    // Helper to convert YYYY-MM-DD to local time range
-    function getLocalDateRange(dateStr: string): { start: Date; end: Date } {
-      const [year, month, day] = dateStr.split("-").map(Number);
-      const start = new Date(year, month - 1, day, 0, 0, 0, 0);
-      const end = new Date(year, month - 1, day, 23, 59, 59, 999);
-      return { start, end };
+    // Helper to convert YYYY-MM-DD to date string (YYYY-MM-DD)
+    function formatDateString(d: Date): string {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
     }
 
     // Default range: start of current year
     const defaultStart = new Date(now.getFullYear(), 0, 1);
-    const { start: startDate, end: endDate } = from 
-      ? getLocalDateRange(from)
-      : { start: defaultStart, end: null };
-    
-    const finalEndDate = to ? getLocalDateRange(to).end : endDate;
+    const startDateStr = from ? from : formatDateString(defaultStart);
+    const endDateStr = to ? to : null;
 
     let q = supabase
       .from("history")
       .select("actual_sales")
       .eq("referenceid", referenceId)
       .eq("type_activity", "Delivered / Closed Transaction")
-      .gte("date_created", startDate.toISOString());
+      .gte("delivery_date", startDateStr);
 
-    if (finalEndDate) q = q.lte("date_created", finalEndDate.toISOString());
+    if (endDateStr) q = q.lte("delivery_date", endDateStr);
 
-    const { data, error } = await q;
-    if (error) throw error;
-
+    const data = await fetchAllRows(q);
     const total = data?.reduce((sum, item) => sum + (Number(item.actual_sales) || 0), 0) || 0;
 
     return NextResponse.json({ success: true, total }, { status: 200 });

@@ -13,6 +13,24 @@ const MONTHS = [
 
 const SPF_TYPES = ["spf - special project", "spf - local", "spf - foreign"];
 
+/** Fetch all rows from Supabase (handles pagination for large datasets) */
+async function fetchAllRows<T = any>(query: any): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  let allData: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return allData;
+}
+
 export async function GET(req: Request) {
   try {
     const url  = new URL(req.url);
@@ -42,7 +60,7 @@ export async function GET(req: Request) {
     const yearEnd   = `${year}-12-31T23:59:59Z`;
 
     // 2. Fetch all SO-Done records for those agents for the year
-    const { data: soRows, error: soError } = await supabase
+    const query = supabase
       .from("history")
       .select("referenceid, so_amount, call_type, date_created")
       .in("referenceid", agentIds)
@@ -50,7 +68,7 @@ export async function GET(req: Request) {
       .gte("date_created", yearStart)
       .lte("date_created", yearEnd);
 
-    if (soError) throw soError;
+    const soRows = await fetchAllRows(query);
 
     // 3. Build soMap: { [referenceid]: { [month]: { regular, spf, total } } }
     const soMap: Record<string, Record<string, { regular: number; spf: number; total: number }>> = {};

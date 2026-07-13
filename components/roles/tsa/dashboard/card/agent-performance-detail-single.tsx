@@ -100,6 +100,10 @@ export const AgentPerformanceDetailSingle: React.FC<AgentPerformanceDetailSingle
   });
   const [loadingCsr, setLoadingCsr] = useState(false);
 
+  // ── Self-fetch quotation amount from /api/history-quotations ──────────────
+  const [quotationAmountTotal, setQuotationAmountTotal] = useState<number>(quotationAmount);
+  const [loadingQuotationAmount, setLoadingQuotationAmount] = useState(false);
+
   const fetchSiteVisits = useCallback(async () => {
     if (!referenceid) {
       // Fall back to the prop value if no referenceid
@@ -146,7 +150,7 @@ export const AgentPerformanceDetailSingle: React.FC<AgentPerformanceDetailSingle
       const data: any[] = result.data || [];
 
       const excluded = [
-        "CustomerFeedback/Recommendation", "Job Inquiry", "Job Applicants",
+        "Customer Feedback/Recommendation", "Job Inquiry", "Job Applicants",
         "Supplier/Vendor Product Offer", "Internal Whistle Blower",
         "Threats/Extortion/Intimidation", "Prank Call",
       ];
@@ -216,11 +220,38 @@ export const AgentPerformanceDetailSingle: React.FC<AgentPerformanceDetailSingle
     }
   }, [referenceid, dateRange, tsaResponseTime, quotationHT, nonQuotationHT, spfHandlingDuration]);
 
+  const fetchQuotationAmount = useCallback(async () => {
+    if (!referenceid) {
+      // Fall back to the prop value if no referenceid
+      setQuotationAmountTotal(quotationAmount);
+      return;
+    }
+    setLoadingQuotationAmount(true);
+    try {
+      const url = new URL("/api/history-quotations", window.location.origin);
+      url.searchParams.append("referenceid", referenceid);
+      if (dateRange?.from) url.searchParams.append("from", toDateStr(dateRange.from));
+      if (dateRange?.to)   url.searchParams.append("to", toDateStr(dateRange.to));
+
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("Failed to fetch quotation amount");
+      const data = await res.json();
+
+      setQuotationAmountTotal(data.totalAmount || 0);
+    } catch (err) {
+      console.error("AgentPerformanceDetailSingle: error fetching quotation amount", err);
+      setQuotationAmountTotal(quotationAmount);
+    } finally {
+      setLoadingQuotationAmount(false);
+    }
+  }, [referenceid, dateRange, quotationAmount]);
+
   // Fetch on mount and whenever referenceid / dateRange changes
   useEffect(() => {
     fetchSiteVisits();
     fetchCsrMetrics();
-  }, [fetchSiteVisits, fetchCsrMetrics]);
+    fetchQuotationAmount();
+  }, [fetchSiteVisits, fetchCsrMetrics, fetchQuotationAmount]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -267,7 +298,13 @@ export const AgentPerformanceDetailSingle: React.FC<AgentPerformanceDetailSingle
                   </span>
                 </td>
                 <td className="text-right py-3 px-1 font-mono">{obCalls.toLocaleString()}</td>
-                <td className="text-right py-3 px-1 font-mono">{formatCurrency(quotationAmount)}</td>
+                <td className="text-right py-3 px-1 font-mono">
+                {loadingQuotationAmount ? (
+                  <span className="text-gray-400 animate-pulse">…</span>
+                ) : (
+                  formatCurrency(quotationAmountTotal)
+                )}
+              </td>
                 <td className="text-right py-3 px-1 font-mono">
                   {loadingSiteVisits ? (
                     <span className="text-gray-400 animate-pulse">…</span>

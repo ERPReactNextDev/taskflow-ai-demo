@@ -6,6 +6,24 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE!
 );
 
+/** Fetch all rows from Supabase (handles pagination for large datasets) */
+async function fetchAllRows<T = any>(query: any): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  let allData: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return allData;
+}
+
 const MONTH_NAMES = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -47,8 +65,8 @@ export async function GET(req: Request) {
     const agentIds = (agentRows ?? []).map((a) => a.ReferenceID).filter(Boolean);
 
     const currentYear = new Date().getFullYear();
-    const startDate   = from ? `${from}T00:00:00Z` : `${currentYear}-01-01T00:00:00Z`;
-    const endDate     = to   ? `${to}T23:59:59Z`   : null;
+    const startDate   = from ? from : `${currentYear}-01-01`;
+    const endDate     = to   ? to : null;
 
     if (agentIds.length === 0) {
       const endMonth   = to   ? new Date(to).getMonth()   : new Date().getMonth();
@@ -60,21 +78,20 @@ export async function GET(req: Request) {
     // 2. Fetch Delivered / Closed Transaction records
     let query = supabase
       .from("history")
-      .select("actual_sales, date_created")
+      .select("actual_sales, delivery_date")
       .in("referenceid", agentIds)
       .eq("type_activity", "Delivered / Closed Transaction")
-      .gte("date_created", startDate);
+      .gte("delivery_date", startDate);
 
-    if (endDate) query = query.lte("date_created", endDate);
+    if (endDate) query = query.lte("delivery_date", endDate);
 
-    const { data, error } = await query;
-    if (error) throw error;
+    const data = await fetchAllRows(query);
 
     // 3a. Weekly granularity — bucket by week-of-month
     if (granularity === "weekly") {
       const weekTotals: Record<string, number> = { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 };
       for (const record of data ?? []) {
-        const date = new Date(record.date_created);
+        const date = new Date(record.delivery_date);
         if (isNaN(date.getTime())) continue;
         const day   = date.getDate();
         const week  = day <= 7 ? "W1" : day <= 14 ? "W2" : day <= 21 ? "W3" : day <= 28 ? "W4" : "W5";
@@ -87,7 +104,7 @@ export async function GET(req: Request) {
     // 3b. Monthly granularity (default)
     const monthlyTotals = new Array(12).fill(0);
     for (const record of data ?? []) {
-      const date = new Date(record.date_created);
+      const date = new Date(record.delivery_date);
       if (isNaN(date.getTime())) continue;
       monthlyTotals[date.getMonth()] += Number(record.actual_sales) || 0;
     }

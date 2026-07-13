@@ -11,6 +11,24 @@ const MONTHS = [
   "July","August","September","October","November","December",
 ];
 
+/** Fetch all rows from Supabase (handles pagination for large datasets) */
+async function fetchAllRows<T = any>(query: any): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  let allData: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return allData;
+}
+
 export async function GET(req: Request) {
   try {
     const url  = new URL(req.url);
@@ -40,7 +58,7 @@ export async function GET(req: Request) {
     const yearEnd   = `${year}-12-31T23:59:59Z`;
 
     // 2. Fetch all Outbound - Touchbase records for those agents for the year
-    const { data: obRows, error: obError } = await supabase
+    const query = supabase
       .from("history")
       .select("referenceid, date_created")
       .in("referenceid", agentIds)
@@ -48,7 +66,7 @@ export async function GET(req: Request) {
       .gte("date_created", yearStart)
       .lte("date_created", yearEnd);
 
-    if (obError) throw obError;
+    const obRows = await fetchAllRows(query);
 
     // 3. Build obMap: { [referenceid]: { [month]: count } }
     const obMap: Record<string, Record<string, number>> = {};

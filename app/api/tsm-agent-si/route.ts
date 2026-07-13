@@ -11,6 +11,24 @@ const MONTHS = [
   "July","August","September","October","November","December",
 ];
 
+/** Fetch all rows from Supabase (handles pagination for large datasets) */
+async function fetchAllRows<T = any>(query: any): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  let allData: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return allData;
+}
+
 export async function GET(req: Request) {
   try {
     const url  = new URL(req.url);
@@ -36,26 +54,26 @@ export async function GET(req: Request) {
     }
 
     const agentIds  = agents.map((a) => a.ReferenceID);
-    const yearStart = `${year}-01-01T00:00:00Z`;
-    const yearEnd   = `${year}-12-31T23:59:59Z`;
+    const yearStart = `${year}-01-01`;
+    const yearEnd   = `${year}-12-31`;
 
     // 2. Fetch all Delivered / Closed Transaction records for those agents for the year
-    const { data: siRows, error: siError } = await supabase
+    const query = supabase
       .from("history")
-      .select("referenceid, actual_sales, date_created")
+      .select("referenceid, actual_sales, delivery_date")
       .in("referenceid", agentIds)
       .eq("type_activity", "Delivered / Closed Transaction")
-      .gte("date_created", yearStart)
-      .lte("date_created", yearEnd);
+      .gte("delivery_date", yearStart)
+      .lte("delivery_date", yearEnd);
 
-    if (siError) throw siError;
+    const siRows = await fetchAllRows(query);
 
     // 3. Build siMap: { [referenceid]: { [month]: amount } }
     const siMap: Record<string, Record<string, number>> = {};
 
     for (const row of siRows ?? []) {
       const ref   = row.referenceid;
-      const month = MONTHS[new Date(row.date_created).getMonth()];
+      const month = MONTHS[new Date(row.delivery_date).getMonth()];
       const amt   = Number(row.actual_sales) || 0;
 
       if (!siMap[ref])        siMap[ref] = {};

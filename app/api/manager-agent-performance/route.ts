@@ -52,9 +52,9 @@ async function connectToDatabase() {
 }
 
 /**
- * GET /api/tsm-agent-performance?tsm=<id>&from=<YYYY-MM-DD>&to=<YYYY-MM-DD>
+ * GET /api/manager-agent-performance?manager=<id>&from=<YYYY-MM-DD>&to=<YYYY-MM-DD>
  *
- * Returns per-agent performance data for all active TSAs under the given TSM.
+ * Returns per-agent performance data for all active TSAs under the given Manager.
  * Columns match the TSA single agent view:
  *   plan, SI actual, SO actual, SI %, OB calls, quotation amount,
  *   site visits, account dev, time spent (ms), TSA response time,
@@ -103,22 +103,22 @@ async function calcCsrForAgents(
 ): Promise<Record<string, CsrMetrics>> {
   const result: Record<string, CsrMetrics> = {};
   try {
-    console.log("[tsm-agent-performance] calcCsrForAgents called for agents:", agentIds);
+    console.log("[manager-agent-performance] calcCsrForAgents called for agents:", agentIds);
     const { db } = await connectToDatabase();
-    console.log("[tsm-agent-performance] Connected to MongoDB for calcCsrForAgents");
+    console.log("[manager-agent-performance] Connected to MongoDB for calcCsrForAgents");
     const col = db.collection("activity");
 
     const rows = await col
       .find({ $or: [{ referenceid: { $in: agentIds } }, { agent: { $in: agentIds } }] })
       .toArray();
     
-    console.log("[tsm-agent-performance] Found", rows.length, "activity rows in MongoDB");
-    console.log("[tsm-agent-performance] Sample row:", rows[0]);
+    console.log("[manager-agent-performance] Found", rows.length, "activity rows in MongoDB");
+    console.log("[manager-agent-performance] Sample row:", rows[0]);
 
     const fromTs = new Date(fromISO).getTime();
     const toTs   = new Date(toISO).getTime();
-    console.log("[tsm-agent-performance] Date range (ts):", fromTs, "-", toTs);
-    console.log("[tsm-agent-performance] Date range (ISO):", fromISO, "-", toISO);
+    console.log("[manager-agent-performance] Date range (ts):", fromTs, "-", toTs);
+    console.log("[manager-agent-performance] Date range (ISO):", fromISO, "-", toISO);
 
     // per-agent accumulators
     const acc: Record<string, {
@@ -129,29 +129,29 @@ async function calcCsrForAgents(
     }> = {};
 
     for (const row of rows) {
-      console.log("[tsm-agent-performance] Processing row:", row._id, "status:", row.status, "date_created:", row.date_created, "wrap_up:", row.wrap_up);
+      console.log("[manager-agent-performance] Processing row:", row._id, "status:", row.status, "date_created:", row.date_created, "wrap_up:", row.wrap_up);
       if (row.status !== "Closed" && row.status !== "Converted into Sales") {
-        console.log("[tsm-agent-performance] Skipping row (wrong status):", row._id);
+        console.log("[manager-agent-performance] Skipping row (wrong status):", row._id);
         continue;
       }
       const created = new Date(row.date_created).getTime();
-      console.log("[tsm-agent-performance] Row created ts:", created);
+      console.log("[manager-agent-performance] Row created ts:", created);
       if (isNaN(created)) {
-        console.log("[tsm-agent-performance] Skipping row (invalid date):", row._id);
+        console.log("[manager-agent-performance] Skipping row (invalid date):", row._id);
         continue;
       }
       if (created < fromTs || created > toTs) {
-        console.log("[tsm-agent-performance] Skipping row (out of date range):", row._id);
+        console.log("[manager-agent-performance] Skipping row (out of date range):", row._id);
         continue;
       }
       if (CSR_EXCLUDED.includes(row.wrap_up)) {
-        console.log("[tsm-agent-performance] Skipping row (excluded wrap_up):", row._id, row.wrap_up);
+        console.log("[manager-agent-performance] Skipping row (excluded wrap_up):", row._id, row.wrap_up);
         continue;
       }
 
       const ref = row.referenceid || row.agent;
       if (!ref || !agentIds.includes(ref)) {
-        console.log("[tsm-agent-performance] Skipping row (ref not in agentIds):", row._id, ref);
+        console.log("[manager-agent-performance] Skipping row (ref not in agentIds):", row._id, ref);
         continue;
       }
 
@@ -160,47 +160,43 @@ async function calcCsrForAgents(
 
       const tsaAck  = new Date(row.tsa_acknowledge_date).getTime();
       const endorsed = new Date(row.ticket_endorsed).getTime();
-      console.log("[tsm-agent-performance] Row tsaAck:", tsaAck, "endorsed:", endorsed);
+      console.log("[manager-agent-performance] Row tsaAck:", tsaAck, "endorsed:", endorsed);
       if (!isNaN(tsaAck) && !isNaN(endorsed) && tsaAck >= endorsed) {
         a.rtTotal += (tsaAck - endorsed) / 3600000;
         a.rtCount++;
-        console.log("[tsm-agent-performance] Added to rtTotal:", (tsaAck - endorsed)/3600000, "new rtCount:", a.rtCount);
+        console.log("[manager-agent-performance] Added to rtTotal:", (tsaAck - endorsed)/3600000, "new rtCount:", a.rtCount);
       }
 
       const received  = new Date(row.ticket_received).getTime();
       const tsaHandle = new Date(row.tsa_handling_time).getTime();
-      const tsmHandle = new Date(row.tsm_handling_time).getTime();
       const managerHandle = new Date(row.manager_handling_time).getTime();
       let baseHT = 0;
       if (!isNaN(tsaHandle) && !isNaN(received) && tsaHandle >= received) {
         baseHT = (tsaHandle - received) / 3600000;
-        console.log("[tsm-agent-performance] Using tsaHandle baseHT:", baseHT);
-      } else if (!isNaN(tsmHandle) && !isNaN(received) && tsmHandle >= received) {
-        baseHT = (tsmHandle - received) / 3600000;
-        console.log("[tsm-agent-performance] Using tsmHandle baseHT:", baseHT);
+        console.log("[manager-agent-performance] Using tsaHandle baseHT:", baseHT);
       } else if (!isNaN(managerHandle) && !isNaN(received) && managerHandle >= received) {
         baseHT = (managerHandle - received) / 3600000;
-        console.log("[tsm-agent-performance] Using managerHandle baseHT:", baseHT);
+        console.log("[manager-agent-performance] Using managerHandle baseHT:", baseHT);
       } else {
-        console.log("[tsm-agent-performance] Skipping row (no baseHT):", row._id, "received:", received, "tsaHandle:", tsaHandle, "tsmHandle:", tsmHandle, "managerHandle:", managerHandle);
+        console.log("[manager-agent-performance] Skipping row (no baseHT):", row._id, "received:", received, "tsaHandle:", tsaHandle, "managerHandle:", managerHandle);
       }
       if (!baseHT) continue;
 
       const remarks = (row.remarks || "").toUpperCase();
-      console.log("[tsm-agent-performance] Row remarks:", remarks);
+      console.log("[manager-agent-performance] Row remarks:", remarks);
       if (remarks === "QUOTATION FOR APPROVAL" || remarks === "SOLD") {
         a.qTotal += baseHT; a.qCount++;
-        console.log("[tsm-agent-performance] Added to qTotal:", baseHT, "new qCount:", a.qCount);
+        console.log("[manager-agent-performance] Added to qTotal:", baseHT, "new qCount:", a.qCount);
       } else if (remarks.includes("SPF")) {
         a.spfTotal += baseHT; a.spfCount++;
-        console.log("[tsm-agent-performance] Added to spfTotal:", baseHT, "new spfCount:", a.spfCount);
+        console.log("[manager-agent-performance] Added to spfTotal:", baseHT, "new spfCount:", a.spfCount);
       } else {
         a.nqTotal += baseHT; a.nqCount++;
-        console.log("[tsm-agent-performance] Added to nqTotal:", baseHT, "new nqCount:", a.nqCount);
+        console.log("[manager-agent-performance] Added to nqTotal:", baseHT, "new nqCount:", a.nqCount);
       }
     }
 
-    console.log("[tsm-agent-performance] Final accumulators:", acc);
+    console.log("[manager-agent-performance] Final accumulators:", acc);
 
     for (const ref of agentIds) {
       const a = acc[ref];
@@ -214,7 +210,7 @@ async function calcCsrForAgents(
         : { avgResponseTime: 0, avgQuotationHT: 0, avgNonQuotationHT: 0, avgSpfHT: 0 };
     }
   } catch (err) {
-    console.error("tsm-agent-performance: CSR metrics error", err);
+    console.error("manager-agent-performance: CSR metrics error", err);
     for (const ref of agentIds)
       result[ref] = { avgResponseTime: 0, avgQuotationHT: 0, avgNonQuotationHT: 0, avgSpfHT: 0 };
   }
@@ -232,7 +228,16 @@ async function calcTimeSpentForAgents(
 ): Promise<Record<string, number>> {
   const result: Record<string, number> = {};
   try {
-    
+    // Fetch from activity table (timestamp date_created)
+    const activityQ = (() => {
+      let q = supabase.from("activity")
+        .select("referenceid, start_date, end_date")
+        .in("referenceid", agentIds)
+        .gte("date_created", rangeStartTs)
+        .lte("date_created", rangeEndTs);
+      return fetchAllRows(q);
+    })();
+
     // Fetch from history table (date-only date_created)
     const historyQ = (() => {
       let q = supabase.from("history")
@@ -273,11 +278,11 @@ async function calcTimeSpentForAgents(
       return fetchAllRows(q);
     })();
 
-    const [historyData, revisedData, meetingsData, docsData] = await Promise.all([
-      historyQ, revisedQ, meetingsQ, docsQ
+    const [activityData, historyData, revisedData, meetingsData, docsData] = await Promise.all([
+      activityQ, historyQ, revisedQ, meetingsQ, docsQ
     ]);
 
-    const allData = [...historyData, ...revisedData, ...meetingsData, ...docsData];
+    const allData = [...activityData, ...historyData, ...revisedData, ...meetingsData, ...docsData];
 
     for (const row of allData) {
       const ref = row.referenceid;
@@ -291,7 +296,7 @@ async function calcTimeSpentForAgents(
       }
     }
   } catch (err) {
-    console.error("tsm-agent-performance: time spent error", err);
+    console.error("manager-agent-performance: time spent error", err);
   }
   return result;
 }
@@ -301,31 +306,31 @@ async function calcTimeSpentForAgents(
 export async function GET(req: Request) {
   try {
     const url  = new URL(req.url);
-    const tsm  = url.searchParams.get("tsm");
+    const manager  = url.searchParams.get("manager");
     const from = url.searchParams.get("from"); // YYYY-MM-DD
     const to   = url.searchParams.get("to");   // YYYY-MM-DD
 
-    console.log("[tsm-agent-performance] GET called with tsm:", tsm, "from:", from, "to:", to);
+    console.log("[manager-agent-performance] GET called with manager:", manager, "from:", from, "to:", to);
 
-    if (!tsm) {
+    if (!manager) {
       return NextResponse.json(
-        { success: false, error: "Missing tsm parameter." },
+        { success: false, error: "Missing manager parameter." },
         { status: 400 }
       );
     }
 
-    // ── 1. Resolve active TSAs under this TSM ─────────────────────────────────
-    console.log("[tsm-agent-performance] Fetching agents from Supabase");
+    // ── 1. Resolve active TSAs under this Manager ─────────────────────────────────
+    console.log("[manager-agent-performance] Fetching agents from Supabase");
     const { data: agentRows, error: agentErr } = await supabase
       .from("users")
       .select("ReferenceID, Firstname, Lastname")
-      .eq("TSM", tsm)
+      .eq("Manager", manager)
       .eq("Role", "Territory Sales Associate")
       .not("Status", "in", '("Resigned","Terminated","Inactive")')
       .order("Lastname", { ascending: true });
 
     if (agentErr) {
-      console.error("[tsm-agent-performance] Error fetching agents from Supabase:", agentErr);
+      console.error("[manager-agent-performance] Error fetching agents from Supabase:", agentErr);
       throw agentErr;
     }
 
@@ -334,7 +339,7 @@ export async function GET(req: Request) {
       name: `${a.Firstname ?? ""} ${a.Lastname ?? ""}`.trim(),
     }));
 
-    console.log("[tsm-agent-performance] Found agents:", agents);
+    console.log("[manager-agent-performance] Found agents:", agents);
 
     if (agents.length === 0) {
       return NextResponse.json({ success: true, agents: [] }, { status: 200 });
@@ -449,7 +454,7 @@ export async function GET(req: Request) {
         .eq("year", quotaYear)
     );
 
-    console.log("[tsm-agent-performance] Starting parallel queries");
+    console.log("[manager-agent-performance] Starting parallel queries");
     const [
       siData,
       soData,
@@ -465,7 +470,7 @@ export async function GET(req: Request) {
       calcCsrForAgents(agentIds, rangeStartTs, rangeEndTs),
       calcTimeSpentForAgents(agentIds, rangeStartDate, rangeEndDate, rangeStartTs, rangeEndTs),
     ]);
-    console.log("[tsm-agent-performance] Parallel queries complete");
+    console.log("[manager-agent-performance] Parallel queries complete");
 
     // ── 4. Aggregate per agent ────────────────────────────────────────────────
 
@@ -514,7 +519,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, agents: result }, { status: 200 });
   } catch (err: any) {
-    console.error("tsm-agent-performance error:", err);
+    console.error("manager-agent-performance error:", err);
     return NextResponse.json(
       { success: false, error: err.message || "Failed to fetch agent performance." },
       { status: 500 }
