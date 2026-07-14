@@ -24,11 +24,20 @@ async function fetchAllRows<T = any>(query: any): Promise<T[]> {
   return allData;
 }
 
-async function getAgentIds(tsm: string): Promise<string[]> {
-  const { data } = await supabase.from("users").select("ReferenceID")
+async function getAgentIds(tsm: string): Promise<{ ids: string[]; agents: { referenceid: string; name: string }[] }> {
+  const { data } = await supabase.from("users")
+    .select("ReferenceID, Firstname, Lastname")
     .eq("TSM", tsm).eq("Role", "Territory Sales Associate")
-    .not("Status", "in", '("Resigned","Terminated","Inactive")');
-  return (data ?? []).map((a) => a.ReferenceID);
+    .not("Status", "in", '("Resigned","Terminated","Inactive")')
+    .order("Lastname", { ascending: true });
+  const rows = data ?? [];
+  return {
+    ids: rows.map((a) => a.ReferenceID),
+    agents: rows.map((a) => ({
+      referenceid: a.ReferenceID,
+      name: `${a.Firstname ?? ""} ${a.Lastname ?? ""}`.trim(),
+    })),
+  };
 }
 
 export async function GET(req: Request) {
@@ -40,8 +49,8 @@ export async function GET(req: Request) {
 
     if (!tsm) return NextResponse.json({ success: false, error: "Missing tsm." }, { status: 400 });
 
-    const agentIds = await getAgentIds(tsm);
-    if (agentIds.length === 0) return NextResponse.json({ success: true, total: 0 }, { status: 200 });
+    const { ids: agentIds, agents } = await getAgentIds(tsm);
+    if (agentIds.length === 0) return NextResponse.json({ success: true, total: 0, records: [], agents: [] }, { status: 200 });
 
     const now = new Date();
     
@@ -58,16 +67,16 @@ export async function GET(req: Request) {
     const startDateStr = from ? from : formatDateString(defaultStart);
     const endDateStr = to ? to : null;
 
-    let q = supabase.from("history").select("actual_sales")
+    let q = supabase.from("history").select("referenceid, actual_sales, delivery_date")
       .in("referenceid", agentIds)
       .eq("type_activity", "Delivered / Closed Transaction")
       .gte("delivery_date", startDateStr);
     if (endDateStr) q = q.lte("delivery_date", endDateStr);
 
-    const data = await fetchAllRows(q);
+    const records = await fetchAllRows(q);
 
-    const total = (data ?? []).reduce((sum, r) => sum + (Number(r.actual_sales) || 0), 0);
-    return NextResponse.json({ success: true, total }, { status: 200 });
+    const total = (records ?? []).reduce((sum, r) => sum + (Number(r.actual_sales) || 0), 0);
+    return NextResponse.json({ success: true, total, records, agents }, { status: 200 });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

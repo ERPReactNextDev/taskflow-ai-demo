@@ -309,15 +309,6 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                     <td className={tdCls}>{fmtPeso(totals.plan)}</td>
                     <td className={`${tdCls} text-green-700`}>{fmtPeso(totals.siActual)}</td>
                     <td className={tdCls}>{fmtPeso(totals.soActual)}</td>
-                    <td className={`${tdCls} font-medium`}>
-                      <span className={
-                        totalSiPct >= 100 ? "text-green-600"
-                          : totalSiPct >= 70 ? "text-yellow-600"
-                            : "text-red-600"
-                      }>
-                        {totalSiPct}%
-                      </span>
-                    </td>
                     <td className={tdCls}>{totals.obCalls}{totals.obCallsTarget > 0 ? `/${totals.obCallsTarget}` : ""}</td>
                     <td className={tdCls}>
                       {totals.callsToQuote > 0 || totals.obCalls > 0

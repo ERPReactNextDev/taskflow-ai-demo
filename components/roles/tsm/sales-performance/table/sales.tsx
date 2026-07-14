@@ -4,46 +4,21 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon, Download } from "lucide-react";
-import { supabase } from "@/utils/supabase";
 import ExcelJS from "exceljs";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableFooter,
+  TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem,
+  SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ReferenceLine,
-  ResponsiveContainer,
-  Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ReferenceLine, ResponsiveContainer, Cell,
 } from "recharts";
 
-
-interface Sales {
-  id: number;
-  actual_sales?: number;
-  so_amount?: number;
-  delivery_date?: string;
-  target_quota: string;
-  referenceid: string;
-  agentName?: string;
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface UserDetails {
   referenceid: string;
@@ -53,12 +28,12 @@ interface UserDetails {
   lastname: string;
 }
 
-interface Agent {
-  ReferenceID: string;
-  Firstname: string;
-  Lastname: string;
-  Role: string;
-  TargetQuota: string;
+interface AgentRow { referenceid: string; name: string; }
+
+interface SiRecord {
+  referenceid: string;
+  actual_sales: number;
+  delivery_date: string;
 }
 
 interface SalesProps {
@@ -67,6 +42,8 @@ interface SalesProps {
   setDateCreatedFilterRangeAction: React.Dispatch<React.SetStateAction<any>>;
   userDetails: UserDetails;
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const countWorkingDays = (from: Date, to: Date): number => {
   let count = 0;
@@ -81,63 +58,51 @@ const countWorkingDays = (from: Date, to: Date): number => {
   return count;
 };
 
-const CustomDailyTooltip = ({ active, payload, label }: any) => {
-  if (!active || !payload || !payload.length) return null;
-  const data = payload[0]?.payload;
-  const hit = data.actualSales >= data.dailyQuota;
+const toLocalDateStr = (d: Date) => {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+// ─── Tooltip ──────────────────────────────────────────────────────────────────
+
+const CustomDailyTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  const data = payload[0]?.payload;
+  const hit  = data.actualSales >= data.dailyQuota;
   return (
     <div className="bg-white border border-gray-200 rounded shadow-md p-3 text-xs min-w-[220px]">
       <p className="font-bold text-gray-700 mb-2">{label}</p>
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mb-1">
         <span className="text-gray-500">Daily Quota</span>
-        <span className="font-semibold text-right">
-          {data.dailyQuota.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}
-        </span>
+        <span className="font-semibold text-right">{data.dailyQuota.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}</span>
         <span className="text-gray-500">Total Sales</span>
-        <span className={`font-semibold text-right ${hit ? "text-green-600" : "text-red-500"}`}>
-          {data.actualSales.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}
-        </span>
+        <span className={`font-semibold text-right ${hit ? "text-green-600" : "text-red-500"}`}>{data.actualSales.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}</span>
         <span className="text-gray-500">Variance</span>
-        <span className={`font-semibold text-right ${hit ? "text-green-600" : "text-red-500"}`}>
-          {(data.actualSales - data.dailyQuota).toLocaleString("en-PH", { style: "currency", currency: "PHP" })}
-        </span>
+        <span className={`font-semibold text-right ${hit ? "text-green-600" : "text-red-500"}`}>{(data.actualSales - data.dailyQuota).toLocaleString("en-PH", { style: "currency", currency: "PHP" })}</span>
       </div>
-      <p className={`text-xs font-bold mb-2 ${hit ? "text-green-600" : "text-red-500"}`}>
-        {hit ? "✓ Hit" : "✗ Missed"}
-      </p>
+      <p className={`text-xs font-bold mb-2 ${hit ? "text-green-600" : "text-red-500"}`}>{hit ? "✓ Hit" : "✗ Missed"}</p>
       {data.agentsBreakdown?.length > 0 && (
         <>
-          <p className="text-gray-400 font-semibold uppercase tracking-wide text-[10px] mb-1">
-            Agent Breakdown
-          </p>
+          <p className="text-gray-400 font-semibold uppercase tracking-wide text-[10px] mb-1">Agent Breakdown</p>
           <div className="space-y-1.5">
-            {data.agentsBreakdown
-              .sort((a: any, b: any) => b.sales - a.sales)
-              .map((agent: any, i: number) => (
-                <div key={i} className="flex flex-col gap-0.5 border-b border-gray-100 pb-1 last:border-0 last:pb-0">
-                  <div className="flex justify-between gap-4 items-center">
-                    <span className="capitalize text-gray-700 font-semibold">{agent.name}</span>
-                    <span className={`text-xs font-bold ${agent.hit ? "text-green-600" : "text-red-500"}`}>
-                      {agent.hit ? "✓ Hit" : "✗ Missed"}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
-                    <span>Quota</span>
-                    <span className="font-medium text-gray-600 text-right">
-                      {agent.dailyQuota.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}
-                    </span>
-                    <span>Sales</span>
-                    <span className={`font-medium text-right ${agent.hit ? "text-green-600" : "text-red-500"}`}>
-                      {agent.sales.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}
-                    </span>
-                    <span>Variance</span>
-                    <span className={`font-medium text-right ${agent.hit ? "text-green-600" : "text-red-500"}`}>
-                      {(agent.sales - agent.dailyQuota).toLocaleString("en-PH", { style: "currency", currency: "PHP" })}
-                    </span>
-                  </div>
+            {data.agentsBreakdown.sort((a: any, b: any) => b.sales - a.sales).map((agent: any, i: number) => (
+              <div key={i} className="flex flex-col gap-0.5 border-b border-gray-100 pb-1 last:border-0 last:pb-0">
+                <div className="flex justify-between gap-4 items-center">
+                  <span className="capitalize text-gray-700 font-semibold">{agent.name}</span>
+                  <span className={`text-xs font-bold ${agent.hit ? "text-green-600" : "text-red-500"}`}>{agent.hit ? "✓ Hit" : "✗ Missed"}</span>
                 </div>
-              ))}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
+                  <span>Quota</span><span className="font-medium text-gray-600 text-right">{agent.dailyQuota.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}</span>
+                  <span>Sales</span><span className={`font-medium text-right ${agent.hit ? "text-green-600" : "text-red-500"}`}>{agent.sales.toLocaleString("en-PH", { style: "currency", currency: "PHP" })}</span>
+                  <span>Variance</span><span className={`font-medium text-right ${agent.hit ? "text-green-600" : "text-red-500"}`}>{(agent.sales - agent.dailyQuota).toLocaleString("en-PH", { style: "currency", currency: "PHP" })}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </>
       )}
@@ -145,116 +110,82 @@ const CustomDailyTooltip = ({ active, payload, label }: any) => {
   );
 };
 
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export const SalesTable: React.FC<SalesProps> = ({
   referenceid,
-  userDetails,
   dateCreatedFilterRange,
-  setDateCreatedFilterRangeAction,
 }) => {
-  const [activities, setActivities] = useState<Sales[]>([]);
-  const [loadingActivities, setLoadingActivities] = useState(false);
-  const [errorActivities, setErrorActivities] = useState<string | null>(null);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<string>("all");
+  const [siRecords,        setSiRecords]        = useState<SiRecord[]>([]);
+  const [agents,           setAgents]           = useState<AgentRow[]>([]);
+  const [quotaMap,         setQuotaMap]         = useState<Record<string, number>>({});
+  const [loading,          setLoading]          = useState(false);
+  const [error,            setError]            = useState<string | null>(null);
+  const [selectedAgent,    setSelectedAgent]    = useState<string>("all");
   const [totalWorkingDays, setTotalWorkingDays] = useState<26 | 22>(26);
 
-  const fetchActivities = useCallback(() => {
-    if (!referenceid) { setActivities([]); return; }
-
-    setLoadingActivities(true);
-    setErrorActivities(null);
-
-    const now = new Date();
-    const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1);
-    const defaultTo = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-    const from = dateCreatedFilterRange?.from
-      ? new Date(dateCreatedFilterRange.from).toISOString().slice(0, 10)
-      : defaultFrom.toISOString().slice(0, 10);
-    const to = dateCreatedFilterRange?.to
-      ? new Date(dateCreatedFilterRange.to).toISOString().slice(0, 10)
-      : defaultTo.toISOString().slice(0, 10);
-
-    const url = new URL("/api/sales-performance/tsm/fetch", window.location.origin);
-    url.searchParams.append("referenceid", referenceid);
-    url.searchParams.append("from", from);
-    url.searchParams.append("to", to);
-
-    fetch(url.toString())
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Failed to fetch activities");
-        return res.json();
-      })
-      .then((data) => setActivities(data.activities || []))
-      .catch((err) => setErrorActivities(err.message))
-      .finally(() => setLoadingActivities(false));
-  }, [referenceid, dateCreatedFilterRange]);
-
-  useEffect(() => {
-    fetchActivities();
-    if (!referenceid) return;
-
-    const channel = supabase
-      .channel(`public:history:manager=eq.${referenceid}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "history", filter: `manager=eq.${referenceid}` },
-        (payload) => {
-          const newRecord = payload.new as Sales;
-          const oldRecord = payload.old as Sales;
-          setActivities((curr) => {
-            switch (payload.eventType) {
-              case "INSERT":
-                return curr.some((a) => a.id === newRecord.id) ? curr : [...curr, newRecord];
-              case "UPDATE":
-                return curr.map((a) => a.id === newRecord.id ? newRecord : a);
-              case "DELETE":
-                return curr.filter((a) => a.id !== oldRecord.id);
-              default:
-                return curr;
-            }
-          });
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [referenceid, fetchActivities]);
-
-  useEffect(() => {
-    if (!userDetails.referenceid) return;
-    const fetchAgents = async () => {
-      try {
-        const response = await fetch(
-          `/api/fetch-all-user?id=${encodeURIComponent(userDetails.referenceid)}`
-        );
-        if (!response.ok) throw new Error("Failed to fetch agents");
-        setAgents(await response.json());
-      } catch (err) {
-        console.error("Error fetching agents:", err);
-        setErrorActivities("Failed to load agents.");
-      }
-    };
-    fetchAgents();
-  }, [userDetails.referenceid]);
-
+  // ── Date range ─────────────────────────────────────────────────────────────
   const { fromDate, toDate } = useMemo(() => {
-    let from: Date;
-    let to: Date;
+    let from: Date, to: Date;
     if (dateCreatedFilterRange?.from && dateCreatedFilterRange?.to) {
       from = new Date(dateCreatedFilterRange.from);
-      to = new Date(dateCreatedFilterRange.to);
+      to   = new Date(dateCreatedFilterRange.to);
     } else {
       const now = new Date();
       from = new Date(now.getFullYear(), now.getMonth(), 1);
-      to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      to   = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     }
     from.setHours(0, 0, 0, 0);
     to.setHours(23, 59, 59, 999);
     return { fromDate: from, toDate: to };
   }, [dateCreatedFilterRange]);
 
-  // ✅ Par — always dynamic up to today, regardless of date filter
+  const year = fromDate.getFullYear().toString();
+
+  // ── Fetch (no row limits — server paginates) ───────────────────────────────
+  const fetchData = useCallback(async () => {
+    if (!referenceid) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const fromStr = toLocalDateStr(fromDate);
+      const toStr   = toLocalDateStr(toDate);
+      const tsm     = encodeURIComponent(referenceid);
+
+      // 1. SI raw records + agents — tsm-history-si now returns records[] and agents[]
+      const [siRes, quotaRes] = await Promise.all([
+        fetch(`/api/tsm-history-si?tsm=${tsm}&from=${fromStr}&to=${toStr}`),
+        fetch(`/api/tsm-agent-quota?tsm=${tsm}&year=${encodeURIComponent(year)}`),
+      ]);
+
+      if (!siRes.ok) throw new Error("Failed to fetch SI data");
+      const siData = await siRes.json();
+      setSiRecords(siData.records ?? []);
+      setAgents(siData.agents ?? []);
+
+      // 2. Quota — quotas is { [referenceid]: { [month]: amount } }
+      // Pick the month matching fromDate
+      if (quotaRes.ok) {
+        const quotaData = await quotaRes.json();
+        const qMap: Record<string, number> = {};
+        const quotas: Record<string, Record<string, number>> = quotaData.quotas ?? {};
+        const month = MONTHS[fromDate.getMonth()];
+        for (const [refId, monthMap] of Object.entries(quotas)) {
+          // Use the specific month's quota
+          qMap[refId] = (monthMap as Record<string, number>)[month] ?? 0;
+        }
+        setQuotaMap(qMap);
+      }
+    } catch (err: any) {
+      setError(err.message ?? "Failed to load data.");
+    } finally {
+      setLoading(false);
+    }
+  }, [referenceid, fromDate, toDate, year]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Working days ───────────────────────────────────────────────────────────
   const workingDaysSoFar = useMemo(() => {
     const today = new Date();
     today.setHours(23, 59, 59, 999);
@@ -263,314 +194,202 @@ export const SalesTable: React.FC<SalesProps> = ({
     return countWorkingDays(fromDate, rangeEnd);
   }, [fromDate, toDate]);
 
-  // ✅ Par always uses actual elapsed days
-  const parPercentage = (workingDaysSoFar / totalWorkingDays) * 100;
+  const parPercentage    = (workingDaysSoFar / totalWorkingDays) * 100;
+  const hasDateRange     = !!(dateCreatedFilterRange?.from && dateCreatedFilterRange?.to);
 
-  // ✅ Quota: full month when no date filter; prorate only when date filter is active
-  const hasDateRange = !!(dateCreatedFilterRange?.from && dateCreatedFilterRange?.to);
-  const getProratedQuota = (fullQuota: number) =>
-    hasDateRange
-      ? Math.round((fullQuota / totalWorkingDays) * workingDaysSoFar)
-      : fullQuota;
+  // Full-month quota = sum of months in the selected year range
+  // For the selected date range, we prorate by working days
+  const getProratedQuota = (full: number) =>
+    hasDateRange ? Math.round((full / totalWorkingDays) * workingDaysSoFar) : full;
 
-  const filteredActivitiesByDate = useMemo(() => {
-    const fromTime = fromDate.getTime();
-    const toTime = toDate.getTime();
-    return activities.filter((activity) => {
-      if (!activity.delivery_date) return false;
-      const t = new Date(activity.delivery_date).getTime();
-      return t >= fromTime && t <= toTime;
-    });
-  }, [activities, fromDate, toDate]);
-
-  const activitiesByAgent = useMemo(() => {
-    const map: Record<string, Sales[]> = {};
-    filteredActivitiesByDate.forEach((activity) => {
-      const key = activity.referenceid;
-      if (!map[key]) map[key] = [];
-      map[key].push(activity);
-    });
-    return map;
-  }, [filteredActivitiesByDate]);
-
+  // ── Per-agent aggregation from raw SI records ──────────────────────────────
   const salesDataPerAgent = useMemo(() => {
-    return agents
-      .filter((a) => a.Role === "Territory Sales Associate")
-      .map((agent) => {
-        const agentId = agent.ReferenceID;
-        const sales = activitiesByAgent[agentId] || [];
-        const totalActualSales = sales.reduce((sum, s) => sum + (s.actual_sales ?? 0), 0);
-        const totalSoAmount = sales.reduce((sum, s) => sum + (s.so_amount ?? 0), 0);
-        const fullMonthQuota =
-          parseFloat((agent.TargetQuota ?? "0").replace(/[^0-9.-]+/g, "")) || 0;
-        const proratedQuota = getProratedQuota(fullMonthQuota);
-        const variance = proratedQuota - totalActualSales;
-        const achievement = proratedQuota === 0 ? 0 : (totalActualSales / proratedQuota) * 100;
+    const fromTime = fromDate.getTime();
+    const toTime   = toDate.getTime();
 
-        return {
-          agentId,
-          totalActualSales,
-          totalSoAmount,
-          fullMonthQuota,
-          proratedQuota,
-          variance,
-          achievement,
-          // ✅ parPercentage is shared — computed at component level
-          parPercentage,
-          percentToPlan: Math.round(achievement),
-        };
-      });
-  }, [agents, activitiesByAgent, totalWorkingDays, workingDaysSoFar]);
+    const salesByAgent: Record<string, number> = {};
+    for (const r of siRecords) {
+      if (!r.delivery_date) continue;
+      const t = new Date(r.delivery_date).getTime();
+      if (t < fromTime || t > toTime) continue;
+      salesByAgent[r.referenceid] = (salesByAgent[r.referenceid] ?? 0) + (Number(r.actual_sales) || 0);
+    }
 
-  const filteredSalesData = useMemo(() => {
-    if (selectedAgent === "all") return salesDataPerAgent;
-    return salesDataPerAgent.filter(
-      (d) => d.agentId.toLowerCase() === selectedAgent.toLowerCase()
-    );
-  }, [salesDataPerAgent, selectedAgent]);
+    // Use the month of fromDate to get per-month quota
 
-  const columnTotals = useMemo(() => {
-    return filteredSalesData.reduce(
+    return agents.map((agent) => {
+      const totalActualSales = salesByAgent[agent.referenceid] ?? 0;
+      const fullMonthQuota   = quotaMap[agent.referenceid] ?? 0;
+      const proratedQuota    = getProratedQuota(fullMonthQuota);
+      const variance         = proratedQuota - totalActualSales;
+      const achievement      = proratedQuota > 0 ? (totalActualSales / proratedQuota) * 100 : 0;
+
+      return {
+        agentId:          agent.referenceid,
+        agentName:        agent.name,
+        totalActualSales,
+        fullMonthQuota,
+        proratedQuota,
+        variance,
+        parPercentage,
+        percentToPlan: Math.round(achievement),
+      };
+    });
+  }, [agents, siRecords, quotaMap, fromDate, toDate, totalWorkingDays, workingDaysSoFar]);
+
+  const filteredSalesData = useMemo(() =>
+    selectedAgent === "all"
+      ? salesDataPerAgent
+      : salesDataPerAgent.filter((d) => d.agentId.toLowerCase() === selectedAgent.toLowerCase()),
+    [salesDataPerAgent, selectedAgent]);
+
+  const columnTotals = useMemo(() =>
+    filteredSalesData.reduce(
       (acc, d) => ({
-        proratedQuota: acc.proratedQuota + d.proratedQuota,
-        totalSoAmount: acc.totalSoAmount + d.totalSoAmount,
+        proratedQuota:    acc.proratedQuota    + d.proratedQuota,
         totalActualSales: acc.totalActualSales + d.totalActualSales,
-        variance: acc.variance + d.variance,
+        variance:         acc.variance         + d.variance,
       }),
-      { proratedQuota: 0, totalSoAmount: 0, totalActualSales: 0, variance: 0 }
-    );
-  }, [filteredSalesData]);
+      { proratedQuota: 0, totalActualSales: 0, variance: 0 }
+    ), [filteredSalesData]);
+
+  // ── Daily chart ────────────────────────────────────────────────────────────
+  const agentNameMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const a of agents) m[a.referenceid.toLowerCase()] = a.name;
+    return m;
+  }, [agents]);
 
   const dailyChartData = useMemo(() => {
-    const days: Record<string, any>[] = [];
+    const totalFullQuota = filteredSalesData.reduce((s, d) => s + d.fullMonthQuota, 0);
+    const dailyQuota     = totalWorkingDays > 0 ? totalFullQuota / totalWorkingDays : 0;
+    const agentDailyQ: Record<string, number> = {};
+    for (const d of salesDataPerAgent)
+      agentDailyQ[d.agentId.toLowerCase()] = totalWorkingDays > 0 ? d.fullMonthQuota / totalWorkingDays : 0;
+
+    const days: any[] = [];
     const cursor = new Date(fromDate);
     cursor.setHours(0, 0, 0, 0);
     const end = new Date(toDate);
     end.setHours(23, 59, 59, 999);
 
-    const totalFullQuota = filteredSalesData.reduce((sum, d) => sum + d.fullMonthQuota, 0);
-    const dailyQuota = totalFullQuota / totalWorkingDays;
-
-    const agentNameMap: Record<string, string> = {};
-    const agentDailyQuotaMap: Record<string, number> = {};
-    salesDataPerAgent.forEach((d) => {
-      const agent = agents.find(
-        (a) => a.ReferenceID.toLowerCase() === d.agentId.toLowerCase()
-      );
-      const key = d.agentId.toLowerCase();
-      agentNameMap[key] = agent ? `${agent.Firstname} ${agent.Lastname}` : d.agentId;
-      agentDailyQuotaMap[key] = d.fullMonthQuota / totalWorkingDays;
-    });
-
-    const toLocalDateStr = (d: Date) => {
-      const pad = (n: number) => String(n).padStart(2, "0");
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    };
-
     while (cursor <= end) {
       if (cursor.getDay() !== 0) {
         const dateStr = toLocalDateStr(cursor);
-        const label = cursor.toLocaleDateString("en-PH", { month: "short", day: "numeric" });
-        const agentSalesMap: Record<string, number> = {};
+        const label   = cursor.toLocaleDateString("en-PH", { month: "short", day: "numeric" });
+        const agentSales: Record<string, number> = {};
         let dayTotal = 0;
 
-        activities
-          .filter((a) => {
-            if (!a.delivery_date) return false;
-            if (
-              selectedAgent !== "all" &&
-              a.referenceid.toLowerCase() !== selectedAgent.toLowerCase()
-            )
-              return false;
-            return toLocalDateStr(new Date(a.delivery_date)) === dateStr;
+        siRecords
+          .filter((r) => {
+            if (!r.delivery_date) return false;
+            if (selectedAgent !== "all" && r.referenceid.toLowerCase() !== selectedAgent.toLowerCase()) return false;
+            return toLocalDateStr(new Date(r.delivery_date)) === dateStr;
           })
-          .forEach((a) => {
-            const key = a.referenceid.toLowerCase();
-            agentSalesMap[key] = (agentSalesMap[key] ?? 0) + (a.actual_sales ?? 0);
-            dayTotal += a.actual_sales ?? 0;
+          .forEach((r) => {
+            const key = r.referenceid.toLowerCase();
+            agentSales[key] = (agentSales[key] ?? 0) + (Number(r.actual_sales) || 0);
+            dayTotal += Number(r.actual_sales) || 0;
           });
 
-        const agentsBreakdown = Object.entries(agentSalesMap).map(([refId, sales]) => {
-          const agentDailyQuota = agentDailyQuotaMap[refId] ?? 0;
-          return {
-            name: agentNameMap[refId] || refId,
-            sales,
-            dailyQuota: Math.round(agentDailyQuota),
-            hit: sales >= agentDailyQuota,
-          };
-        });
+        const agentsBreakdown = Object.entries(agentSales).map(([refId, sales]) => ({
+          name: agentNameMap[refId] || refId,
+          sales,
+          dailyQuota: Math.round(agentDailyQ[refId] ?? 0),
+          hit: sales >= (agentDailyQ[refId] ?? 0),
+        }));
 
-        days.push({
-          date: label,
-          actualSales: dayTotal,
-          dailyQuota: Math.round(dailyQuota),
-          agentsBreakdown,
-        });
+        days.push({ date: label, actualSales: dayTotal, dailyQuota: Math.round(dailyQuota), agentsBreakdown });
       }
       cursor.setDate(cursor.getDate() + 1);
     }
-
     return days;
-  }, [fromDate, toDate, activities, salesDataPerAgent, filteredSalesData, totalWorkingDays, selectedAgent, agents]);
+  }, [fromDate, toDate, siRecords, salesDataPerAgent, filteredSalesData, totalWorkingDays, selectedAgent, agentNameMap]);
 
-  /* ---- Excel Export ---- */
+  // ── Excel export ───────────────────────────────────────────────────────────
   const exportToExcel = async () => {
-    if (filteredSalesData.length === 0) {
-      alert("No data to export");
-      return;
-    }
-
+    if (!filteredSalesData.length) { alert("No data to export"); return; }
     try {
-      const workbook = new ExcelJS.Workbook();
+      const workbook  = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet("Sales Performance");
-
-      // Add headers
       worksheet.columns = [
-        { header: "Agent", key: "agent", width: 25 },
-        { header: "Target Quota", key: "targetQuota", width: 15 },
-        { header: "Total Sales", key: "totalSales", width: 15 },
-        { header: "Variance", key: "variance", width: 15 },
-        { header: "Par", key: "par", width: 10 },
-        { header: "% To Plan", key: "percentToPlan", width: 12 }
+        { header: "Agent",        key: "agent",         width: 25 },
+        { header: "Target Quota", key: "targetQuota",   width: 15 },
+        { header: "Total Sales",  key: "totalSales",    width: 15 },
+        { header: "Variance",     key: "variance",      width: 15 },
+        { header: "Par",          key: "par",           width: 10 },
+        { header: "% To Plan",    key: "percentToPlan", width: 12 },
       ];
-
-      // Style headers
       worksheet.getRow(1).font = { bold: true };
-      worksheet.getRow(1).fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE0E0E0' }
-      };
-
-      // Add data rows
+      worksheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
       filteredSalesData.forEach((item) => {
-        const agent = agents.find(a => a.ReferenceID.toLowerCase() === item.agentId.toLowerCase());
-        const agentName = agent ? `${agent.Firstname} ${agent.Lastname}` : item.agentId;
-        
-        worksheet.addRow({
-          agent: agentName,
-          targetQuota: item.proratedQuota,
-          totalSales: item.totalActualSales,
-          variance: item.variance,
-          par: parPercentage,
-          percentToPlan: item.percentToPlan
-        });
+        worksheet.addRow({ agent: item.agentName, targetQuota: item.proratedQuota,
+          totalSales: item.totalActualSales, variance: item.variance,
+          par: parPercentage, percentToPlan: item.percentToPlan });
       });
-
-      // Add totals row
-      const totalsRow = worksheet.addRow({
-        agent: "TOTAL",
-        targetQuota: columnTotals.proratedQuota,
-        totalSales: columnTotals.totalActualSales,
-        variance: columnTotals.variance,
-        par: "",
-        percentToPlan: ""
-      });
+      const totalsRow = worksheet.addRow({ agent: "TOTAL", targetQuota: columnTotals.proratedQuota,
+        totalSales: columnTotals.totalActualSales, variance: columnTotals.variance, par: "", percentToPlan: "" });
       totalsRow.font = { bold: true };
+      ["targetQuota","totalSales","variance"].forEach((k) => { worksheet.getColumn(k).numFmt = '#,##0.00" ₱"'; });
+      worksheet.getColumn("par").numFmt = '0.00"%"';
+      worksheet.getColumn("percentToPlan").numFmt = '0"%"';
 
-      // Format currency columns
-      worksheet.getColumn('targetQuota').numFmt = '#,##0.00" ₱"';
-      worksheet.getColumn('totalSales').numFmt = '#,##0.00" ₱"';
-      worksheet.getColumn('variance').numFmt = '#,##0.00" ₱"';
-      worksheet.getColumn('par').numFmt = '0.00"%"';
-      worksheet.getColumn('percentToPlan').numFmt = '0"%"';
-
-      // Generate filename with date range
       let filename = "Sales_Performance";
       if (dateCreatedFilterRange?.from && dateCreatedFilterRange?.to) {
-        const fromDate = new Date(dateCreatedFilterRange.from).toLocaleDateString().replace(/\//g, '-');
-        const toDate = new Date(dateCreatedFilterRange.to).toLocaleDateString().replace(/\//g, '-');
-        filename += `_${fromDate}_to_${toDate}`;
+        const f = new Date(dateCreatedFilterRange.from).toLocaleDateString().replace(/\//g, "-");
+        const t = new Date(dateCreatedFilterRange.to).toLocaleDateString().replace(/\//g, "-");
+        filename += `_${f}_to_${t}`;
       }
       filename += ".xlsx";
-
-      // Create buffer and download
       const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-    } catch (error) {
-      console.error("Error exporting to Excel:", error);
-      alert("Failed to export data to Excel");
-    }
+      const blob   = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url    = window.URL.createObjectURL(blob);
+      const link   = document.createElement("a");
+      link.href = url; link.download = filename;
+      document.body.appendChild(link); link.click();
+      document.body.removeChild(link); window.URL.revokeObjectURL(url);
+    } catch (err) { console.error("Export error:", err); alert("Failed to export"); }
   };
 
-  if (loadingActivities) {
-    return (
-      <div className="flex justify-center items-center h-40">
-        <Spinner className="size-8" />
-      </div>
-    );
-  }
-
-  if (errorActivities) {
-    return (
-      <Alert variant="destructive" className="flex items-center space-x-3 p-4 text-xs">
-        <AlertCircleIcon className="h-6 w-6 text-red-600" />
-        <div>
-          <AlertTitle>Error Loading Data</AlertTitle>
-          <AlertDescription>{errorActivities}</AlertDescription>
-        </div>
-      </Alert>
-    );
-  }
+  // ── Render ─────────────────────────────────────────────────────────────────
+  if (loading) return <div className="flex justify-center items-center h-40"><Spinner className="size-8" /></div>;
+  if (error) return (
+    <Alert variant="destructive" className="flex items-center space-x-3 p-4 text-xs">
+      <AlertCircleIcon className="h-6 w-6 text-red-600" />
+      <div><AlertTitle>Error Loading Data</AlertTitle><AlertDescription>{error}</AlertDescription></div>
+    </Alert>
+  );
 
   return (
     <div className="space-y-6">
-      {/* Filters Row */}
+      {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <Select value={selectedAgent} onValueChange={setSelectedAgent}>
-          <SelectTrigger className="w-[220px] text-xs">
-            <SelectValue placeholder="Filter by Agent" />
-          </SelectTrigger>
+          <SelectTrigger className="w-[220px] text-xs"><SelectValue placeholder="Filter by Agent" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Agents</SelectItem>
-            {agents
-              .filter((a) => a.Role === "Territory Sales Associate")
-              .map((agent) => (
-                <SelectItem
-                  className="capitalize"
-                  key={agent.ReferenceID}
-                  value={agent.ReferenceID}
-                >
-                  {agent.Firstname} {agent.Lastname}
-                </SelectItem>
-              ))}
+            {agents.map((a) => (
+              <SelectItem key={a.referenceid} value={a.referenceid}>{a.name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
-        <Select
-          value={String(totalWorkingDays)}
-          onValueChange={(val) => setTotalWorkingDays(Number(val) as 26 | 22)}
-        >
-          <SelectTrigger className="w-[180px] text-xs">
-            <SelectValue placeholder="Working Days" />
-          </SelectTrigger>
+        <Select value={String(totalWorkingDays)} onValueChange={(v) => setTotalWorkingDays(Number(v) as 26 | 22)}>
+          <SelectTrigger className="w-[180px] text-xs"><SelectValue placeholder="Working Days" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="26">26 Working Days (Mon–Sat)</SelectItem>
             <SelectItem value="22">22 Working Days (Mon–Fri)</SelectItem>
           </SelectContent>
         </Select>
 
-        {/* ✅ Par always shows live elapsed days */}
         <span className="text-xs text-gray-500">
           Days elapsed: <strong>{workingDaysSoFar}</strong> / {totalWorkingDays} &nbsp;|&nbsp;
           Par: <strong>{parPercentage.toFixed(1)}%</strong>
         </span>
 
-        <button
-          onClick={exportToExcel}
-          className="ml-auto flex items-center gap-2 px-3 py-2 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-        >
-          <Download size={14} />
-          Export Excel
+        <button onClick={exportToExcel}
+          className="ml-auto flex items-center gap-2 px-3 py-2 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+          <Download size={14} /> Export Excel
         </button>
       </div>
 
@@ -590,52 +409,30 @@ export const SalesTable: React.FC<SalesProps> = ({
           </TableHeader>
           <TableBody>
             {filteredSalesData.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-xs text-gray-400 py-8">
-                  No data available
+              <TableRow><TableCell colSpan={6} className="text-center text-xs text-gray-400 py-8">No data available</TableCell></TableRow>
+            ) : filteredSalesData.map(({ agentId, agentName, totalActualSales, proratedQuota, variance, percentToPlan }) => (
+              <TableRow key={agentId} className="hover:bg-muted/30 text-xs">
+                <TableCell className="capitalize">{agentName}</TableCell>
+                <TableCell>{proratedQuota.toLocaleString(undefined, { style: "currency", currency: "PHP" })}</TableCell>
+                <TableCell className="text-right">{totalActualSales.toLocaleString(undefined, { style: "currency", currency: "PHP" })}</TableCell>
+                <TableCell className={variance > 0 ? "text-red-500" : "text-green-600"}>
+                  {variance.toLocaleString(undefined, { style: "currency", currency: "PHP" })}
                 </TableCell>
+                <TableCell>{parPercentage.toFixed(2)}%</TableCell>
+                <TableCell>{percentToPlan}%</TableCell>
               </TableRow>
-            ) : (
-              filteredSalesData.map(({ agentId, totalActualSales, proratedQuota, variance, percentToPlan }) => {
-                const agent = agents.find(
-                  (a) => a.ReferenceID.toLowerCase() === agentId.toLowerCase()
-                );
-                return (
-                  <TableRow key={agentId} className="hover:bg-muted/30 text-xs">
-                    <TableCell className="capitalize">
-                      {agent ? `${agent.Firstname} ${agent.Lastname}` : agentId}
-                    </TableCell>
-                    <TableCell>
-                      {proratedQuota.toLocaleString(undefined, { style: "currency", currency: "PHP" })}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {totalActualSales.toLocaleString(undefined, { style: "currency", currency: "PHP" })}
-                    </TableCell>
-                    <TableCell className={variance > 0 ? "text-red-500 uppercase" : "text-green-600 uppercase"}>
-                      {variance.toLocaleString(undefined, { style: "currency", currency: "PHP" })}
-                    </TableCell>
-                    {/* ✅ Par shared across all rows — always live */}
-                    <TableCell>{parPercentage.toFixed(2)}%</TableCell>
-                    <TableCell>{percentToPlan}%</TableCell>
-                  </TableRow>
-                );
-              })
-            )}
+            ))}
           </TableBody>
           <TableFooter>
             <TableRow className="bg-gray-50 font-semibold text-xs">
-              <TableCell className="text-xs font-bold">Total</TableCell>
-              <TableCell className="text-xs">
-                {columnTotals.proratedQuota.toLocaleString(undefined, { style: "currency", currency: "PHP" })}
-              </TableCell>
-              <TableCell className="text-xs text-right">
-                {columnTotals.totalActualSales.toLocaleString(undefined, { style: "currency", currency: "PHP" })}
-              </TableCell>
-              <TableCell className={columnTotals.variance > 0 ? "text-xs text-red-500" : "text-xs text-green-600"}>
+              <TableCell className="font-bold">Total</TableCell>
+              <TableCell>{columnTotals.proratedQuota.toLocaleString(undefined, { style: "currency", currency: "PHP" })}</TableCell>
+              <TableCell className="text-right">{columnTotals.totalActualSales.toLocaleString(undefined, { style: "currency", currency: "PHP" })}</TableCell>
+              <TableCell className={columnTotals.variance > 0 ? "text-red-500" : "text-green-600"}>
                 {columnTotals.variance.toLocaleString(undefined, { style: "currency", currency: "PHP" })}
               </TableCell>
-              <TableCell className="text-xs">—</TableCell>
-              <TableCell className="text-xs">—</TableCell>
+              <TableCell>—</TableCell>
+              <TableCell>—</TableCell>
             </TableRow>
           </TableFooter>
         </Table>
@@ -658,25 +455,15 @@ export const SalesTable: React.FC<SalesProps> = ({
             <BarChart data={dailyChartData} margin={{ top: 8, right: 16, left: 16, bottom: 40 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
               <XAxis dataKey="date" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" interval={0} />
-              <YAxis
-                tick={{ fontSize: 10 }}
-                tickFormatter={(v) =>
-                  v >= 1000000 ? `₱${(v / 1000000).toFixed(1)}M`
-                    : v >= 1000 ? `₱${(v / 1000).toFixed(0)}K`
-                    : `₱${v}`
-                }
-              />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) =>
+                v >= 1_000_000 ? `₱${(v/1_000_000).toFixed(1)}M` : v >= 1_000 ? `₱${(v/1_000).toFixed(0)}K` : `₱${v}`} />
               <Tooltip content={<CustomDailyTooltip />} />
-              <ReferenceLine
-                y={dailyChartData[0]?.dailyQuota ?? 0}
-                stroke="#6366f1"
-                strokeDasharray="5 4"
-                strokeWidth={1.5}
-                label={{ value: "Daily Quota", position: "insideTopRight", fontSize: 10, fill: "#6366f1" }}
-              />
+              <ReferenceLine y={dailyChartData[0]?.dailyQuota ?? 0} stroke="#6366f1"
+                strokeDasharray="5 4" strokeWidth={1.5}
+                label={{ value: "Daily Quota", position: "insideTopRight", fontSize: 10, fill: "#6366f1" }} />
               <Bar dataKey="actualSales" radius={[3, 3, 0, 0]} maxBarSize={40}>
-                {dailyChartData.map((entry, index) => (
-                  <Cell key={index} fill={entry.actualSales >= entry.dailyQuota ? "#22c55e" : "#f87171"} />
+                {dailyChartData.map((entry, i) => (
+                  <Cell key={i} fill={entry.actualSales >= entry.dailyQuota ? "#22c55e" : "#f87171"} />
                 ))}
               </Bar>
             </BarChart>
@@ -684,35 +471,17 @@ export const SalesTable: React.FC<SalesProps> = ({
         )}
       </div>
 
-      {/* Computation Explanation Card */}
+      {/* Computation Explanation */}
       <div className="rounded-md border p-4 bg-white shadow-sm font-mono">
         <h2 className="font-semibold text-sm mb-4">Computation Explanation</h2>
         <div className="text-xs space-y-3 text-gray-700">
-          <p>
-            <strong>Target Quota:</strong> Shows the full month quota by default. When a date filter
-            is applied, it is pro-rated based on working days elapsed within that range.
-            <br />
-            <code>Pro-rated Quota = (Full Month Quota / Total Working Days) × Working Days Elapsed</code>
-          </p>
-          <p>
-            <strong>Achievement:</strong> Actual sales as a percentage of the target quota.
-            <br />
-            <code>Achievement = (Total Actual Sales / Target Quota) × 100%</code>
-          </p>
-          <p>
-            <strong>Par:</strong> Expected progress benchmark based on working days elapsed. Always
-            reflects today's actual progress — even when no date filter is applied.
-            <br />
-            <code>Par = (Working Days Elapsed / Total Working Days) × 100%</code>
-          </p>
-          <p>
-            <strong>Variance:</strong> Positive (red) means below target; negative (green) means above target.
-            <br />
-            <code>Variance = Target Quota − Total Actual Sales</code>
-          </p>
-          <p>
-            <strong>% To Plan:</strong> Rounded achievement percentage vs. target quota.
-          </p>
+          <p><strong>Target Quota:</strong> Monthly quota for the selected month. With a date filter, prorated by working days elapsed.<br />
+            <code>Pro-rated Quota = (Monthly Quota / Total Working Days) × Working Days Elapsed</code></p>
+          <p><strong>Total Sales Invoice:</strong> Sum of <code>actual_sales</code> from <code>Delivered / Closed Transaction</code> records within the selected date range. Fetched without row limits via server-side pagination.</p>
+          <p><strong>Par:</strong> Expected progress based on working days elapsed.<br />
+            <code>Par = (Working Days Elapsed / Total Working Days) × 100%</code></p>
+          <p><strong>Variance:</strong> Positive (red) = below target; Negative (green) = above target.<br />
+            <code>Variance = Target Quota − Total Actual Sales</code></p>
         </div>
       </div>
     </div>

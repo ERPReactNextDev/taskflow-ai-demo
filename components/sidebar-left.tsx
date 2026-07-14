@@ -69,7 +69,6 @@ const data = {
     { name: "Sales Performance", url: "/roles/tsa/sales-performance", icon: BarChart2 },
     { name: "National Call Ranking", url: "/roles/tsa/national-call-ranking", icon: Phone },
 
-    { name: "Team Sales Performance", url: "/roles/tsm/sales-performance", icon: BarChart2 },
     { name: "Agent List", url: "/roles/tsm/agent", icon: Users },
 
     { name: "My Team Sales Performance", url: "/roles/manager/sales-performance", icon: BarChart2 },

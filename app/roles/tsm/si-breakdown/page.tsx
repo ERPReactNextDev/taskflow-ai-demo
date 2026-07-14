@@ -117,6 +117,16 @@ function SiBreakdownContent() {
 
           {/* Year selector */}
           <div className="flex items-center gap-2 px-3">
+            <button
+              onClick={() => {
+                const params = new URLSearchParams(window.location.search);
+                const id = params.get("id") ?? "";
+                router.push(`/roles/tsm/sales-performance${id ? `?id=${encodeURIComponent(id)}` : ""}`);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gray-900 hover:bg-gray-700 text-white rounded-md transition-colors"
+            >
+              Sales Performance
+            </button>
             <label className="text-xs text-gray-500 font-medium">Year:</label>
             <select
               value={year}
