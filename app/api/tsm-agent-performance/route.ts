@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { MongoClient, Db } from "mongodb";
+import { neon } from "@neondatabase/serverless";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,6 +26,13 @@ if (!MONGODB_DB) {
 
 const mongoUri: string = MONGODB_URI;
 const mongoDb: string = MONGODB_DB;
+
+// Neon database client for accounts table
+const TASKFLOW_DB_URL = process.env.TASKFLOW_DB_URL;
+if (!TASKFLOW_DB_URL) {
+  throw new Error("TASKFLOW_DB_URL is not set in the environment variables.");
+}
+const sql = neon(TASKFLOW_DB_URL);
 
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
@@ -298,6 +306,138 @@ async function calcTimeSpentForAgents(
   return result;
 }
 
+// ── DB Coverage (cluster accounts + activities) ───────────────────────────────
+
+interface DbCoverageResult {
+  coveredCount: number;
+  totalCount: number;
+}
+
+// Normalize a company name: lowercase → collapse whitespace → strip trailing dot(s)
+const normalizeCompany = (name: string): string =>
+  (name || "").toLowerCase().replace(/\s+/g, " ").trim().replace(/\.+$/, "");
+
+async function calcDbCoverageForAgents(
+  agentIds: string[],
+  monthStartDate: string,
+  monthEndDate: string,
+  tsmId: string
+): Promise<Record<string, DbCoverageResult>> {
+  const result: Record<string, DbCoverageResult> = {};
+  try {
+    console.log("[calcDbCoverageForAgents] Starting with tsmId:", tsmId, "monthStart:", monthStartDate, "monthEnd:", monthEndDate);
+    // Fetch all cluster accounts for this TSM with active status
+    const clusterAccounts = await sql`
+      SELECT referenceid, company_name, account_reference_number, tsm, status, type_client
+      FROM accounts
+      WHERE tsm = ${tsmId} AND LOWER(status) = 'active'
+    `;
+    console.log("[calcDbCoverageForAgents] Found clusterAccounts:", clusterAccounts.length, clusterAccounts);
+
+    // Fetch activities from ALL relevant tables for this TSM (full month)
+    const allActivities: any[] = [];
+    const tables = ["history"];
+    
+    for (const table of tables) {
+      let query = supabase.from(table)
+        .select("referenceid, company_name, account_reference_number, date_created")
+        .eq("tsm", tsmId)
+        .gte("date_created", monthStartDate);
+      
+      const d = new Date(monthEndDate);
+      d.setHours(23, 59, 59, 999);
+      query = query.lte("date_created", d.toISOString());
+      
+        const data = await fetchAllRows(query);
+      if (data) {
+        console.log("[calcDbCoverageForAgents] Table", table, "returned", data.length, "rows");
+        allActivities.push(...data);
+      }
+    }
+    console.log("[calcDbCoverageForAgents] Total allActivities:", allActivities.length);
+
+    // Group accounts per agent
+    const agentAccounts: Record<string, any[]> = {};
+    for (const acc of clusterAccounts) {
+      const ref = acc.referenceid;
+      if (!agentAccounts[ref]) agentAccounts[ref] = [];
+      agentAccounts[ref].push(acc);
+    }
+
+    // Group touched account reference numbers/companies per agent
+    const agentTouchedAccountRefs: Record<string, Set<string>> = {};
+    const agentTouchedCompanies: Record<string, Set<string>> = {};
+
+    for (const act of allActivities) {
+      const ref = act.referenceid;
+      if (!ref) continue;
+
+      const dateStr = act.date_created.toString().split("T")[0];
+      const [y, m, day] = dateStr.split("-").map(Number);
+      if (!y || !m || !day) continue;
+      const actDate = Date.UTC(y, m - 1, day);
+      const [monthStartY, monthStartM] = monthStartDate.split("-").map(Number);
+      const [monthEndY, monthEndM] = monthEndDate.split("-").map(Number);
+      const monthStart = Date.UTC(monthStartY, monthStartM - 1, 1);
+      const monthEnd = Date.UTC(monthEndY, monthEndM, 0, 23, 59, 59, 999);
+      if (actDate < monthStart || actDate > monthEnd) continue;
+
+      if (!agentTouchedAccountRefs[ref]) agentTouchedAccountRefs[ref] = new Set();
+      if (!agentTouchedCompanies[ref]) agentTouchedCompanies[ref] = new Set();
+
+      if (act.account_reference_number) {
+        agentTouchedAccountRefs[ref].add(act.account_reference_number.toString().trim());
+      }
+      const companyName = act.company_name || act.customer_name || act.company;
+      if (companyName) {
+        agentTouchedCompanies[ref].add(normalizeCompany(companyName));
+      }
+    }
+
+    // Filter accounts and compute coverage
+    const excludedStatuses = new Set(["removed", "approved for deletion", "subject for transfer"]);
+    const allowedTypes = new Set(["top 50", "next 30", "balance 20", "tsa client", "csr client", "new client"]);
+
+    for (const ref of agentIds) {
+      const accounts = agentAccounts[ref] || [];
+      const filteredAccounts = accounts.filter((acc) => {
+        const status = (acc.status || "").toLowerCase();
+        const typeClient = (acc.type_client || "").toLowerCase();
+        return status === "active" && typeClient && !excludedStatuses.has(status) && allowedTypes.has(typeClient);
+      });
+      console.log("[calcDbCoverageForAgents] Agent", ref, "filteredAccounts:", filteredAccounts.length, filteredAccounts);
+
+      const touchedAccountRefs = agentTouchedAccountRefs[ref] || new Set();
+      const touchedCompanies = agentTouchedCompanies[ref] || new Set();
+      console.log("[calcDbCoverageForAgents] Agent", ref, "touchedAccountRefs:", Array.from(touchedAccountRefs));
+      console.log("[calcDbCoverageForAgents] Agent", ref, "touchedCompanies:", Array.from(touchedCompanies));
+
+      const coveredCount = filteredAccounts.filter((acc) => {
+        // Check if account_reference_number matches
+        if (acc.account_reference_number && touchedAccountRefs.has(acc.account_reference_number.toString().trim())) {
+          console.log("[calcDbCoverageForAgents] Matched account by ref:", acc.company_name, acc.account_reference_number);
+          return true;
+        }
+        // If no account_reference_number match, check company_name
+        if (acc.company_name && touchedCompanies.has(normalizeCompany(acc.company_name))) {
+          console.log("[calcDbCoverageForAgents] Matched account by name:", acc.company_name);
+          return true;
+        }
+        return false;
+      }).length;
+
+      result[ref] = { coveredCount, totalCount: filteredAccounts.length };
+      console.log("[calcDbCoverageForAgents] Agent", ref, "result:", result[ref]);
+    }
+  } catch (err) {
+    console.error("tsm-agent-performance: db coverage error", err);
+    for (const ref of agentIds) {
+      result[ref] = { coveredCount: 0, totalCount: 0 };
+    }
+  }
+  return result;
+}
+
 // ── GET ───────────────────────────────────────────────────────────────────────
 
 export async function GET(req: Request) {
@@ -462,10 +602,12 @@ export async function GET(req: Request) {
       quotaData,
       csrMap,
       timeSpentMap,
+      dbCoverageMap,
     ] = await Promise.all([
       siQ, soQ, obQ, qaQ, svQ, naQ, quotaQ,
       calcCsrForAgents(agentIds, rangeStartDate, rangeEndDate, tsm),
       calcTimeSpentForAgents(agentIds, rangeStartDate, rangeEndDate, rangeStartTs, rangeEndTs),
+      calcDbCoverageForAgents(agentIds, manilaMonthStart, manilaMonthEnd, tsm),
     ]);
     console.log("[tsm-agent-performance] Parallel queries complete");
 
@@ -494,6 +636,7 @@ export async function GET(req: Request) {
       const so    = soMap[referenceid]    ?? 0;
       const siPct = plan > 0 ? Math.round((si / plan) * 100) : 0;
       const csr   = csrMap[referenceid]   ?? { avgResponseTime: 0, avgQuotationHT: 0, avgNonQuotationHT: 0, avgSpfHT: 0 };
+      const dbCov = dbCoverageMap[referenceid] ?? { coveredCount: 0, totalCount: 0 };
 
       return {
         referenceid,
@@ -506,6 +649,8 @@ export async function GET(req: Request) {
         quotationAmount:      qaMap[referenceid]        ?? 0,
         siteVisits:           svMap[referenceid]        ?? 0,
         accountDevelopment:   naMap[referenceid]        ?? 0,
+        dbCoverageCovered:    dbCov.coveredCount,
+        dbCoverageTotal:      dbCov.totalCount,
         timeSpentMs:          timeSpentMap[referenceid] ?? 0,
         avgResponseTime:      csr.avgResponseTime,
         avgNonQuotationHT:    csr.avgNonQuotationHT,
