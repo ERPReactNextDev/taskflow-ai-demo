@@ -460,7 +460,7 @@ export async function GET(req: Request) {
     console.log("[tsm-agent-performance] Fetching agents from Supabase");
     const { data: agentRows, error: agentErr } = await supabase
       .from("users")
-      .select("ReferenceID, Firstname, Lastname")
+      .select("ReferenceID, Lastname, Firstname")
       .eq("TSM", tsm)
       .eq("Role", "Territory Sales Associate")
       .not("Status", "in", '("Resigned","Terminated","Inactive")')
@@ -473,7 +473,7 @@ export async function GET(req: Request) {
 
     const agents = (agentRows ?? []).map((a) => ({
       referenceid: a.ReferenceID as string,
-      name: `${a.Firstname ?? ""} ${a.Lastname ?? ""}`.trim(),
+      name: `${a.Lastname ?? ""}, ${a.Firstname ?? ""} `.trim(),
     }));
 
     console.log("[tsm-agent-performance] Found agents:", agents);
@@ -595,6 +595,49 @@ export async function GET(req: Request) {
         .eq("year", quotaYear)
     );
 
+    // Quotation amount target (from sales_quotation table, current month of the range)
+    const quotaMonthDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
+    const quotaMonth = quotaMonthDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
+    const quotaMonthYear = quotaMonthDate.toLocaleDateString("en-CA", { year: "numeric", timeZone: "Asia/Manila" }).split("-")[0];
+    const quotationTargetQ = fetchAllRows(
+      supabase
+        .from("sales_quotation")
+        .select("referenceid, quotation_amount_target")
+        .in("referenceid", agentIds)
+        .eq("month", quotaMonth)
+        .eq("year", quotaMonthYear)
+    );
+
+    // Site visit target (from site_visit_target table, current month of the range)
+    const siteVisitTargetQ = fetchAllRows(
+      supabase
+        .from("site_visit_target")
+        .select("referenceid, target")
+        .in("referenceid", agentIds)
+        .eq("month", quotaMonth)
+        .eq("year", quotaMonthYear)
+    );
+
+    // Account development target (from sales_account_development table, current month of the range)
+    const accountDevTargetQ = fetchAllRows(
+      supabase
+        .from("sales_account_development")
+        .select("referenceid, target")
+        .in("referenceid", agentIds)
+        .eq("month", quotaMonth)
+        .eq("year", quotaMonthYear)
+    );
+
+    // OB call target (from sales_ob table, current month of the range)
+    const obTargetQ = fetchAllRows(
+      supabase
+        .from("sales_ob")
+        .select("referenceid, ob_target")
+        .in("referenceid", agentIds)
+        .eq("month", quotaMonth)
+        .eq("year", quotaMonthYear)
+    );
+
     console.log("[tsm-agent-performance] Starting parallel queries");
     const [
       siData,
@@ -604,11 +647,15 @@ export async function GET(req: Request) {
       svData,
       naData,
       quotaData,
+      quotationTargetData,
+      siteVisitTargetData,
+      accountDevTargetData,
+      obTargetData,
       csrMap,
       timeSpentMap,
       dbCoverageMap,
     ] = await Promise.all([
-      siQ, soQ, obQ, qaQ, svQ, naQ, quotaQ,
+      siQ, soQ, obQ, qaQ, svQ, naQ, quotaQ, quotationTargetQ, siteVisitTargetQ, accountDevTargetQ, obTargetQ,
       calcCsrForAgents(agentIds, rangeStartDate, rangeEndDate, tsm),
       calcTimeSpentForAgents(agentIds, rangeStartDate, rangeEndDate, rangeStartTs, rangeEndTs),
       calcDbCoverageForAgents(agentIds, manilaMonthStart, manilaMonthEnd),
@@ -624,6 +671,10 @@ export async function GET(req: Request) {
     const svMap:    Record<string, number> = {};
     const naMap:    Record<string, number> = {};
     const quotaMap: Record<string, number> = {};
+    const quotationTargetMap:  Record<string, number> = {};
+    const siteVisitTargetMap:  Record<string, number> = {};
+    const accountDevTargetMap: Record<string, number> = {};
+    const obTargetMap:         Record<string, number> = {};
 
     for (const r of siData)    siMap[r.referenceid]    = (siMap[r.referenceid]    ?? 0) + (Number(r.actual_sales)     || 0);
     for (const r of soData)    soMap[r.referenceid]    = (soMap[r.referenceid]    ?? 0) + (Number(r.so_amount)        || 0);
@@ -632,6 +683,10 @@ export async function GET(req: Request) {
     for (const r of svData)    { if (r.Status === "Login") svMap[r.ReferenceID] = (svMap[r.ReferenceID] ?? 0) + 1; }
     for (const r of naData)    naMap[r.referenceid]    = (naMap[r.referenceid]    ?? 0) + 1;
     for (const r of quotaData) quotaMap[r.referenceid] = (quotaMap[r.referenceid] ?? 0) + (Number(r.amount) || 0);
+    for (const r of quotationTargetData)  quotationTargetMap[r.referenceid]  = (quotationTargetMap[r.referenceid]  ?? 0) + (Number(r.quotation_amount_target) || 0);
+    for (const r of siteVisitTargetData)  siteVisitTargetMap[r.referenceid]  = (siteVisitTargetMap[r.referenceid]  ?? 0) + (Number(r.target) || 0);
+    for (const r of accountDevTargetData) accountDevTargetMap[r.referenceid] = (accountDevTargetMap[r.referenceid] ?? 0) + (Number(r.target) || 0);
+    for (const r of obTargetData)         obTargetMap[r.referenceid]         = (obTargetMap[r.referenceid]         ?? 0) + (Number(r.ob_target) || 0);
 
     // ── 5. Assemble result ────────────────────────────────────────────────────
     const result = agents.map(({ referenceid, name }) => {
@@ -650,9 +705,13 @@ export async function GET(req: Request) {
         soActual:             so,
         siPercentage:         siPct,
         obCalls:              obMap[referenceid]        ?? 0,
+        obCallsTarget:        obTargetMap[referenceid]  ?? 0,
+        quotationAmountTarget: quotationTargetMap[referenceid] ?? 0,
         quotationAmount:      qaMap[referenceid]        ?? 0,
         siteVisits:           svMap[referenceid]        ?? 0,
+        siteVisitTarget:      siteVisitTargetMap[referenceid]  ?? 0,
         accountDevelopment:   naMap[referenceid]        ?? 0,
+        accountDevelopmentTarget: accountDevTargetMap[referenceid] ?? 0,
         dbCoverageCovered:    dbCov.coveredCount,
         dbCoverageTotal:      dbCov.totalCount,
         timeSpentMs:          timeSpentMap[referenceid] ?? 0,

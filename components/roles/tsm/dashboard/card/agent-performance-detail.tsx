@@ -23,9 +23,13 @@ interface AgentRow {
   soActual: number;
   siPercentage: number;
   obCalls: number;
+  obCallsTarget: number;
+  quotationAmountTarget: number;
   quotationAmount: number;
   siteVisits: number;
+  siteVisitTarget: number;
   accountDevelopment: number;
+  accountDevelopmentTarget: number;
   dbCoverageCovered: number;
   dbCoverageTotal: number;
   timeSpentMs: number;
@@ -140,12 +144,16 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
       siActual: acc.siActual + a.siActual,
       soActual: acc.soActual + a.soActual,
       obCalls: acc.obCalls + a.obCalls,
+      obCallsTarget: acc.obCallsTarget + a.obCallsTarget,
+      quotationAmountTarget: acc.quotationAmountTarget + a.quotationAmountTarget,
       quotationAmount: acc.quotationAmount + a.quotationAmount,
       siteVisits: acc.siteVisits + a.siteVisits,
+      siteVisitTarget: acc.siteVisitTarget + a.siteVisitTarget,
       accountDevelopment: acc.accountDevelopment + a.accountDevelopment,
+      accountDevelopmentTarget: acc.accountDevelopmentTarget + a.accountDevelopmentTarget,
       timeSpentMs: acc.timeSpentMs + a.timeSpentMs,
     }),
-    { plan: 0, siActual: 0, soActual: 0, obCalls: 0, quotationAmount: 0, siteVisits: 0, accountDevelopment: 0, timeSpentMs: 0 }
+    { plan: 0, siActual: 0, soActual: 0, obCalls: 0, obCallsTarget: 0, quotationAmountTarget: 0, quotationAmount: 0, siteVisits: 0, siteVisitTarget: 0, accountDevelopment: 0, accountDevelopmentTarget: 0, timeSpentMs: 0 }
   );
   const totalSiPct = totals.plan > 0 ? Math.round((totals.siActual / totals.plan) * 100) : 0;
 
@@ -221,6 +229,7 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                     <th className={thCls}>SO Actual</th>
                     <th className={thCls}>SI %</th>
                     <th className={thCls}>OB Calls</th>
+                    <th className={thCls}>Quotation Target</th>
                     <th className={thCls}>Quotation Amount</th>
                     <th className={thCls}>Site Visits</th>
                     <th className={thCls}>Account Dev</th>
@@ -254,10 +263,11 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                           {agent.siPercentage}%
                         </span>
                       </td>
-                      <td className={tdCls}>{agent.obCalls}</td>
+                      <td className={tdCls}>{agent.obCalls}{agent.obCallsTarget > 0 ? `/${agent.obCallsTarget}` : ""}</td>
+                      <td className={tdCls}>{fmtPeso(agent.quotationAmountTarget)}</td>
                       <td className={tdCls}>{fmtPeso(agent.quotationAmount)}</td>
-                      <td className={tdCls}>{agent.siteVisits}</td>
-                      <td className={tdCls}>{agent.accountDevelopment}</td>
+                      <td className={tdCls}>{agent.siteVisits}{agent.siteVisitTarget > 0 ? `/${agent.siteVisitTarget}` : ""}</td>
+                      <td className={tdCls}>{agent.accountDevelopment}{agent.accountDevelopmentTarget > 0 ? `/${agent.accountDevelopmentTarget}` : ""}</td>
                       <td className={tdCls}>
                         <div className="flex flex-col items-end gap-1">
                           <span style={{ color: dbCoverageBarColor(agent.dbCoverageTotal > 0 ? Math.round((agent.dbCoverageCovered / agent.dbCoverageTotal) * 100) : 0) }} className="font-medium">
@@ -301,10 +311,11 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                         {totalSiPct}%
                       </span>
                     </td>
-                    <td className={tdCls}>{totals.obCalls}</td>
+                    <td className={tdCls}>{totals.obCalls}{totals.obCallsTarget > 0 ? `/${totals.obCallsTarget}` : ""}</td>
+                    <td className={tdCls}>{fmtPeso(totals.quotationAmountTarget)}</td>
                     <td className={tdCls}>{fmtPeso(totals.quotationAmount)}</td>
-                    <td className={tdCls}>{totals.siteVisits}</td>
-                    <td className={tdCls}>{totals.accountDevelopment}</td>
+                    <td className={tdCls}>{totals.siteVisits}{totals.siteVisitTarget > 0 ? `/${totals.siteVisitTarget}` : ""}</td>
+                    <td className={tdCls}>{totals.accountDevelopment}{totals.accountDevelopmentTarget > 0 ? `/${totals.accountDevelopmentTarget}` : ""}</td>
                     <td className={tdCls}>—</td>
                     <td className={tdCls}>{fmtTimeMs(totals.timeSpentMs)}</td>
                     {/* CSR metrics are averages — not meaningful to sum, show em dash */}

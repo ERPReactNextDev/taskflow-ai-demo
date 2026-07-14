@@ -75,26 +75,42 @@ function QuotationTab({ tsm, manager, year }: { tsm: string; manager: string; ye
   useEffect(() => { fetchTargets(); }, [fetchTargets]);
 
   const handleSave = async (referenceid: string, month: string, quoteTargetRaw: string, quotationAmountTargetRaw: string) => {
-    const quoteTarget = parseInput(quoteTargetRaw);
-    const quotationAmountTarget = parseInput(quotationAmountTargetRaw);
+    const quote_target            = parseInput(quoteTargetRaw);
+    const quotation_amount_target = parseInput(quotationAmountTargetRaw);
     const key = `${referenceid}-${month}`;
     setSaving(key);
     try {
       const res = await fetch("/api/tsm-agent-sales-quotation", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ referenceid, month, year, quote_target: quoteTarget, quotation_amount_target: quotationAmountTarget, tsm, manager }),
+        body: JSON.stringify({ referenceid, month, year, quote_target, quotation_amount_target, tsm, manager }),
       });
       if (!res.ok) throw new Error();
       setTargets((prev) => ({
         ...prev,
-        [referenceid]: { ...(prev[referenceid] ?? {}), [month]: { quote_target: quoteTarget, quotation_amount_target: quotationAmountTarget } },
+        [referenceid]: { ...(prev[referenceid] ?? {}), [month]: { quote_target, quotation_amount_target } },
       }));
       sileo.success({ title: "Saved", description: `${month} targets updated.`, duration: 2000, position: "top-right", fill: "black", styles: { title: "text-white!", description: "text-white" } });
     } catch {
       sileo.error({ title: "Failed", description: "Failed to save targets.", duration: 3000, position: "top-right", fill: "black", styles: { title: "text-white!", description: "text-white" } });
     } finally {
       setSaving(null);
+    }
+  };
+
+  const triggerSave = (
+    e: React.FocusEvent<HTMLInputElement>,
+    agent: Agent,
+    month: string,
+  ) => {
+    const mIdx   = MONTHS.indexOf(month);
+    const inputs = e.currentTarget.closest("tr")?.querySelectorAll("input") as NodeListOf<HTMLInputElement>;
+    const base   = mIdx * 2;
+    const countVal = inputs?.[base]?.value     ?? "";
+    const amtVal   = inputs?.[base + 1]?.value ?? "";
+    const cur = targets[agent.referenceid]?.[month] ?? { quote_target: 0, quotation_amount_target: 0 };
+    if (parseInput(countVal) !== cur.quote_target || parseInput(amtVal) !== cur.quotation_amount_target) {
+      handleSave(agent.referenceid, month, countVal, amtVal);
     }
   };
 
@@ -109,7 +125,7 @@ function QuotationTab({ tsm, manager, year }: { tsm: string; manager: string; ye
             {MONTH_SHORT.map((m) => (
               <React.Fragment key={m}>
                 <th className="text-center px-2 py-3 font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap min-w-[90px]">{m} (Count)</th>
-                <th className="text-center px-2 py-3 font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap min-w-[90px]">{m} (Amt)</th>
+                <th className="text-center px-2 py-3 font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap min-w-[100px]">{m} (Amt Target)</th>
               </React.Fragment>
             ))}
           </tr>
@@ -124,44 +140,37 @@ function QuotationTab({ tsm, manager, year }: { tsm: string; manager: string; ye
                 <p className="text-[10px] text-gray-400 font-mono">{agent.referenceid}</p>
               </td>
               {MONTHS.map((month) => {
-                const key = `${agent.referenceid}-${month}`;
+                const key  = `${agent.referenceid}-${month}`;
                 const vals = targets[agent.referenceid]?.[month] ?? { quote_target: 0, quotation_amount_target: 0 };
                 const isSaving = saving === key;
+                const inputCls = "w-full text-center text-xs border border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none rounded px-1 py-1 bg-transparent hover:bg-white focus:bg-white transition-all placeholder:text-gray-300";
+                const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, resetVal: string) => {
+                  if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+                  if (e.key === "Escape") { (e.target as HTMLInputElement).value = resetVal; (e.target as HTMLInputElement).blur(); }
+                };
                 return (
                   <React.Fragment key={month}>
+                    {/* Quote Count */}
                     <td className="px-1 py-1.5 text-center">
                       <div className="relative flex items-center justify-center">
                         {isSaving && <Loader2 className="absolute right-1 w-3 h-3 animate-spin text-blue-400" />}
-                        <input type="text" defaultValue={vals.quote_target > 0 ? formatAmt(vals.quote_target) : ""} placeholder="—"
-                          className="w-full text-center text-xs border border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none rounded px-1 py-1 bg-transparent hover:bg-white focus:bg-white transition-all placeholder:text-gray-300"
-                          onBlur={(e) => {
-                            const qv = parseInput(e.target.value);
-                            const cur = targets[agent.referenceid]?.[month];
-                            const amtInput = e.currentTarget.closest("tr")?.querySelectorAll("input")[MONTHS.indexOf(month) * 2 + 1] as HTMLInputElement;
-                            const av = parseInput(amtInput?.value ?? "");
-                            if (qv !== (cur?.quote_target ?? 0) || av !== (cur?.quotation_amount_target ?? 0)) {
-                              handleSave(agent.referenceid, month, e.target.value, amtInput?.value ?? "");
-                            }
-                          }}
-                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } if (e.key === "Escape") { (e.target as HTMLInputElement).value = vals.quote_target > 0 ? formatAmt(vals.quote_target) : ""; (e.target as HTMLInputElement).blur(); } }}
+                        <input type="text"
+                          defaultValue={vals.quote_target > 0 ? String(vals.quote_target) : ""}
+                          placeholder="—" className={inputCls}
+                          onBlur={(e) => triggerSave(e, agent, month)}
+                          onKeyDown={(e) => onKeyDown(e, vals.quote_target > 0 ? String(vals.quote_target) : "")}
                         />
                       </div>
                     </td>
+                    {/* Quotation Amount Target */}
                     <td className="px-1 py-1.5 text-center">
                       <div className="relative flex items-center justify-center">
                         {isSaving && <Loader2 className="absolute right-1 w-3 h-3 animate-spin text-blue-400" />}
-                        <input type="text" defaultValue={vals.quotation_amount_target > 0 ? formatAmt(vals.quotation_amount_target) : ""} placeholder="—"
-                          className="w-full text-center text-xs border border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none rounded px-1 py-1 bg-transparent hover:bg-white focus:bg-white transition-all placeholder:text-gray-300"
-                          onBlur={(e) => {
-                            const av = parseInput(e.target.value);
-                            const cur = targets[agent.referenceid]?.[month];
-                            const countInput = e.currentTarget.closest("tr")?.querySelectorAll("input")[MONTHS.indexOf(month) * 2] as HTMLInputElement;
-                            const qv = parseInput(countInput?.value ?? "");
-                            if (qv !== (cur?.quote_target ?? 0) || av !== (cur?.quotation_amount_target ?? 0)) {
-                              handleSave(agent.referenceid, month, countInput?.value ?? "", e.target.value);
-                            }
-                          }}
-                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } if (e.key === "Escape") { (e.target as HTMLInputElement).value = vals.quotation_amount_target > 0 ? formatAmt(vals.quotation_amount_target) : ""; (e.target as HTMLInputElement).blur(); } }}
+                        <input type="text"
+                          defaultValue={vals.quotation_amount_target > 0 ? formatAmt(vals.quotation_amount_target) : ""}
+                          placeholder="—" className={inputCls}
+                          onBlur={(e) => triggerSave(e, agent, month)}
+                          onKeyDown={(e) => onKeyDown(e, vals.quotation_amount_target > 0 ? formatAmt(vals.quotation_amount_target) : "")}
                         />
                       </div>
                     </td>
@@ -334,8 +343,7 @@ function AccountDevelopmentTab({ tsm, manager, year }: { tsm: string; manager: s
             <th className="text-left px-4 py-3 font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap sticky left-0 bg-gray-50 z-10 min-w-[160px]">Agent</th>
             {MONTH_SHORT.map((m) => (
               <React.Fragment key={m}>
-                <th className="text-center px-2 py-3 font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap min-w-[90px]">{m} (Target)</th>
-                <th className="text-center px-2 py-3 font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap min-w-[90px]">{m} (Count)</th>
+                <th className="text-center px-2 py-3 font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap min-w-[90px]">{m}</th>
               </React.Fragment>
             ))}
           </tr>
@@ -371,24 +379,6 @@ function AccountDevelopmentTab({ tsm, manager, year }: { tsm: string; manager: s
                             }
                           }}
                           onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } if (e.key === "Escape") { (e.target as HTMLInputElement).value = vals.target > 0 ? String(vals.target) : ""; (e.target as HTMLInputElement).blur(); } }}
-                        />
-                      </div>
-                    </td>
-                    <td className="px-1 py-1.5 text-center">
-                      <div className="relative flex items-center justify-center">
-                        {isSaving && <Loader2 className="absolute right-1 w-3 h-3 animate-spin text-blue-400" />}
-                        <input type="text" defaultValue={vals.count > 0 ? String(vals.count) : ""} placeholder="—"
-                          className="w-full text-center text-xs border border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none rounded px-1 py-1 bg-transparent hover:bg-white focus:bg-white transition-all placeholder:text-gray-300"
-                          onBlur={(e) => {
-                            const newCount  = parseInput(e.target.value);
-                            const cur = targets[agent.referenceid]?.[month];
-                            const targetInput = e.currentTarget.closest("tr")?.querySelectorAll("input")[mIdx * 2] as HTMLInputElement;
-                            const newTarget = parseInput(targetInput?.value ?? "");
-                            if (newTarget !== (cur?.target ?? 0) || newCount !== (cur?.count ?? 0)) {
-                              handleSave(agent.referenceid, month, targetInput?.value ?? "", e.target.value);
-                            }
-                          }}
-                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } if (e.key === "Escape") { (e.target as HTMLInputElement).value = vals.count > 0 ? String(vals.count) : ""; (e.target as HTMLInputElement).blur(); } }}
                         />
                       </div>
                     </td>
