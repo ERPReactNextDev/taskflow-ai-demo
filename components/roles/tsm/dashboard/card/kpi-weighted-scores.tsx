@@ -55,6 +55,7 @@ interface AgentKpiData {
   avgResponseTime: number;
   avgQuotationHT: number;
   avgNonQuotationHT: number;
+  avgSpfHT: number;
 }
 
 interface KpiRow {
@@ -83,6 +84,49 @@ function quoteToSORating(pct: number): number {
 function soToSIRating(pct: number): number {
   if (pct >= 70) return 5; if (pct >= 60.01) return 4;
   if (pct >= 50.01) return 3; if (pct >= 40.01) return 2; return 1;
+}
+
+/**
+ * Response Time rating — value in hours, target ≤10 min (0.1667 hrs)
+ * No data (0) → 1
+ * ≤10min→5 | 11-20min→4 | 21-30min→3 | 31-40min→2 | 41min+→1
+ */
+function responseTimeRating(hours: number): number {
+  if (hours <= 0) return 1; // no data
+  const mins = hours * 60;
+  if (mins <= 10) return 5;
+  if (mins <= 20) return 4;
+  if (mins <= 30) return 3;
+  if (mins <= 40) return 2;
+  return 1;
+}
+
+/**
+ * Quotation HT rating — value in hours, target ≤8 hrs
+ * No data (0) → 1
+ * ≤8hrs→5 | 8.01-9→4 | 9.01-10→3 | 10.01-11→2 | 11+→1
+ */
+function quotationHTRating(hours: number): number {
+  if (hours <= 0) return 1; // no data
+  if (hours <= 8) return 5;
+  if (hours <= 9) return 4;
+  if (hours <= 10) return 3;
+  if (hours <= 11) return 2;
+  return 1;
+}
+
+/**
+ * Non-Quotation HT rating — value in hours, target ≤24 hrs
+ * No data (0) → 1
+ * ≤24hrs→5 | 25-30→4 | 31-35→3 | 36-40→2 | 41+→1
+ */
+function nonQuotationHTRating(hours: number): number {
+  if (hours <= 0) return 1; // no data
+  if (hours <= 24) return 5;
+  if (hours <= 30) return 4;
+  if (hours <= 35) return 3;
+  if (hours <= 40) return 2;
+  return 1;
 }
 
 function scoreLabel(score: number): { label: string; color: string; bg: string } {
@@ -128,6 +172,19 @@ function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
   const naPct      = Math.min(100, d.newAccountTarget > 0 ? (d.newAccountCount / d.newAccountTarget) * 100 : 0);
   const naR        = standardRating(naPct);
 
+  // Calculate CSR metrics
+  const rtRating = responseTimeRating(d.avgResponseTime);
+  const rtAchievePct = d.avgResponseTime > 0 ? Math.min(((10 / 60) / d.avgResponseTime) * 100, 100) : 0;
+
+  const qhtRating = quotationHTRating(d.avgQuotationHT);
+  const qhtAchievePct = d.avgQuotationHT > 0 ? Math.min((8 / d.avgQuotationHT) * 100, 100) : 0;
+
+  const nqhtRating = nonQuotationHTRating(d.avgNonQuotationHT);
+  const nqhtAchievePct = d.avgNonQuotationHT > 0 ? Math.min((24 / d.avgNonQuotationHT) * 100, 100) : 0;
+
+  const csrRating = Math.round((rtRating + qhtRating + nqhtRating) / 3);
+  const csrAchievePct = (rtAchievePct + qhtAchievePct + nqhtAchievePct) / 3;
+
   const rows: KpiRow[] = [
     { label:"Sales Performance (SO/SI)",weight:0.5, achievementPct:salesPct, rating:salesR, weightedScore:0.5*salesR,
       detail:`Actual: ${fmtPeso(d.totalActualSales)} / Target: ${fmtPeso(d.runningTarget)}` },
@@ -139,8 +196,8 @@ function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
       detail:`Calls→Quote: ${fmt(c2qRaw,0)}% (tgt 20%) · Quote→SO: ${fmt(q2soPct,0)}% (tgt 30%) · SO→SI: ${fmt(s2siPct,0)}% (tgt 70%)` },
     { label:"Client Visits",            weight:0.1, achievementPct:cvPct,   rating:cvR,    weightedScore:0.1*cvR,
       detail:`${d.clientVisitsCount} visits / Target: ${d.clientVisitsTarget > 0 ? `${d.clientVisitsTarget}/mo` : "—"}` },
-    { label:"CSR Metrics",              weight:0.05,achievementPct:0,       rating:1,      weightedScore:0.05,
-      detail:"Resp. Time, Quotation HT & Non-Quotation HT (data via TSA view)" },
+    { label:"CSR Metrics",              weight:0.05,achievementPct:csrAchievePct, rating:csrRating, weightedScore:0.05*csrRating,
+      detail:`Resp. Time: ${fmtHours(d.avgResponseTime)} · Quotation HT: ${fmtHours(d.avgQuotationHT)} · Non-Quotation HT: ${fmtHours(d.avgNonQuotationHT)}` },
     { label:"New Account Development",  weight:0.1, achievementPct:naPct,  rating:naR,    weightedScore:0.1*naR,
       detail:`${d.newAccountCount} accounts / Target: ${d.newAccountTarget > 0 ? `${d.newAccountTarget}/mo` : "—"}` },
   ];

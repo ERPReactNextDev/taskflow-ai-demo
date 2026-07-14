@@ -35,6 +35,7 @@ interface KpiWeightedScoresProps {
   avgResponseTime?: number;
   avgQuotationHT?: number;
   avgNonQuotationHT?: number;
+  avgSpfHT?: number;
   newAccountCount?: number;
   newAccountTarget?: number;
 }
@@ -261,6 +262,15 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
   const [clientVisitsCount, setClientVisitsCount] = useState<number>(0);
   const [obCallsTarget, setObCallsTarget] = useState<number>(0);
   const [quotesTarget, setQuotesTarget] = useState<number>(0);
+  
+  // CSR Metrics state (self-fetched like single agent view)
+  const [csrMetrics, setCsrMetrics] = useState({
+    avgResponseTime: propAvgResponseTime || 0,
+    avgQuotationHT: propAvgQuotationHT || 0,
+    avgNonQuotationHT: propAvgNonQuotationHT || 0,
+    avgSpfHT: 0, // Add SPF handling duration
+  });
+  const [loadingCsr, setLoadingCsr] = useState(false);
 
   // Keep name in sync with the prop — it's already resolved by the parent dashboard
   useEffect(() => {
@@ -378,6 +388,95 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
       console.error("Error fetching quotes target:", err);
     }
   };
+  
+  // --- Fetch CSR Metrics (like single agent view) ---
+  const fetchCsrMetrics = useCallback(async () => {
+    if (!referenceid) {
+      setCsrMetrics({
+        avgResponseTime: propAvgResponseTime || 0,
+        avgQuotationHT: propAvgQuotationHT || 0,
+        avgNonQuotationHT: propAvgNonQuotationHT || 0,
+        avgSpfHT: 0,
+      });
+      return;
+    }
+    setLoadingCsr(true);
+    try {
+      const res = await fetch(`/api/act-fetch-activity-v2?referenceid=${encodeURIComponent(referenceid)}`);
+      if (!res.ok) throw new Error("Failed to fetch CSR metrics");
+      const result = await res.json();
+      const data: any[] = result.data || [];
+
+      const excluded = [
+        "Customer Feedback/Recommendation", "Job Inquiry", "Job Applicants",
+        "Supplier/Vendor Product Offer", "Internal Whistle Blower",
+        "Threats/Extortion/Intimidation", "Prank Call",
+      ];
+
+      const now = new Date();
+      const fromStr = dateCreatedFilterRange?.from ? toDateStr(dateCreatedFilterRange.from) : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const toStr   = dateCreatedFilterRange?.to   ? toDateStr(dateCreatedFilterRange.to)   : now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+
+      const fromTs = new Date(`${fromStr}T00:00:00+08:00`).getTime();
+      const toDateObj = new Date(`${toStr}T23:59:59+08:00`);
+      const toTs = toDateObj.getTime();
+
+      let rtTotal = 0, rtCount = 0;
+      let nqTotal = 0, nqCount = 0;
+      let qTotal = 0, qCount = 0;
+      let spfTotal = 0, spfCount = 0; // Add SPF
+
+      data.forEach((row) => {
+        if (row.status !== "Closed" && row.status !== "Converted into Sales") return;
+        const created = new Date(row.date_created).getTime();
+        if (isNaN(created) || created < fromTs || created > toTs) return;
+        if (excluded.includes(row.wrap_up)) return;
+
+        const tsaAck = new Date(row.tsa_acknowledge_date).getTime();
+        const endorsed = new Date(row.ticket_endorsed).getTime();
+        if (!isNaN(tsaAck) && !isNaN(endorsed) && tsaAck >= endorsed) {
+          rtTotal += (tsaAck - endorsed) / 3600000;
+          rtCount++;
+        }
+
+        const received = new Date(row.ticket_received).getTime();
+        const tsaHandle = new Date(row.tsa_handling_time).getTime();
+        const tsmHandle = new Date(row.tsm_handling_time).getTime();
+        let baseHT = 0;
+        if (!isNaN(tsaHandle) && !isNaN(received) && tsaHandle >= received)
+          baseHT = (tsaHandle - received) / 3600000;
+        else if (!isNaN(tsmHandle) && !isNaN(received) && tsmHandle >= received)
+          baseHT = (tsmHandle - received) / 3600000;
+        if (!baseHT) return;
+
+        const remarks = (row.remarks || "").toUpperCase();
+        if (remarks === "QUOTATION FOR APPROVAL" || remarks === "SOLD") {
+          qTotal += baseHT; qCount++;
+        } else if (remarks.includes("SPF")) {
+          spfTotal += baseHT; spfCount++;
+        } else {
+          nqTotal += baseHT; nqCount++;
+        }
+      });
+
+      setCsrMetrics({
+        avgResponseTime: rtCount ? rtTotal / rtCount : 0,
+        avgQuotationHT: qCount ? qTotal / qCount : 0,
+        avgNonQuotationHT: nqCount ? nqTotal / nqCount : 0,
+        avgSpfHT: spfCount ? spfTotal / spfCount : 0,
+      });
+    } catch (err) {
+      console.error("KpiWeightedScores: error fetching CSR metrics", err);
+      setCsrMetrics({
+        avgResponseTime: propAvgResponseTime || 0,
+        avgQuotationHT: propAvgQuotationHT || 0,
+        avgNonQuotationHT: propAvgNonQuotationHT || 0,
+        avgSpfHT: 0,
+      });
+    } finally {
+      setLoadingCsr(false);
+    }
+  }, [referenceid, dateCreatedFilterRange, propAvgResponseTime, propAvgQuotationHT, propAvgNonQuotationHT]);
 
   // --- Main effect ---
   useEffect(() => {
@@ -386,7 +485,8 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
     fetchClientVisitsCount();
     fetchObCallsTarget();
     fetchQuotesTarget();
-  }, [fetchKpiData, referenceid, dateCreatedFilterRange]);
+    fetchCsrMetrics();
+  }, [fetchKpiData, fetchCsrMetrics, referenceid, dateCreatedFilterRange]);
 
   // --- Use fallback props if provided, otherwise use API data ---
   const finalClientVisitsTarget = propClientVisitsTarget ?? (siteVisitTarget || 10);
@@ -411,9 +511,9 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
         soToSISalesOrderCount: propSoToSISalesOrderCount || 0,
         clientVisitsCount: propClientVisits || clientVisitsCount,
         clientVisitsTarget: finalClientVisitsTarget,
-        avgResponseTime: propAvgResponseTime || 0,
-        avgQuotationHT: propAvgQuotationHT || 0,
-        avgNonQuotationHT: propAvgNonQuotationHT || 0,
+        avgResponseTime: csrMetrics.avgResponseTime,
+        avgQuotationHT: csrMetrics.avgQuotationHT,
+        avgNonQuotationHT: csrMetrics.avgNonQuotationHT,
         newAccountCount: propNewAccountCount || 0,
         newAccountTarget: propNewAccountTarget || 3,
       }
@@ -423,6 +523,9 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
         quotesTarget: finalQuotesTarget,
         clientVisitsCount,
         clientVisitsTarget: finalClientVisitsTarget,
+        avgResponseTime: csrMetrics.avgResponseTime,
+        avgQuotationHT: csrMetrics.avgQuotationHT,
+        avgNonQuotationHT: csrMetrics.avgNonQuotationHT,
       };
 
   const finalName = propName !== "—" ? propName : name;

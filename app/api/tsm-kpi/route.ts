@@ -1,11 +1,61 @@
-﻿﻿﻿import { NextResponse } from "next/server";
+﻿﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { connectToDatabase } from "@/lib/mongodb";
+import { MongoClient, Db } from "mongodb";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE!
 );
+
+// MongoDB connection setup (same as act-fetch-activity-v2 and tsm-agent-performance)
+const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_DB = process.env.MONGODB_DB;
+
+if (!MONGODB_URI) {
+  throw new Error(
+    "Please define the MONGODB_URI environment variable inside .env.local",
+  );
+}
+
+if (!MONGODB_DB) {
+  throw new Error(
+    "Please define the MONGODB_DB environment variable inside .env.local",
+  );
+}
+
+const mongoUri: string = MONGODB_URI;
+const mongoDb: string = MONGODB_DB;
+
+let cachedClient: MongoClient | null = null;
+let cachedDb: Db | null = null;
+
+async function connectToMongoDb() {
+  if (cachedClient && cachedDb) {
+    return { client: cachedClient, db: cachedDb };
+  }
+
+  const client = new MongoClient(mongoUri, {
+    maxPoolSize: 5,
+    minPoolSize: 1,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+  });
+
+  await client.connect();
+
+  const db = client.db(mongoDb);
+
+  cachedClient = client;
+  cachedDb = db;
+
+  return { client, db };
+}
+
+const CSR_EXCLUDED = [
+  "Customer Feedback/Recommendation", "Job Inquiry", "Job Applicants",
+  "Supplier/Vendor Product Offer", "Internal Whistle Blower",
+  "Threats/Extortion/Intimidation", "Prank Call",
+];
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -70,84 +120,116 @@ function calculateRangedTarget(
   return total;
 }
 
-/** Calculate CSR metrics for an agent */
-async function calculateCsrMetrics(
-  referenceid: string,
-  fromDate: Date,
-  toDate: Date
-): Promise<{
+interface CsrMetrics {
   avgResponseTime: number;
   avgQuotationHT: number;
   avgNonQuotationHT: number;
-}> {
+  avgSpfHT: number;
+}
+
+async function calcCsrForAgents(
+  agentIds: string[],
+  fromDate: string,
+  toDate: string,
+  tsmId: string
+): Promise<Record<string, CsrMetrics>> {
+  const result: Record<string, CsrMetrics> = {};
   try {
-    const db = await connectToDatabase();
-    const collection = db.collection("activity");
+    console.log("[tsm-kpi] calcCsrForAgents called with tsmId:", tsmId, "agentIds:", agentIds, "fromDate:", fromDate, "toDate:", toDate);
+    const { db } = await connectToMongoDb();
+    const col = db.collection("activity");
 
-    const filter = {
-      $or: [
-        { referenceid: referenceid },
-        { agent: referenceid },
-      ],
-    };
+    const rows = await col
+      .find({ manager: tsmId })
+      .toArray();
 
-    const data = await collection.find(filter).toArray();
+    console.log("[tsm-kpi] Found", rows.length, "activity rows in MongoDB for manager:", tsmId);
 
-    const excluded = [
-      "CustomerFeedback/Recommendation", "Job Inquiry", "Job Applicants",
-      "Supplier/Vendor Product Offer", "Internal Whistle Blower",
-      "Threats/Extortion/Intimidation", "Prank Call",
-    ];
+    const fromTs = new Date(`${fromDate}T00:00:00+08:00`).getTime();
+    const toTs = new Date(`${toDate}T23:59:59+08:00`).getTime();
+   
+    // per-agent accumulators
+    const acc: Record<string, {
+      rtTotal: number; rtCount: number;
+      nqTotal: number; nqCount: number;
+      qTotal:  number; qCount:  number;
+      spfTotal: number; spfCount: number;
+    }> = {};
 
-    const fromTs = fromDate.getTime();
-    const toDateObj = new Date(toDate);
-    toDateObj.setHours(23, 59, 59, 999);
-    const toTs = toDateObj.getTime();
-
-    let rtTotal = 0, rtCount = 0;
-    let nqTotal = 0, nqCount = 0;
-    let qTotal = 0, qCount = 0;
-
-    data.forEach((row: any) => {
-      if (row.status !== "Closed" && row.status !== "Converted into Sales") return;
+    for (const row of rows) {
+      if (row.status !== "Closed" && row.status !== "Converted into Sales") {
+        continue;
+      }
       const created = new Date(row.date_created).getTime();
-      if (isNaN(created) || created < fromTs || created > toTs) return;
-      if (excluded.includes(row.wrap_up)) return;
-
-      const tsaAck = new Date(row.tsa_acknowledge_date).getTime();
-      const endorsed = new Date(row.ticket_endorsed).getTime();
-      if (!isNaN(tsaAck) && !isNaN(endorsed) && tsaAck >= endorsed) {
-        rtTotal += (tsaAck - endorsed) / 3600000;
-        rtCount++;
+      if (isNaN(created)) {
+        continue;
+      }
+      if (created < fromTs || created > toTs) {
+        continue;
+      }
+      if (CSR_EXCLUDED.includes(row.wrap_up)) {
+        continue;
       }
 
-      const received = new Date(row.ticket_received).getTime();
+      // Check if agent is in agentIds first, then referenceid
+      let ref: string | null = null;
+      if (row.agent && agentIds.includes(row.agent)) {
+        ref = row.agent;
+      } else if (row.referenceid && agentIds.includes(row.referenceid)) {
+        ref = row.referenceid;
+      }
+      if (!ref) {
+        continue;
+      }
+
+      if (!acc[ref]) acc[ref] = { rtTotal:0, rtCount:0, nqTotal:0, nqCount:0, qTotal:0, qCount:0, spfTotal:0, spfCount:0 };
+      const a = acc[ref];
+
+      const tsaAck  = new Date(row.tsa_acknowledge_date).getTime();
+      const endorsed = new Date(row.ticket_endorsed).getTime();
+      if (!isNaN(tsaAck) && !isNaN(endorsed) && tsaAck >= endorsed) {
+        a.rtTotal += (tsaAck - endorsed) / 3600000;
+        a.rtCount++;
+      }
+
+      const received  = new Date(row.ticket_received).getTime();
       const tsaHandle = new Date(row.tsa_handling_time).getTime();
       const tsmHandle = new Date(row.tsm_handling_time).getTime();
       let baseHT = 0;
-      if (!isNaN(tsaHandle) && !isNaN(received) && tsaHandle >= received)
+      if (!isNaN(tsaHandle) && !isNaN(received) && tsaHandle >= received) {
         baseHT = (tsaHandle - received) / 3600000;
-      else if (!isNaN(tsmHandle) && !isNaN(received) && tsmHandle >= received)
+      } else if (!isNaN(tsmHandle) && !isNaN(received) && tsmHandle >= received) {
         baseHT = (tsmHandle - received) / 3600000;
-      if (!baseHT) return;
+      }
+      if (!baseHT) continue;
 
       const remarks = (row.remarks || "").toUpperCase();
       if (remarks === "QUOTATION FOR APPROVAL" || remarks === "SOLD") {
-        qTotal += baseHT; qCount++;
+        a.qTotal += baseHT; a.qCount++;
+      } else if (remarks.includes("SPF")) {
+        a.spfTotal += baseHT; a.spfCount++;
       } else {
-        nqTotal += baseHT; nqCount++;
+        a.nqTotal += baseHT; a.nqCount++;
       }
-    });
+    }
 
-    return {
-      avgResponseTime: rtCount ? rtTotal / rtCount : 0,
-      avgQuotationHT: qCount ? qTotal / qCount : 0,
-      avgNonQuotationHT: nqCount ? nqTotal / nqCount : 0,
-    };
+    for (const ref of agentIds) {
+      const a = acc[ref];
+      result[ref] = a
+        ? {
+            avgResponseTime:  a.rtCount  ? a.rtTotal  / a.rtCount  : 0,
+            avgQuotationHT:   a.qCount   ? a.qTotal   / a.qCount   : 0,
+            avgNonQuotationHT:a.nqCount  ? a.nqTotal  / a.nqCount  : 0,
+            avgSpfHT:         a.spfCount ? a.spfTotal / a.spfCount : 0,
+          }
+        : { avgResponseTime:0, avgQuotationHT:0, avgNonQuotationHT:0, avgSpfHT:0 };
+    }
   } catch (err) {
-    console.error("Error calculating CSR metrics for", referenceid, err);
-    return { avgResponseTime: 0, avgQuotationHT: 0, avgNonQuotationHT: 0 };
+    console.error("[tsm-kpi] CSR metrics error:", err);
+    for (const ref of agentIds)
+      result[ref] = { avgResponseTime:0, avgQuotationHT:0, avgNonQuotationHT:0, avgSpfHT:0 };
   }
+  return result;
 }
 
 /** Fetch active TSA referenceid list under a TSM */
@@ -489,23 +571,20 @@ export async function GET(req: Request) {
       JSON.stringify(quoteTargetData?.map(r => ({ ref: r.referenceid, qt: r.quote_target, m: r.month, y: r.year })))
     );
 
-    // ── Calculate CSR metrics for each agent (current month) ──────────────────
-    const csrFromDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    const csrToDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    // ── Calculate CSR metrics for each agent ──────────────────
+    // Derive today and current month in Manila time for CSR metrics using existing manilaToday
+    const [mYear, mMonth] = manilaToday.split("-");
+    const manilaMonthStart = `${mYear}-${mMonth}-01`;
+    const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
+    const csrFromDate = from || manilaMonthStart;
+    const csrToDate = to || manilaMonthEnd;
 
-    const csrMetricsPromises = agents.map((agent) =>
-      calculateCsrMetrics(agent.referenceid, csrFromDate, csrToDate)
-    );
-    const csrMetricsResults = await Promise.all(csrMetricsPromises);
-    const csrMetricsMap: Record<string, { avgResponseTime: number; avgQuotationHT: number; avgNonQuotationHT: number }> = {};
-    agents.forEach((agent, index) => {
-      csrMetricsMap[agent.referenceid] = csrMetricsResults[index];
-    });
+    const csrMetricsMap = await calcCsrForAgents(agentIds, csrFromDate, csrToDate, tsm);
 
     // ── Assemble per-agent result ─────────────────────────────────────────────
     const result = agents.map(({ referenceid, name }) => {
       const groups = pipelineMap[referenceid];
-      const csrMetrics = csrMetricsMap[referenceid] || { avgResponseTime: 0, avgQuotationHT: 0, avgNonQuotationHT: 0 };
+      const csrMetrics = csrMetricsMap[referenceid] || { avgResponseTime: 0, avgQuotationHT: 0, avgNonQuotationHT: 0, avgSpfHT: 0 };
 
       let c2qCount = 0, q2soQuotation = 0, q2soSalesOrder = 0;
       let soToSISalesOrder = 0, soToSIDelivered = 0;
@@ -551,6 +630,7 @@ export async function GET(req: Request) {
         avgResponseTime:          csrMetrics.avgResponseTime,
         avgQuotationHT:           csrMetrics.avgQuotationHT,
         avgNonQuotationHT:        csrMetrics.avgNonQuotationHT,
+        avgSpfHT:                 csrMetrics.avgSpfHT,
       };
     });
 
