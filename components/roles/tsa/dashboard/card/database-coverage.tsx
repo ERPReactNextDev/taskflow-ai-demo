@@ -6,30 +6,12 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 
-interface Activity {
-  company_name?: string;
-  customer_name?: string;
-  company?: string;
-  date_created?: string;
-  [key: string]: any;
-}
-
-interface ClusterAccount {
-  company_name?: string;
-  type_client?: string;
-  [key: string]: any;
-}
-
 interface DatabaseCoverageCardProps {
   referenceid: string;
   name?: string;
   fromDate?: string;
   toDate?: string;
 }
-
-// Normalize a company name: lowercase → collapse whitespace → strip trailing dot(s)
-const normalizeCompany = (name: string): string =>
-  (name || "").toLowerCase().replace(/\s+/g, " ").trim().replace(/\.+$/, "");
 
 // Convert ISO date string to PH local date string (YYYY-MM-DD)
 const toLocalDateString = (date: Date | string | null | undefined): string => {
@@ -53,8 +35,8 @@ export function DatabaseCoverageCard({
   fromDate,
   toDate,
 }: DatabaseCoverageCardProps) {
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [clusterAccounts, setClusterAccounts] = useState<ClusterAccount[]>([]);
+  const [coveredCount, setCoveredCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,35 +62,17 @@ export function DatabaseCoverageCard({
       setLoading(true);
       setError(null);
       try {
-        // Fetch cluster accounts
-        const clusterRes = await fetch(
-          `/api/com-fetch-cluster-account?referenceid=${encodeURIComponent(referenceid)}`
+        const res = await fetch(
+          `/api/db-coverage?referenceid=${encodeURIComponent(referenceid)}&from=${monthRange.monthStart}&to=${monthRange.monthEnd}`
         );
-        if (!clusterRes.ok) throw new Error("Failed to fetch cluster accounts");
-        const clusterData = await clusterRes.json();
-        
-        // Filter cluster accounts (same logic as breaches.tsx)
-        const excludedStatuses = ["removed", "approved for deletion", "subject for transfer"];
-        const allowedTypes = ["top 50", "next 30", "balance 20", "tsa client", "csr client", "new client"];
-        const filteredAccounts: ClusterAccount[] = (clusterData.data || []).filter((a: any) => {
-          const status = (a.status || "").toLowerCase();
-          const typeClient = (a.type_client || "").toLowerCase();
-          return (
-            status &&
-            typeClient &&
-            !excludedStatuses.includes(status) &&
-            allowedTypes.includes(typeClient)
-          );
-        });
-        setClusterAccounts(filteredAccounts);
-
-        // Fetch activities (full month)
-        const activitiesRes = await fetch(
-          `/api/activity/tsa/breaches/fetch?referenceid=${encodeURIComponent(referenceid)}&from=${monthRange.monthStart}&to=${monthRange.monthEnd}&fetchAll=true`
-        );
-        if (!activitiesRes.ok) throw new Error("Failed to fetch activities");
-        const activitiesData = await activitiesRes.json();
-        setActivities(activitiesData.activities || []);
+        if (!res.ok) throw new Error("Failed to fetch DB coverage");
+        const data = await res.json();
+        if (data.success) {
+          setCoveredCount(data.coveredCount);
+          setTotalCount(data.totalCount);
+        } else {
+          throw new Error(data.error);
+        }
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -119,47 +83,6 @@ export function DatabaseCoverageCard({
     fetchData();
   }, [referenceid, monthRange.monthStart, monthRange.monthEnd]);
 
-  // Compute covered accounts
-  const coveredCount = useMemo(() => {
-    if (!clusterAccounts.length || !activities.length) return 0;
-
-    // Collect touched company names (full month)
-    const touchedCompanyNames = new Set<string>();
-    
-    const monthStart = Date.UTC(
-      new Date(effectiveFromDate + "T00:00:00Z").getUTCFullYear(),
-      new Date(effectiveFromDate + "T00:00:00Z").getUTCMonth(),
-      1, 0, 0, 0, 0
-    );
-    const monthEnd = Date.UTC(
-      new Date(effectiveFromDate + "T00:00:00Z").getUTCFullYear(),
-      new Date(effectiveFromDate + "T00:00:00Z").getUTCMonth() + 1,
-      0, 23, 59, 59, 999
-    );
-
-    activities.forEach((act) => {
-      const companyName = act.company_name || act.customer_name || act.company;
-      if (!companyName || !act.date_created) return;
-
-      // Parse date_created as a literal date string (ignore timezone offset)
-      const dateStr = act.date_created.toString().split("T")[0];
-      const [y, m, d] = dateStr.split("-").map(Number);
-      if (!y || !m || !d) return;
-      const t = Date.UTC(y, m - 1, d, 0, 0, 0, 0);
-      if (isNaN(t) || t < monthStart || t > monthEnd) return;
-
-      touchedCompanyNames.add(normalizeCompany(companyName));
-    });
-
-    // Count covered accounts
-    const covered = clusterAccounts.filter((acc) =>
-      acc.company_name && touchedCompanyNames.has(normalizeCompany(acc.company_name))
-    );
-
-    return covered.length;
-  }, [clusterAccounts, activities, effectiveFromDate]);
-
-  const totalCount = clusterAccounts.length;
   const percentage = totalCount > 0 ? Math.min(Math.round((coveredCount / totalCount) * 100), 100) : 0;
 
   return (

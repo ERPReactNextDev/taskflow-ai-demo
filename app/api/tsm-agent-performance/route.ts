@@ -320,35 +320,35 @@ const normalizeCompany = (name: string): string =>
 async function calcDbCoverageForAgents(
   agentIds: string[],
   monthStartDate: string,
-  monthEndDate: string,
-  tsmId: string
+  monthEndDate: string
 ): Promise<Record<string, DbCoverageResult>> {
   const result: Record<string, DbCoverageResult> = {};
   try {
-    console.log("[calcDbCoverageForAgents] Starting with tsmId:", tsmId, "monthStart:", monthStartDate, "monthEnd:", monthEndDate);
-    // Fetch all cluster accounts for this TSM with active status
+    console.log("[calcDbCoverageForAgents] Starting with agentIds:", agentIds, "monthStart:", monthStartDate, "monthEnd:", monthEndDate);
+    // Fetch all cluster accounts for these agents, excluding removed, approved for deletion, and subject for transfer
     const clusterAccounts = await sql`
-      SELECT referenceid, company_name, account_reference_number, tsm, status, type_client
+      SELECT referenceid, company_name, account_reference_number, status, type_client
       FROM accounts
-      WHERE tsm = ${tsmId} AND LOWER(status) = 'active'
+      WHERE referenceid = ANY(${agentIds}) 
+        AND LOWER(status) NOT IN ('removed', 'approved for deletion', 'subject for transfer')
     `;
     console.log("[calcDbCoverageForAgents] Found clusterAccounts:", clusterAccounts.length, clusterAccounts);
 
-    // Fetch activities from ALL relevant tables for this TSM (full month)
+    // Fetch activities from ALL 5 relevant tables for these agents (full month)
     const allActivities: any[] = [];
     const tables = ["history"];
     
     for (const table of tables) {
       let query = supabase.from(table)
         .select("referenceid, company_name, account_reference_number, date_created")
-        .eq("tsm", tsmId)
+        .in("referenceid", agentIds)
         .gte("date_created", monthStartDate);
       
       const d = new Date(monthEndDate);
       d.setHours(23, 59, 59, 999);
       query = query.lte("date_created", d.toISOString());
       
-        const data = await fetchAllRows(query);
+      const data = await fetchAllRows(query);
       if (data) {
         console.log("[calcDbCoverageForAgents] Table", table, "returned", data.length, "rows");
         allActivities.push(...data);
@@ -394,7 +394,7 @@ async function calcDbCoverageForAgents(
       }
     }
 
-    // Filter accounts and compute coverage
+    // Filter accounts and compute coverage - match database-coverage.tsx logic (no status === "active" extra check)
     const excludedStatuses = new Set(["removed", "approved for deletion", "subject for transfer"]);
     const allowedTypes = new Set(["top 50", "next 30", "balance 20", "tsa client", "csr client", "new client"]);
 
@@ -403,7 +403,7 @@ async function calcDbCoverageForAgents(
       const filteredAccounts = accounts.filter((acc) => {
         const status = (acc.status || "").toLowerCase();
         const typeClient = (acc.type_client || "").toLowerCase();
-        return status === "active" && typeClient && !excludedStatuses.has(status) && allowedTypes.has(typeClient);
+        return status && typeClient && !excludedStatuses.has(status) && allowedTypes.has(typeClient);
       });
       console.log("[calcDbCoverageForAgents] Agent", ref, "filteredAccounts:", filteredAccounts.length, filteredAccounts);
 
@@ -607,7 +607,7 @@ export async function GET(req: Request) {
       siQ, soQ, obQ, qaQ, svQ, naQ, quotaQ,
       calcCsrForAgents(agentIds, rangeStartDate, rangeEndDate, tsm),
       calcTimeSpentForAgents(agentIds, rangeStartDate, rangeEndDate, rangeStartTs, rangeEndTs),
-      calcDbCoverageForAgents(agentIds, manilaMonthStart, manilaMonthEnd, tsm),
+      calcDbCoverageForAgents(agentIds, manilaMonthStart, manilaMonthEnd),
     ]);
     console.log("[tsm-agent-performance] Parallel queries complete");
 

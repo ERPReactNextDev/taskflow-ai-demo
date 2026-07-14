@@ -4,7 +4,6 @@ import { supabase } from "@/utils/supabase";
 const BATCH_SIZE = 500;
 const DEFAULT_LIMIT = 500;
 const MAX_LIMIT = 2000;
-const HARD_MAX_FOR_FETCH_ALL = 10000; // For fetchAll mode, allow up to 10k per request
 
 async function fetchAllRows(
   table: string,
@@ -39,24 +38,24 @@ async function fetchAllRows(
 
     if (!data || data.length === 0) break;
 
-    // Check if adding this batch would exceed the limit
-    if (limit && allData.length + data.length > limit) {
-      const remaining = limit - allData.length;
-      allData.push(...data.slice(0, remaining));
-      hasMore = true;
-      break;
+    // Only check limit if it's provided
+    if (limit) {
+      if (allData.length + data.length > limit) {
+        const remaining = limit - allData.length;
+        allData.push(...data.slice(0, remaining));
+        hasMore = true;
+        break;
+      }
+      if (allData.length >= limit) {
+        hasMore = true;
+        break;
+      }
     }
 
     allData.push(...data);
 
     if (data.length < BATCH_SIZE) break;
     offset += BATCH_SIZE;
-
-    // Stop if we've reached the limit
-    if (limit && allData.length >= limit) {
-      hasMore = true;
-      break;
-    }
   }
 
   return { data: allData, hasMore };
@@ -83,14 +82,9 @@ export default async function handler(
   // We'll use '*' to avoid errors if some tables lack specific columns
   const selectFields = "*";
 
-  // Parse limit - allow higher limit for fetchAll mode but cap at HARD_MAX
-  let parsedLimit: number;
-  if (isFetchAll) {
-    parsedLimit = Math.min(
-      parseInt(typeof limit === "string" ? limit : String(HARD_MAX_FOR_FETCH_ALL), 10) || HARD_MAX_FOR_FETCH_ALL,
-      HARD_MAX_FOR_FETCH_ALL
-    );
-  } else {
+  // Parse limit - for fetchAll mode, don't set any limit
+  let parsedLimit: number | undefined;
+  if (!isFetchAll) {
     parsedLimit = Math.min(
       parseInt(typeof limit === "string" ? limit : String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT,
       MAX_LIMIT
@@ -102,8 +96,8 @@ export default async function handler(
   const cursorDate = typeof cursor === "string" ? cursor : undefined;
 
   try {
-    // Per-table limit to distribute the load
-    const perTableLimit = Math.ceil(parsedLimit / 5);
+    // For fetchAll mode, don't set per-table limit - fetch all from each table
+    const perTableLimit = isFetchAll ? undefined : Math.ceil(parsedLimit! / 5);
 
     /* -------------------- 1️⃣ ACTIVITY (Current) -------------------- */
     const { data: activityData, hasMore: activityHasMore } = await fetchAllRows(
@@ -153,22 +147,26 @@ export default async function handler(
 
     // Generate next cursor based on last item's date
     let nextCursor: string | null = null;
-    const hasMore = activities.length > parsedLimit ||
-      activityHasMore || historyHasMore || revisedHasMore || meetingsHasMore || docHasMore;
+    let hasMore = false;
+    
+    if (!isFetchAll) {
+      hasMore = activities.length > parsedLimit! ||
+        activityHasMore || historyHasMore || revisedHasMore || meetingsHasMore || docHasMore;
 
-    if (activities.length > parsedLimit) {
-      activities = activities.slice(0, parsedLimit);
-    }
+      if (activities.length > parsedLimit!) {
+        activities = activities.slice(0, parsedLimit!);
+      }
 
-    // Generate cursor from the last item's date_created
-    if (hasMore && activities.length > 0) {
-      const lastItem = activities[activities.length - 1];
-      if (lastItem?.date_created) {
-        // Use the date of the last item as cursor for next request
-        const lastDate = new Date(lastItem.date_created);
-        // Subtract 1ms to ensure we don't include the last item again
-        lastDate.setMilliseconds(lastDate.getMilliseconds() - 1);
-        nextCursor = lastDate.toISOString();
+      // Generate cursor from the last item's date_created
+      if (hasMore && activities.length > 0) {
+        const lastItem = activities[activities.length - 1];
+        if (lastItem?.date_created) {
+          // Use the date of the last item as cursor for next request
+          const lastDate = new Date(lastItem.date_created);
+          // Subtract 1ms to ensure we don't include the last item again
+          lastDate.setMilliseconds(lastDate.getMilliseconds() - 1);
+          nextCursor = lastDate.toISOString();
+        }
       }
     }
 
