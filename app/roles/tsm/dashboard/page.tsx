@@ -408,6 +408,14 @@ function DashboardContent() {
             </div>
           )}
 
+          {/* KPI Weighted Scores — Team View */}
+          {visibility.kpiScores && userDetails.referenceid && (
+            <TsmKpiWeightedScores
+              tsm={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+            />
+          )}
+
           <SalesPipelineCard
             tsm={userDetails.referenceid}
             dateRange={dateCreatedFilterRange}
@@ -438,14 +446,6 @@ function DashboardContent() {
           {/* Agent Performance Detail — Team View */}
           {visibility.agentDetail && userDetails.referenceid && (
             <AgentPerformanceDetail
-              tsm={userDetails.referenceid}
-              dateRange={dateCreatedFilterRange}
-            />
-          )}
-
-          {/* KPI Weighted Scores — Team View */}
-          {visibility.kpiScores && userDetails.referenceid && (
-            <TsmKpiWeightedScores
               tsm={userDetails.referenceid}
               dateRange={dateCreatedFilterRange}
             />

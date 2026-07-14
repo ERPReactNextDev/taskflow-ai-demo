@@ -467,9 +467,9 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
         <div className="flex items-center gap-2">
           <button
             onClick={fetchData}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-md transition-colors"
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase rounded-md transition-colors"
           >
-            Fetch Data
+            Generate Data
           </button>
           {loading && (
             <div className="flex items-center gap-1.5 text-xs text-gray-400">
