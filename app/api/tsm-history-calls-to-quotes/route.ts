@@ -27,27 +27,20 @@ export async function GET(req: Request) {
 
     const now = new Date();
     
-    // Helper to convert YYYY-MM-DD to local time range
-    function getLocalDateRange(dateStr: string): { start: Date; end: Date } {
-      const [year, month, day] = dateStr.split("-").map(Number);
-      const start = new Date(year, month - 1, day, 0, 0, 0, 0);
-      const end = new Date(year, month - 1, day, 23, 59, 59, 999);
-      return { start, end };
-    }
+    // Derive current month in Manila time for default range
+    const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const [mYear, mMonth] = manilaToday.split("-");
+    const manilaMonthStart = `${mYear}-${mMonth}-01`;
 
-    // Default range: start of current month
-    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const { start: startDate, end: endDate } = from 
-      ? getLocalDateRange(from)
-      : { start: defaultStart, end: null };
-    
-    const finalEndDate = to ? getLocalDateRange(to).end : endDate;
+    // Use Asia/Manila timezone for date ranges (matches tsm-kpi and tsa-kpi)
+    const rangeStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
+    const rangeEnd   = to ? `${to}T23:59:59.999+08:00` : `${manilaToday}T23:59:59.999+08:00`;
 
     let query = supabase.from("history")
       .select("activity_reference_number, source, type_activity")
       .in("referenceid", agentIds)
-      .gte("date_created", startDate.toISOString());
-    if (finalEndDate) query = query.lte("date_created", finalEndDate.toISOString());
+      .gte("date_created", rangeStart);
+    if (to) query = query.lte("date_created", rangeEnd);
 
     const { data, error } = await query;
     if (error) throw error;

@@ -74,16 +74,28 @@ function standardRating(pct: number): number {
   if (pct >= 61) return 3; if (pct >= 50) return 2; return 1;
 }
 function callsToQuoteRating(pct: number): number {
-  if (pct >= 20) return 5; if (pct >= 14.01) return 4;
-  if (pct >= 12.01) return 3; if (pct >= 10.01) return 2; return 1;
+  if (pct >= 20) return 5; 
+  if (pct >= 14.01) return 4;
+  if (pct >= 12.01) return 3; 
+  if (pct >= 10.01) return 2; 
+  return 1;
 }
+
 function quoteToSORating(pct: number): number {
-  if (pct >= 30) return 5; if (pct >= 25.01) return 4;
-  if (pct >= 20.01) return 3; if (pct >= 15.01) return 2; return 1;
+  if (pct >= 30) return 5; 
+  if (pct >= 25.01) return 4;
+  if (pct >= 20.01) return 3; 
+  if (pct >= 15.01) return 2; 
+  return 1;
 }
+
+
 function soToSIRating(pct: number): number {
-  if (pct >= 70) return 5; if (pct >= 60.01) return 4;
-  if (pct >= 50.01) return 3; if (pct >= 40.01) return 2; return 1;
+  if (pct >= 70) return 5; 
+  if (pct >= 60.01) return 4;
+  if (pct >= 50.01) return 3; 
+  if (pct >= 40.01) return 2; 
+  return 1;
 }
 
 /**
