@@ -403,11 +403,39 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
   const [loading, setLoading] = useState(false);
   const [agents,  setAgents]  = useState<AgentKpiData[]>([]);
   const [error,   setError]   = useState<string | null>(null);
+  const [hasFetched, setHasFetched] = useState(false);
+
+  // Create a unique cache key based on tsm and date range
+  const getCacheKey = useCallback(() => {
+    const fromStr = dateRange?.from ? toDateStr(dateRange.from) : "default";
+    const toStr = dateRange?.to ? toDateStr(dateRange.to) : "default";
+    return `tsm-kpi-${tsm}-${fromStr}-${toStr}`;
+  }, [tsm, dateRange]);
+
+  // Load from localStorage on initial render
+  useEffect(() => {
+    const cacheKey = getCacheKey();
+    const cachedData = localStorage.getItem(cacheKey);
+    if (cachedData) {
+      try {
+        const parsed = JSON.parse(cachedData);
+        setAgents(parsed.agents);
+        setHasFetched(true);
+      } catch (e) {
+        console.error("Failed to parse cached data:", e);
+        localStorage.removeItem(cacheKey);
+      }
+    }
+  }, [getCacheKey]);
 
   const fetchData = useCallback(async () => {
     if (!tsm) return;
+    const cacheKey = getCacheKey();
+    // Delete old cache
+    localStorage.removeItem(cacheKey);
     setLoading(true);
     setError(null);
+    setHasFetched(true);
     try {
       const params = new URLSearchParams({ tsm });
       if (dateRange?.from) params.append("from", toDateStr(dateRange.from));
@@ -417,16 +445,17 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error ?? "Unknown error");
-      setAgents(data.agents ?? []);
+      const newAgents = data.agents ?? [];
+      setAgents(newAgents);
+      // Save to localStorage
+      localStorage.setItem(cacheKey, JSON.stringify({ agents: newAgents }));
     } catch (err: any) {
       console.error("TsmKpiWeightedScores fetch error:", err);
       setError(err.message ?? "Failed to load KPI data.");
     } finally {
       setLoading(false);
     }
-  }, [tsm, dateRange]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
+  }, [tsm, dateRange, getCacheKey]);
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border px-6 py-8">
@@ -435,12 +464,20 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
         <p className="text-xs font-semibold uppercase tracking-widest text-gray-600">
           KPI Weighted Scores — Team View (out of 5.0)
         </p>
-        {loading && (
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <Spinner className="w-3.5 h-3.5" />
-            <span>Loading…</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchData}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-md transition-colors"
+          >
+            Fetch Data
+          </button>
+          {loading && (
+            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+              <Spinner className="w-3.5 h-3.5" />
+              <span>Loading…</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Error */}
@@ -448,19 +485,41 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>
       )}
 
-      {/* Empty */}
-      {!loading && !error && agents.length === 0 && (
-        <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-8 text-center text-xs text-gray-400">
-          No active agents found under your team.
-        </div>
+      {/* Empty state if not fetched yet */}
+      {!hasFetched && !error && (
+        <p className="text-xs text-gray-400 text-center py-8">
+          Click "Fetch Data" to load KPI data.
+        </p>
       )}
 
-      {/* 6-column grid: 1-col mobile → 2-col sm → 3-col md → 6-col lg */}
-      {agents.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          {agents.map((agent) => (
-            <AgentSummaryCard key={agent.referenceid} agent={agent} />
-          ))}
+      {/* Table (blurred if loading) */}
+      {hasFetched && (
+        <div className={`transition-all duration-300 relative ${loading ? "blur-sm opacity-50 pointer-events-none" : ""}`}>
+          {/* Loading overlay while fetching */}
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center z-10">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Spinner className="w-5 h-5" />
+                <span>Loading data…</span>
+              </div>
+            </div>
+          )}
+
+          {/* Empty state if no agents */}
+          {!loading && !error && agents.length === 0 && (
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-8 text-center text-xs text-gray-400">
+              No active agents found under your team.
+            </div>
+          )}
+
+          {/* 6-column grid: 1-col mobile → 2-col sm → 3-col md → 6-col lg */}
+          {agents.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {agents.map((agent) => (
+                <AgentSummaryCard key={agent.referenceid} agent={agent} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

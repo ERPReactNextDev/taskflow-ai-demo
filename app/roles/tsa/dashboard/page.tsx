@@ -755,13 +755,21 @@ function DashboardContent() {
     try {
       const fromStr = dateCreatedFilterRange?.from ? toDateStr(dateCreatedFilterRange.from) : null;
       const toStr = dateCreatedFilterRange?.to ? toDateStr(dateCreatedFilterRange.to) : null;
-      const params = new URLSearchParams({ referenceid });
-      if (fromStr) params.append("from", fromStr);
-      if (toStr) params.append("to", toStr);
+      const siParams = new URLSearchParams({ referenceid });
+      if (fromStr) siParams.append("from", fromStr);
+      if (toStr)   siParams.append("to", toStr);
+
+      // SO is always current month — independent of the date filter
+      const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+      const [mYear, mMonth] = manilaToday.split("-");
+      const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
+      const monthStart = `${mYear}-${mMonth}-01`;
+      const monthEnd   = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
+      const soParams = new URLSearchParams({ referenceid, from: monthStart, to: monthEnd });
 
       const [siRes, soRes] = await Promise.all([
-        fetch(`/api/history?${params}`),
-        fetch(`/api/history-so?${params}`),
+        fetch(`/api/history?${siParams}`),
+        fetch(`/api/history-so?${soParams}`),
       ]);
       if (!siRes.ok) throw new Error("Failed to fetch history si");
       if (!soRes.ok) throw new Error("Failed to fetch history so");
@@ -1057,7 +1065,15 @@ function DashboardContent() {
             </div>
           )}
 
-
+          {visibility.kpiScores && (
+            <KpiWeightedScores
+              referenceid={userDetails.referenceid}
+              dateCreatedFilterRange={dateCreatedFilterRange}
+              name={`${userDetails.firstname} ${userDetails.lastname}`.trim() || userDetails.referenceid}
+              // Optional: keep passing props for backward compatibility if needed
+            />
+          )}
+          
           {visibility.salesPipeline && (
             <SalesPipelineCard
               obCallsCount={outboundCallsCount}
@@ -1100,16 +1116,6 @@ function DashboardContent() {
             <TsaPerformanceDetail
               referenceid={userDetails.referenceid}
               dateRange={dateCreatedFilterRange}
-            />
-          )}
-
-
-          {visibility.kpiScores && (
-            <KpiWeightedScores
-              referenceid={userDetails.referenceid}
-              dateCreatedFilterRange={dateCreatedFilterRange}
-              name={`${userDetails.firstname} ${userDetails.lastname}`.trim() || userDetails.referenceid}
-              // Optional: keep passing props for backward compatibility if needed
             />
           )}
 

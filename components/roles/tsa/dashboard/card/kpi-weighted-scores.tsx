@@ -255,13 +255,15 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
   newAccountTarget: propNewAccountTarget,
 }) => {
   // --- State ---
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [name, setName] = useState(propName);
   const [kpiData, setKpiData] = useState<any>(null);
   const [siteVisitTarget, setSiteVisitTarget] = useState<number>(0);
   const [clientVisitsCount, setClientVisitsCount] = useState<number>(0);
   const [obCallsTarget, setObCallsTarget] = useState<number>(0);
   const [quotesTarget, setQuotesTarget] = useState<number>(0);
+  const [hasFetched, setHasFetched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // CSR Metrics state (self-fetched like single agent view)
   const [csrMetrics, setCsrMetrics] = useState({
@@ -277,6 +279,34 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
     if (propName) setName(propName);
   }, [propName]);
 
+  // Create a unique cache key based on referenceid and date range
+  const getCacheKey = useCallback(() => {
+    const fromStr = dateCreatedFilterRange?.from ? toDateStr(dateCreatedFilterRange.from) : "default";
+    const toStr = dateCreatedFilterRange?.to ? toDateStr(dateCreatedFilterRange.to) : "default";
+    return `tsa-kpi-${referenceid}-${fromStr}-${toStr}`;
+  }, [referenceid, dateCreatedFilterRange]);
+
+  // Load from localStorage on initial render
+  useEffect(() => {
+    const cacheKey = getCacheKey();
+    const cachedData = localStorage.getItem(cacheKey);
+    if (cachedData) {
+      try {
+        const parsed = JSON.parse(cachedData);
+        setKpiData(parsed.kpiData);
+        setSiteVisitTarget(parsed.siteVisitTarget);
+        setClientVisitsCount(parsed.clientVisitsCount);
+        setObCallsTarget(parsed.obCallsTarget);
+        setQuotesTarget(parsed.quotesTarget);
+        setCsrMetrics(parsed.csrMetrics);
+        setHasFetched(true);
+      } catch (err) {
+        console.error("Failed to parse cached data:", err);
+        localStorage.removeItem(cacheKey);
+      }
+    }
+  }, [getCacheKey]);
+
   // --- Fetch KPI data from our NEW API ---
   const fetchKpiData = useCallback(async () => {
     if (!referenceid) {
@@ -284,7 +314,6 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
       return;
     }
 
-    setLoading(true);
     try {
       const params = new URLSearchParams({ referenceid });
       if (dateCreatedFilterRange?.from) {
@@ -302,8 +331,7 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
       }
     } catch (err) {
       console.error("Error fetching KPI data:", err);
-    } finally {
-      setLoading(false);
+      setError(err instanceof Error ? err.message : "Failed to fetch KPI data");
     }
   }, [referenceid, dateCreatedFilterRange]);
 
@@ -326,6 +354,7 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
       setSiteVisitTarget(parsedTarget);
     } catch (err) {
       console.error("Error fetching site visit target:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch site visit target");
     }
   };
 
@@ -351,6 +380,7 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
       setClientVisitsCount(logins);
     } catch (err) {
       console.error("Error fetching client visits count:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch client visits");
     }
   };
   
@@ -369,6 +399,7 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
       setObCallsTarget(Number(data.target) || 0);
     } catch (err) {
       console.error("Error fetching OB calls target:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch OB target");
     }
   };
   
@@ -386,6 +417,7 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
       setQuotesTarget(Number(data.quoteTarget) || 0);
     } catch (err) {
       console.error("Error fetching quotes target:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch quotes target");
     }
   };
   
@@ -478,15 +510,46 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
     }
   }, [referenceid, dateCreatedFilterRange, propAvgResponseTime, propAvgQuotationHT, propAvgNonQuotationHT]);
 
-  // --- Main effect ---
+  // --- Fetch all data and save to localStorage ---
+  const fetchAllData = useCallback(async () => {
+    if (!referenceid) return;
+    const cacheKey = getCacheKey();
+    // Delete old cache
+    localStorage.removeItem(cacheKey);
+    setLoading(true);
+    setHasFetched(true);
+    setError(null);
+    try {
+      await Promise.all([
+        fetchKpiData(),
+        fetchSiteVisitTarget(),
+        fetchClientVisitsCount(),
+        fetchObCallsTarget(),
+        fetchQuotesTarget(),
+        fetchCsrMetrics()
+      ]);
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch data");
+    } finally {
+      setLoading(false);
+    }
+  }, [referenceid, getCacheKey, fetchKpiData, fetchCsrMetrics]);
+
+  // --- Save to localStorage whenever data changes ---
   useEffect(() => {
-    fetchKpiData();
-    fetchSiteVisitTarget();
-    fetchClientVisitsCount();
-    fetchObCallsTarget();
-    fetchQuotesTarget();
-    fetchCsrMetrics();
-  }, [fetchKpiData, fetchCsrMetrics, referenceid, dateCreatedFilterRange]);
+    if (hasFetched && !loading) {
+      const cacheKey = getCacheKey();
+      localStorage.setItem(cacheKey, JSON.stringify({
+        kpiData,
+        siteVisitTarget,
+        clientVisitsCount,
+        obCallsTarget,
+        quotesTarget,
+        csrMetrics
+      }));
+    }
+  }, [kpiData, siteVisitTarget, clientVisitsCount, obCallsTarget, quotesTarget, csrMetrics, hasFetched, loading, getCacheKey]);
 
   // --- Use fallback props if provided, otherwise use API data ---
   const finalClientVisitsTarget = propClientVisitsTarget ?? (siteVisitTarget || 10);
@@ -690,46 +753,84 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
   return (
     <Card className="bg-white z-10 text-black flex flex-col">
       <CardContent className="flex-1 flex flex-col p-6 gap-4">
-        <p className="text-xs font-semibold uppercase tracking-widest text-gray-600">
-          KPI weighted scores (out of 5.0)
-        </p>
-
-        {finalLoading ? (
-          <div className="flex items-center justify-center h-32 gap-2 text-xs text-gray-400">
-            <Spinner className="w-4 h-4" />
-            <span>Calculating scores...</span>
-          </div>
-        ) : (
-          <div className="flex flex-col md:flex-row gap-6">
-            {/* Score summary */}
-            <div
-              className="rounded-xl p-5 flex flex-col gap-3 min-w-[200px] md:w-56 shrink-0"
-              style={{
-                backgroundImage: getStripedBackground(barColor(totalScore)),
-                backgroundSize: "20px 20px",
-              }}
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-600">
+            KPI weighted scores (out of 5.0)
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchAllData}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase rounded-md transition-colors"
             >
-              <p className="text-sm font-semibold text-gray-800">{finalName}</p>
-              <p className={`text-5xl font-extrabold leading-none ${statusColor}`}>
-                {totalScore.toFixed(2)}
-              </p>
-              <div className="w-full bg-gray-200 h-2 rounded-full">
-                <div
-                  className="h-2 rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.min(totalFillPct, 100)}%`,
-                    backgroundColor: barColor(totalScore),
-                  }}
-                />
+              Generate Data
+            </button>
+            {finalLoading ? (
+              <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <Spinner className="w-3.5 h-3.5" />
+                <span>Loading...</span>
               </div>
-              <p className={`text-xs font-medium ${statusColor}`}>{statusLabel}</p>
-            </div>
+            ) : null}
+          </div>
+        </div>
 
-            {/* KPI breakdown */}
-            <div className="flex-1 flex flex-col justify-center divide-y divide-gray-50">
-              {rows.map((row) => (
-                <KpiRowItem key={row.label} row={row} />
-              ))}
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+            {error}
+          </div>
+        )}
+
+        {/* Empty state if not fetched yet */}
+        {!hasFetched && !error ? (
+          <p className="text-xs text-gray-400 text-center py-8">
+            Click "Fetch Data" to load KPI scores.
+          </p>
+        ) : null}
+
+        {/* KPI content (blurred if loading) */}
+        {hasFetched && (
+          <div className={`transition-all duration-300 relative ${finalLoading ? "blur-sm opacity-50 pointer-events-none" : ""}`}>
+            {/* Loading overlay while fetching */}
+            {finalLoading && (
+              <div className="absolute inset-0 flex items-center justify-center z-10">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Spinner className="w-5 h-5" />
+                  <span>Calculating scores...</span>
+                </div>
+              </div>
+            )}
+
+            {/* KPI display */}
+            <div className="flex flex-col md:flex-row gap-6">
+              {/* Score summary */}
+              <div
+                className="rounded-xl p-5 flex flex-col gap-3 min-w-[200px] md:w-56 shrink-0"
+                style={{
+                  backgroundImage: getStripedBackground(barColor(totalScore)),
+                  backgroundSize: "20px 20px",
+                }}
+              >
+                <p className="text-sm font-semibold text-gray-800">{finalName}</p>
+                <p className={`text-5xl font-extrabold leading-none ${statusColor}`}>
+                  {totalScore.toFixed(2)}
+                </p>
+                <div className="w-full bg-gray-200 h-2 rounded-full">
+                  <div
+                    className="h-2 rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.min(totalFillPct, 100)}%`,
+                      backgroundColor: barColor(totalScore),
+                    }}
+                  />
+                </div>
+                <p className={`text-xs font-medium ${statusColor}`}>{statusLabel}</p>
+              </div>
+
+              {/* KPI breakdown */}
+              <div className="flex-1 flex flex-col justify-center divide-y divide-gray-50">
+                {rows.map((row) => (
+                  <KpiRowItem key={row.label} row={row} />
+                ))}
+              </div>
             </div>
           </div>
         )}

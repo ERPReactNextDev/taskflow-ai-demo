@@ -12,36 +12,40 @@ const MONTHS = [
 ];
 
 const SPF_TYPES = ["spf - special project", "spf - local", "spf - foreign"];
+const PAGE_SIZE = 1000;
 
-/** Fetch all rows from Supabase (handles pagination for large datasets) */
 async function fetchAllRows<T = any>(query: any): Promise<T[]> {
-  const PAGE_SIZE = 1000;
-  let allData: T[] = [];
+  let all: T[] = [];
   let offset = 0;
-
   while (true) {
     const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
-    allData = allData.concat(data);
+    all = all.concat(data);
     if (data.length < PAGE_SIZE) break;
     offset += PAGE_SIZE;
   }
+  return all;
+}
 
-  return allData;
+/** Return 0-indexed month from a date string, interpreted in Asia/Manila time */
+function manilaMonthIndex(dateStr: string): number {
+  return parseInt(
+    new Date(dateStr).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).split("-")[1],
+    10
+  ) - 1;
 }
 
 export async function GET(req: Request) {
   try {
     const url  = new URL(req.url);
     const tsm  = url.searchParams.get("tsm");
-    const year = url.searchParams.get("year") ?? new Date().getFullYear().toString();
+    const year = url.searchParams.get("year") ?? new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
 
     if (!tsm) {
       return NextResponse.json({ success: false, error: "Missing tsm." }, { status: 400 });
     }
 
-    // 1. Get all TSAs under this TSM (exclude non-TSA roles and inactive statuses)
     const { data: agents, error: agentsError } = await supabase
       .from("users")
       .select("ReferenceID, Firstname, Lastname")
@@ -56,26 +60,26 @@ export async function GET(req: Request) {
     }
 
     const agentIds = agents.map((a) => a.ReferenceID);
-    const yearStart = `${year}-01-01T00:00:00Z`;
-    const yearEnd   = `${year}-12-31T23:59:59Z`;
 
-    // 2. Fetch all SO-Done records for those agents for the year
-    const query = supabase
-      .from("history")
-      .select("referenceid, so_amount, call_type, date_created")
-      .in("referenceid", agentIds)
-      .eq("status", "SO-Done")
-      .gte("date_created", yearStart)
-      .lte("date_created", yearEnd);
+    // Full calendar year in Manila time — matches what the breakdown page displays
+    const startISO = `${year}-01-01T00:00:00+08:00`;
+    const endISO   = `${year}-12-31T23:59:59.999+08:00`;
 
-    const soRows = await fetchAllRows(query);
+    const soRows = await fetchAllRows(
+      supabase.from("history")
+        .select("referenceid, so_amount, call_type, date_created")
+        .in("referenceid", agentIds)
+        .eq("status", "SO-Done")
+        .gte("date_created", startISO)
+        .lte("date_created", endISO)
+    );
 
-    // 3. Build soMap: { [referenceid]: { [month]: { regular, spf, total } } }
+    // Build soMap — use Manila timezone to bucket into the correct month
     const soMap: Record<string, Record<string, { regular: number; spf: number; total: number }>> = {};
 
-    for (const row of soRows ?? []) {
+    for (const row of soRows) {
       const ref   = row.referenceid;
-      const month = MONTHS[new Date(row.date_created).getMonth()];
+      const month = MONTHS[manilaMonthIndex(row.date_created)];
       const amt   = Number(row.so_amount) || 0;
       const isSpf = SPF_TYPES.includes((row.call_type || "").toLowerCase());
 
@@ -87,25 +91,19 @@ export async function GET(req: Request) {
       soMap[ref][month].total += amt;
     }
 
-    return NextResponse.json(
-      {
-        success: true,
-        agents: agents.map((a) => ({
-          referenceid: a.ReferenceID,
-          name: `${a.Firstname ?? ""} ${a.Lastname ?? ""}`.trim(),
-        })),
-        soMap,
-        months: MONTHS,
-        year,
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({
+      success: true,
+      agents: agents.map((a) => ({
+        referenceid: a.ReferenceID,
+        name: `${a.Firstname ?? ""} ${a.Lastname ?? ""}`.trim(),
+      })),
+      soMap,
+      months: MONTHS,
+      year,
+    }, { status: 200 });
   } catch (err: any) {
     console.error("Error fetching TSM agent SO:", err);
-    return NextResponse.json(
-      { success: false, error: err.message || "Failed to fetch SO data." },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: err.message || "Failed to fetch SO data." }, { status: 500 });
   }
 }
 

@@ -494,9 +494,13 @@ export async function GET(req: Request) {
     const manilaMonthStart = `${mYear}-${mMonth}-01`;
     const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
 
-    // SI (uses delivery_date, date-only) / SO (uses date_created, timestamp)
+    // SI (uses delivery_date, date-only) / SO (uses date_created with +08:00 timezone)
     const siStart = from ? from : `${mYear}-01-01`;
     const siEnd   = to   ? to : null;
+
+    // SO uses full +08:00 timestamp bounds — same as tsm-history-so and tsm-agent-so
+    const soStartISO = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
+    const soEndISO   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
 
     // Date-only for history table (date_created)
     const rangeStartDate = from || manilaMonthStart;
@@ -530,14 +534,14 @@ export async function GET(req: Request) {
       return fetchAllRows(q);
     })();
 
-    // SO amount
+    // SO amount — use Manila-aware +08:00 bounds to match tsm-history-so and tsm-agent-so
     const soQ = (() => {
       let q = supabase.from("history")
         .select("referenceid, so_amount")
         .in("referenceid", agentIds)
         .eq("status", "SO-Done")
-        .gte("date_created", siStart);
-      if (siEnd) q = q.lte("date_created", siEnd);
+        .gte("date_created", soStartISO)
+        .lte("date_created", soEndISO);
       return fetchAllRows(q);
     })();
 

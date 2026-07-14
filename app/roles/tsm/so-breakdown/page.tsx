@@ -43,12 +43,22 @@ function SoBreakdownContent() {
     if (queryUserId && queryUserId !== userId) setUserId(queryUserId);
   }, [queryUserId, userId, setUserId]);
 
-  const [tsm,     setTsm]     = useState("");
-  const [agents,  setAgents]  = useState<Agent[]>([]);
-  const [soMap,   setSoMap]   = useState<Record<string, Record<string, MonthData>>>({});
-  const [year,    setYear]    = useState(new Date().getFullYear().toString());
-  const [loading, setLoading] = useState(false);
-  const [view,    setView]    = useState<"total" | "regular" | "spf">("total");
+  const [tsm,         setTsm]         = useState("");
+  const [agents,      setAgents]      = useState<Agent[]>([]);
+  const [soMap,       setSoMap]       = useState<Record<string, Record<string, MonthData>>>({});
+  const [year,        setYear]        = useState(new Date().getFullYear().toString());
+  const [loading,     setLoading]     = useState(false);
+  const [hasFetched,  setHasFetched]  = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+  const [view,        setView]        = useState<"total" | "regular" | "spf">("total");
+
+  // Create unique cache key
+  const getCacheKey = useCallback(() => {
+    return `tsm-so-breakdown-${tsm}-${year}`;
+  }, [tsm, year]);
+
+  // Load from localStorage on mount — REMOVED: cache can serve stale data after timezone fixes.
+  // Always fetch fresh from the API instead.
 
   // Fetch user → TSM ReferenceID
   useEffect(() => {
@@ -59,38 +69,54 @@ function SoBreakdownContent() {
       .catch(() => {});
   }, [userId]);
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback(async () => {
     if (!tsm) return;
+    const cacheKey = getCacheKey();
+    // Delete old cache
+    localStorage.removeItem(cacheKey);
     setLoading(true);
-    fetch(`/api/tsm-agent-so?tsm=${encodeURIComponent(tsm)}&year=${year}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data?.success) {
-          setAgents(data.agents ?? []);
-          setSoMap(data.soMap ?? {});
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [tsm, year]);
+    setError(null);
+    setHasFetched(true);
+    try {
+      const res = await fetch(`/api/tsm-agent-so?tsm=${encodeURIComponent(tsm)}&year=${year}`);
+      if (!res.ok) throw new Error("Failed to fetch SO data");
+      const data = await res.json();
+      if (data?.success) {
+        setAgents(data.agents ?? []);
+        setSoMap(data.soMap ?? {});
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to fetch data");
+    } finally {
+      setLoading(false);
+    }
+  }, [tsm, year, getCacheKey]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // Auto-fetch whenever tsm or year is ready/changed
+  useEffect(() => {
+    if (tsm) fetchData();
+  }, [tsm, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived totals ────────────────────────────────────────────────────────────
 
+  // Monthly cells follow the toggle (total / regular / spf)
   const getVal = (referenceid: string, month: string): number => {
     const d = soMap[referenceid]?.[month];
     if (!d) return 0;
     return view === "total" ? d.total : view === "regular" ? d.regular : d.spf;
   };
 
-  const agentTotal = (referenceid: string) =>
-    MONTHS.reduce((s, m) => s + getVal(referenceid, m), 0);
+  // Agent row total and grand total always use full "total" (regular + spf), not the toggle
+  const agentRowTotal = (referenceid: string) =>
+    MONTHS.reduce((s, m) => s + (soMap[referenceid]?.[m]?.total ?? 0), 0);
 
   const monthTotal = (month: string) =>
     agents.reduce((s, a) => s + getVal(a.referenceid, month), 0);
 
-  const grandTotal = agents.reduce((s, a) => s + agentTotal(a.referenceid), 0);
+  // Grand total footer also follows the toggle so it matches the monthly cells
+  const grandTotal = agents.reduce((s, a) =>
+    s + MONTHS.reduce((ms, m) => ms + getVal(a.referenceid, m), 0), 0
+  );
 
   return (
     <ProtectedPageWrapper>
@@ -217,7 +243,7 @@ function SoBreakdownContent() {
                           );
                         })}
                         <td className="px-4 py-2.5 text-right font-bold text-gray-800">
-                          {fmtPeso(agentTotal(agent.referenceid))}
+                          {fmtPeso(agentRowTotal(agent.referenceid))}
                         </td>
                       </tr>
                     ))
@@ -236,7 +262,7 @@ function SoBreakdownContent() {
                         </td>
                       ))}
                       <td className="px-4 py-3 text-right font-black text-gray-800">
-                        {fmtPeso(grandTotal)}
+                        {fmtPeso(agents.reduce((s, a) => s + agentRowTotal(a.referenceid), 0))}
                       </td>
                     </tr>
                   </tfoot>

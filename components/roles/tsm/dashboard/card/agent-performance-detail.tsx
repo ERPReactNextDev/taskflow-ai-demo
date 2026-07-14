@@ -76,45 +76,74 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
   tsm,
   dateRange,
 }) => {
-  const [agents,  setAgents]  = useState<AgentRow[]>([]);
+  const [agents, setAgents] = useState<AgentRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState<string | null>(null);
-  const [hasFetched, setHasFetched] = useState(false); // New state to track if fetch has been initiated
+  const [error, setError] = useState<string | null>(null);
+  const [hasFetched, setHasFetched] = useState(false);
+
+  // Create a unique cache key based on tsm and date range
+  const getCacheKey = useCallback(() => {
+    const fromStr = dateRange?.from ? toDateStr(dateRange.from) : "default";
+    const toStr = dateRange?.to ? toDateStr(dateRange.to) : "default";
+    return `tsm-agent-performance-${tsm}-${fromStr}-${toStr}`;
+  }, [tsm, dateRange]);
+
+  // Load from localStorage on initial render
+  useEffect(() => {
+    const cacheKey = getCacheKey();
+    const cachedData = localStorage.getItem(cacheKey);
+    if (cachedData) {
+      try {
+        const parsed = JSON.parse(cachedData);
+        setAgents(parsed.agents);
+        setHasFetched(true);
+      } catch (e) {
+        console.error("Failed to parse cached data:", e);
+        localStorage.removeItem(cacheKey);
+      }
+    }
+  }, [getCacheKey]);
 
   const fetchData = useCallback(async () => {
     if (!tsm) return;
+    const cacheKey = getCacheKey();
+    // Delete old cache
+    localStorage.removeItem(cacheKey);
     setLoading(true);
     setError(null);
     setHasFetched(true);
     try {
       const params = new URLSearchParams({ tsm });
       if (dateRange?.from) params.append("from", toDateStr(dateRange.from));
-      if (dateRange?.to)   params.append("to",   toDateStr(dateRange.to));
+      if (dateRange?.to) params.append("to", toDateStr(dateRange.to));
 
       const res = await fetch(`/api/tsm-agent-performance?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error ?? "Unknown error");
-      setAgents(data.agents ?? []);
+      const newAgents = data.agents ?? [];
+      setAgents(newAgents);
+      // Save to localStorage
+      localStorage.setItem(cacheKey, JSON.stringify({ agents: newAgents }));
     } catch (err: any) {
       console.error("AgentPerformanceDetail fetch error:", err);
       setError(err.message ?? "Failed to load data.");
     } finally {
       setLoading(false);
     }
-  }, [tsm, dateRange]);
+  }, [tsm, dateRange, getCacheKey]);
 
   // ── Totals row ────────────────────────────────────────────────────────────
   const totals = agents.reduce(
     (acc, a) => ({
-      plan:               acc.plan               + a.plan,
-      siActual:           acc.siActual           + a.siActual,
-      soActual:           acc.soActual           + a.soActual,
-      obCalls:            acc.obCalls            + a.obCalls,
-      quotationAmount:    acc.quotationAmount    + a.quotationAmount,
-      siteVisits:         acc.siteVisits         + a.siteVisits,
+      plan: acc.plan + a.plan,
+      siActual: acc.siActual + a.siActual,
+      soActual: acc.soActual + a.soActual,
+      obCalls: acc.obCalls + a.obCalls,
+      quotationAmount: acc.quotationAmount + a.quotationAmount,
+      siteVisits: acc.siteVisits + a.siteVisits,
       accountDevelopment: acc.accountDevelopment + a.accountDevelopment,
-      timeSpentMs:        acc.timeSpentMs        + a.timeSpentMs,
+      timeSpentMs: acc.timeSpentMs + a.timeSpentMs,
     }),
     { plan: 0, siActual: 0, soActual: 0, obCalls: 0, quotationAmount: 0, siteVisits: 0, accountDevelopment: 0, timeSpentMs: 0 }
   );
@@ -132,19 +161,13 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
           </p>
           <div className="flex items-center gap-2">
             <button
-                onClick={fetchData}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-md transition-colors"
-              >
-                Fetch Data
-              </button>
-            {!hasFetched ? (
-              <button
-                onClick={fetchData}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-md transition-colors"
-              >
-                Fetch Data
-              </button>
-            ) : loading ? (
+              onClick={fetchData}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-md transition-colors"
+            >
+              Fetch Data
+            </button>
+
+            {loading ? (
               <div className="flex items-center gap-1.5 text-xs text-gray-400">
                 <Spinner className="w-3.5 h-3.5" />
                 <span>Loading…</span>
@@ -179,7 +202,7 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                 </div>
               </div>
             )}
-            
+
             {/* Empty state if no agents */}
             {!loading && !error && agents.length === 0 && (
               <p className="text-xs text-gray-400 text-center py-8">
@@ -225,8 +248,8 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                       <td className={`${tdCls} font-medium`}>
                         <span className={
                           agent.siPercentage >= 100 ? "text-green-600"
-                          : agent.siPercentage >= 70 ? "text-yellow-600"
-                          : "text-red-600"
+                            : agent.siPercentage >= 70 ? "text-yellow-600"
+                              : "text-red-600"
                         }>
                           {agent.siPercentage}%
                         </span>
@@ -272,8 +295,8 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                     <td className={`${tdCls} font-medium`}>
                       <span className={
                         totalSiPct >= 100 ? "text-green-600"
-                        : totalSiPct >= 70 ? "text-yellow-600"
-                        : "text-red-600"
+                          : totalSiPct >= 70 ? "text-yellow-600"
+                            : "text-red-600"
                       }>
                         {totalSiPct}%
                       </span>
