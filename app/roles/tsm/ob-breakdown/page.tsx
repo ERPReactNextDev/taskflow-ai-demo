@@ -12,12 +12,14 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
 import { sileo } from "sileo";
+import { OutboundCallsTableCard } from "@/components/roles/tsm/dashboard/table/outbound";
+import { OutboundCard } from "@/components/roles/tsm/dashboard/card/outbound";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Agent { referenceid: string; name: string; }
 
-type TabKey = "ob_calls" | "target";
+type TabKey = "ob_calls" | "target" | "touchbase" | "outbound_history";
 
 const MONTHS = [
   "January","February","March","April","May","June",
@@ -38,8 +40,10 @@ function parseTarget(val: string): number {
 // ─── Tab bar ──────────────────────────────────────────────────────────────────
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "ob_calls", label: "OB Calls" },
-  { key: "target",   label: "Target"   },
+  { key: "ob_calls",         label: "OB Calls"         },
+  { key: "target",           label: "Target"            },
+  { key: "touchbase",        label: "Touchbase"         },
+  { key: "outbound_history", label: "Outbound History"  },
 ];
 
 function TabBar({ active, onChange }: { active: TabKey; onChange: (t: TabKey) => void }) {
@@ -338,6 +342,18 @@ function ObBreakdownContent() {
   const [targets,       setTargets]       = useState<Record<string, Record<string, number>>>({});
   const [loadingTarget, setLoadingTarget] = useState(false);
 
+  // Touchbase / Outbound History tab state
+  const [outboundHistory,   setOutboundHistory]   = useState<any[]>([]);
+  const [outboundAgents,    setOutboundAgents]     = useState<any[]>([]);
+  const [loadingOutbound,   setLoadingOutbound]    = useState(false);
+  const [outboundDateRange, setOutboundDateRange]  = useState<{ from: Date; to: Date }>(() => {
+    const now = new Date();
+    return {
+      from: new Date(now.getFullYear(), now.getMonth(), 1),
+      to:   new Date(now.getFullYear(), now.getMonth() + 1, 0),
+    };
+  });
+
   // Fetch user
   useEffect(() => {
     if (!userId) return;
@@ -391,6 +407,34 @@ function ObBreakdownContent() {
     fetchTargets();
   }, [fetchObCalls, fetchTargets]);
 
+  // Fetch outbound history when tsm or date range changes
+  const fetchOutboundHistory = useCallback(() => {
+    if (!tsm) return;
+    setLoadingOutbound(true);
+
+    const from = outboundDateRange.from.toISOString().split("T")[0];
+    const to   = outboundDateRange.to.toISOString().split("T")[0];
+
+    Promise.all([
+      fetch(`/api/all-agent-history?referenceid=${encodeURIComponent(tsm)}&from=${from}&to=${to}`)
+        .then((r) => r.ok ? r.json() : { activities: [] }),
+      fetch(`/api/fetch-all-user?id=${encodeURIComponent(tsm)}`)
+        .then((r) => r.ok ? r.json() : []),
+    ])
+      .then(([historyData, agentsData]) => {
+        setOutboundHistory(historyData.activities ?? []);
+        setOutboundAgents(Array.isArray(agentsData) ? agentsData : []);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingOutbound(false));
+  }, [tsm, outboundDateRange]);
+
+  useEffect(() => {
+    if (activeTab === "touchbase" || activeTab === "outbound_history") {
+      fetchOutboundHistory();
+    }
+  }, [activeTab, fetchOutboundHistory]);
+
   // Optimistic local update after saving a target cell
   const handleTargetUpdate = (referenceid: string, month: string, value: number) => {
     setTargets((prev) => ({
@@ -427,18 +471,40 @@ function ObBreakdownContent() {
             </Breadcrumb>
           </div>
 
-          {/* Year selector */}
+          {/* Year selector (OB Calls / Target tabs) or Date range (Touchbase / Outbound History) */}
           <div className="flex items-center gap-2 px-3">
-            <label className="text-xs text-gray-500 font-medium">Year:</label>
-            <select
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
-            >
-              {[2024, 2025, 2026, 2027].map((y) => (
-                <option key={y} value={String(y)}>{y}</option>
-              ))}
-            </select>
+            {(activeTab === "ob_calls" || activeTab === "target") && (
+              <>
+                <label className="text-xs text-gray-500 font-medium">Year:</label>
+                <select
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
+                >
+                  {[2024, 2025, 2026, 2027].map((y) => (
+                    <option key={y} value={String(y)}>{y}</option>
+                  ))}
+                </select>
+              </>
+            )}
+            {(activeTab === "touchbase" || activeTab === "outbound_history") && (
+              <>
+                <label className="text-xs text-gray-500 font-medium">From:</label>
+                <input
+                  type="date"
+                  value={outboundDateRange.from.toLocaleDateString("en-CA")}
+                  onChange={(e) => setOutboundDateRange((prev) => ({ ...prev, from: new Date(e.target.value + "T00:00:00") }))}
+                  className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
+                />
+                <label className="text-xs text-gray-500 font-medium">To:</label>
+                <input
+                  type="date"
+                  value={outboundDateRange.to.toLocaleDateString("en-CA")}
+                  onChange={(e) => setOutboundDateRange((prev) => ({ ...prev, to: new Date(e.target.value + "T23:59:59") }))}
+                  className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
+                />
+              </>
+            )}
           </div>
         </header>
 
@@ -465,6 +531,48 @@ function ObBreakdownContent() {
               loading={loadingTarget}
               onTargetUpdate={handleTargetUpdate}
             />
+          )}
+          {activeTab === "touchbase" && (
+            <div className="p-4">
+              {loadingOutbound ? (
+                <div className="flex items-center gap-2 text-xs text-gray-400 py-8 justify-center">
+                  <Spinner className="w-4 h-4" /> Loading...
+                </div>
+              ) : (
+                <OutboundCallsTableCard
+                  history={outboundHistory}
+                  agents={outboundAgents}
+                  dateCreatedFilterRange={outboundDateRange}
+                  perAgentTargets={(() => {
+                    // Sum OB targets for all months covered by the selected date range
+                    const from  = new Date(outboundDateRange.from);
+                    const to    = new Date(outboundDateRange.to);
+                    const result: Record<string, number> = {};
+
+                    for (const agent of agents) {
+                      const id = agent.referenceid.toLowerCase();
+                      let total = 0;
+                      const cur = new Date(from.getFullYear(), from.getMonth(), 1);
+                      while (cur <= to) {
+                        const monthName = MONTHS[cur.getMonth()];
+                        total += targets[agent.referenceid]?.[monthName] ?? 0;
+                        cur.setMonth(cur.getMonth() + 1);
+                      }
+                      result[id] = total;
+                    }
+                    return result;
+                  })()}
+                />
+              )}
+            </div>
+          )}
+          {activeTab === "outbound_history" && (
+            <div className="p-4">
+              <OutboundCard
+                tsm={tsm}
+                dateRange={outboundDateRange}
+              />
+            </div>
           )}
         </main>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Card, CardContent, CardHeader,
 } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import {
   TableHeader, TableRow, TableFooter,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Info, Download, Settings2, X, Eye, EyeOff, Tag, Columns3, Users } from "lucide-react";
 import ExcelJS from "exceljs";
 
@@ -32,8 +33,11 @@ interface Agent {
 }
 
 interface OutboundCardProps {
-  history: HistoryItem[];
-  agents: Agent[];
+  history?: HistoryItem[];
+  agents?: Agent[];
+  /** When provided, self-fetches data using tsm-agent-ob API (no row limit) */
+  tsm?: string;
+  dateRange?: { from?: Date; to?: Date };
 }
 
 /* ================= CONSTANTS ================= */
@@ -232,9 +236,67 @@ function SettingsPanel({
 
 /* ================= MAIN COMPONENT ================= */
 
-export function OutboundCard({ history, agents }: OutboundCardProps) {
+export function OutboundCard({ history: historyProp = [], agents: agentsProp = [], tsm, dateRange }: OutboundCardProps) {
   const [showComputation, setShowComputation] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // ── Self-fetch mode (used in ob-breakdown page) ─────────────────────────
+  const [selfAgents,  setSelfAgents]  = useState<Agent[]>([]);
+  const [selfCounts,  setSelfCounts]  = useState<Record<string, { tb: number; tbSuccess: number; tbFail: number; fu: number; fuSuccess: number; fuFail: number }>>({});
+  const [selfLoading, setSelfLoading] = useState(false);
+
+  const fetchSelfData = useCallback(async () => {
+    if (!tsm) return;
+    setSelfLoading(true);
+    try {
+      const refDate = dateRange?.from ?? new Date();
+      const from = refDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+      const to   = (dateRange?.to ?? refDate).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+
+      // Fetch agents and outbound history in parallel
+      // Use the same API + date format as outbound-touchbase-count (tsm-history-outbound)
+      const [agentsRes, histRes] = await Promise.all([
+        fetch(`/api/fetch-all-user?id=${encodeURIComponent(tsm)}`),
+        // Use tsm-agent-outbound-history which queries history table only,
+        // by referenceid IN agentIds, with Manila +08:00 bounds — same as tsm-history-outbound
+        fetch(`/api/tsm-agent-outbound-history?tsm=${encodeURIComponent(tsm)}&from=${from}&to=${to}`),
+      ]);
+
+      const agentsData: Agent[] = agentsRes.ok ? await agentsRes.json() : [];
+      setSelfAgents(Array.isArray(agentsData) ? agentsData : []);
+
+      const histData = histRes.ok ? await histRes.json() : { history: [] };
+      const rows: HistoryItem[] = histData.history ?? [];
+
+      // Aggregate counts per agent from history table rows only
+      const counts: typeof selfCounts = {};
+      for (const item of rows) {
+        const id = item.referenceid?.toLowerCase();
+        if (!id) continue;
+        if (!counts[id]) counts[id] = { tb: 0, tbSuccess: 0, tbFail: 0, fu: 0, fuSuccess: 0, fuFail: 0 };
+        if (item.source === "Outbound - Touchbase") {
+          counts[id].tb++;
+          if (item.call_status === "Successful") counts[id].tbSuccess++;
+          else counts[id].tbFail++;
+        } else if (item.source === "Outbound - Follow-up") {
+          counts[id].fu++;
+          if (item.call_status === "Successful") counts[id].fuSuccess++;
+          else counts[id].fuFail++;
+        }
+      }
+      setSelfCounts(counts);
+    } catch (err) {
+      console.error("OutboundCard self-fetch error:", err);
+    } finally {
+      setSelfLoading(false);
+    }
+  }, [tsm, dateRange]);
+
+  useEffect(() => { fetchSelfData(); }, [fetchSelfData]);
+
+  // Use self-fetched data when tsm prop provided, otherwise fall back to props
+  const agents  = tsm ? selfAgents  : agentsProp;
+  const history = tsm ? [] : historyProp; // history only used for prop-mode duration calc
 
   // --- Customization state ---
   const [hiddenAgents, setHiddenAgents] = useState<Set<string>>(new Set());
@@ -268,26 +330,32 @@ export function OutboundCard({ history, agents }: OutboundCardProps) {
       followupUnsuccessful: number;
     };
 
-    const map = new Map<string, AgentStats>();
+    if (tsm) {
+      // Self-fetch mode — use pre-aggregated selfCounts
+      return Object.entries(selfCounts).map(([agentID, c]) => ({
+        agentID,
+        touchbaseCount:        c.tb,
+        touchbaseSuccessful:   c.tbSuccess,
+        touchbaseUnsuccessful: c.tbFail,
+        followupCount:         c.fu,
+        followupSuccessful:    c.fuSuccess,
+        followupUnsuccessful:  c.fuFail,
+      }));
+    }
 
-    history.forEach((item) => {
+    // Prop mode — derive from raw history
+    const map = new Map<string, AgentStats>();
+    historyProp.forEach((item) => {
       const agentID = item.referenceid?.toLowerCase();
       if (!agentID) return;
-
       if (!map.has(agentID)) {
         map.set(agentID, {
           agentID,
-          touchbaseCount: 0,
-          touchbaseSuccessful: 0,
-          touchbaseUnsuccessful: 0,
-          followupCount: 0,
-          followupSuccessful: 0,
-          followupUnsuccessful: 0,
+          touchbaseCount: 0, touchbaseSuccessful: 0, touchbaseUnsuccessful: 0,
+          followupCount: 0,  followupSuccessful: 0,  followupUnsuccessful: 0,
         });
       }
-
       const stat = map.get(agentID)!;
-
       if (item.source === "Outbound - Touchbase") {
         stat.touchbaseCount++;
         if (item.call_status === "Successful") stat.touchbaseSuccessful++;
@@ -298,9 +366,8 @@ export function OutboundCard({ history, agents }: OutboundCardProps) {
         else stat.followupUnsuccessful++;
       }
     });
-
     return Array.from(map.values());
-  }, [history]);
+  }, [tsm, selfCounts, historyProp]);
 
   /* ---- Visible agents list (for settings panel + table) ---- */
   const agentList = useMemo(
@@ -316,10 +383,10 @@ export function OutboundCard({ history, agents }: OutboundCardProps) {
     [statsByAgent, agentMap, hiddenAgents]
   );
 
-  /* ---- Duration ---- */
+  /* ---- Duration (prop mode only) ---- */
   const outboundCalls = useMemo(
-    () => history.filter((item) => item.type_activity === "Outbound Calls"),
-    [history]
+    () => historyProp.filter((item) => item.type_activity === "Outbound Calls"),
+    [historyProp]
   );
 
   const totalOutboundDurationMs = useMemo(() => {
@@ -428,7 +495,17 @@ export function OutboundCard({ history, agents }: OutboundCardProps) {
     }
   };
 
-  if (outboundCalls.length === 0) return null;
+  if (!tsm && outboundCalls.length === 0) return null;
+
+  if (selfLoading) {
+    return (
+      <Card className="rounded-xl border shadow-sm">
+        <CardContent className="flex items-center justify-center py-16">
+          <Spinner className="w-5 h-5" />
+        </CardContent>
+      </Card>
+    );
+  }
 
   /* ---- Active customizations badge count ---- */
   const activeCustomizations =

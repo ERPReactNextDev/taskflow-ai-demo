@@ -39,6 +39,8 @@ interface OutboundCardProps {
   agents: Agent[];
   dateCreatedFilterRange?: { from: Date; to: Date };
   setDateCreatedFilterRangeAction?: React.Dispatch<React.SetStateAction<any>>;
+  /** Per-agent monthly targets from ob-breakdown page: { [referenceid]: number } */
+  perAgentTargets?: Record<string, number>;
 }
 
 /* ================= HELPERS ================= */
@@ -61,12 +63,15 @@ export function OutboundCallsTableCard({
   history,
   agents,
   dateCreatedFilterRange,
+  perAgentTargets,
 }: OutboundCardProps) {
   const [showComputation, setShowComputation] = useState(false);
   const [outboundQuota, setOutboundQuota] = useState<number>(20);
   const [quotaLoading, setQuotaLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    // Only fetch global quota if no per-agent targets are provided
+    if (perAgentTargets) { setQuotaLoading(false); return; }
     fetch("/api/outbound-quota")
       .then((res) => res.json())
       .then((data) => {
@@ -82,7 +87,7 @@ export function OutboundCallsTableCard({
       .finally(() => {
         setQuotaLoading(false);
       });
-  }, []);
+  }, [perAgentTargets]);
 
   /* ---- Agent map ---- */
   const agentMap = useMemo(() => {
@@ -259,7 +264,11 @@ export function OutboundCallsTableCard({
       });
 
       // ── 6. Conversions
-      const achievement = obTarget > 0 ? (totalCalls / obTarget) * 100 : 0;
+      // Use per-agent target if provided, otherwise fall back to shared obTarget
+      const agentTarget = perAgentTargets
+        ? (perAgentTargets[agentId] ?? perAgentTargets[agentId.toUpperCase()] ?? 0)
+        : obTarget;
+      const achievement = agentTarget > 0 ? (totalCalls / agentTarget) * 100 : 0;
       // Calls → Quote: how many of the OB call refs eventually got a Quote
       const callsToQuote = pct(numQuotes, totalCalls);
       // Quote → SO: how many of the quoted refs eventually got an SO
@@ -276,6 +285,7 @@ export function OutboundCallsTableCard({
         quoteAmount,
         soAmount,
         actualSales,
+        agentTarget,
         achievement,
         callsToQuote,
         quoteToSO,
@@ -284,7 +294,6 @@ export function OutboundCallsTableCard({
     });
   }, [successfulOBCalls, historyByRefNum, obTarget]);
 
-  /* ── Footer totals ── */
   const totals = useMemo(() => {
     const totalCalls = statsByAgent.reduce((s, a) => s + a.totalCalls, 0);
     const numQuotes = statsByAgent.reduce((s, a) => s + a.numQuotes, 0);
@@ -293,6 +302,7 @@ export function OutboundCallsTableCard({
     const totalQuoteAmount = statsByAgent.reduce((s, a) => s + a.quoteAmount, 0);
     const totalSoAmount = statsByAgent.reduce((s, a) => s + a.soAmount, 0);
     const totalActualSales = statsByAgent.reduce((s, a) => s + a.actualSales, 0);
+    const totalTarget = statsByAgent.reduce((s, a) => s + a.agentTarget, 0);
     return {
       totalCalls,
       numQuotes,
@@ -301,12 +311,13 @@ export function OutboundCallsTableCard({
       totalQuoteAmount,
       totalSoAmount,
       totalActualSales,
-      achievement: pct(totalCalls, obTarget * statsByAgent.length || 1),
+      totalTarget,
+      achievement: pct(totalCalls, totalTarget || 1),
       callsToQuote: pct(numQuotes, totalCalls),
       quoteToSO: pct(numSO, numQuotes),
       soToSI: pct(numSI, numSO),
     };
-  }, [statsByAgent, obTarget]);
+  }, [statsByAgent]);
 
   /* ── Excel Export ── */
   const exportToExcel = async () => {
@@ -348,7 +359,7 @@ export function OutboundCallsTableCard({
         const agentName = agentMap.get(stat.agentId)?.name ?? stat.agentId;
         worksheet.addRow({
           agent: agentName,
-          target: obTarget,
+          target: stat.agentTarget,
           calls: stat.totalCalls,
           achievement: (stat.achievement / 100), // decimal for percentage format
           quotes: stat.numQuotes,
@@ -510,7 +521,7 @@ export function OutboundCallsTableCard({
 
                       {/* OB Target */}
                       <TableCell className="text-center text-gray-600">
-                        {quotaLoading ? "…" : obTarget}
+                        {quotaLoading ? "…" : stat.agentTarget}
                       </TableCell>
 
                       {/* Successful Calls */}
@@ -577,7 +588,7 @@ export function OutboundCallsTableCard({
                 <TableRow className="bg-gray-50 text-xs font-semibold font-mono">
                   <TableCell className="text-gray-700">Total</TableCell>
                   <TableCell className="text-center text-gray-600">
-                    {quotaLoading ? "…" : obTarget * statsByAgent.length}
+                    {quotaLoading ? "…" : totals.totalTarget}
                   </TableCell>
                   <TableCell className="text-center text-gray-800">{totals.totalCalls}</TableCell>
                   <TableCell className="text-center text-gray-700">{totals.achievement}</TableCell>
