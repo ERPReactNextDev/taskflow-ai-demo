@@ -376,7 +376,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   soToSISalesOrderCount = 0,
   soToSIDeliveredCount = 0,
   newAccountCount = 0,
-  newAccountTarget = 2,
+  newAccountTarget: propNewAccountTarget = 0,
   loadingNewAccount = false,
 }) => {
   const router = useRouter();
@@ -389,9 +389,10 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
     router.push(`/roles/tsm/sales-quotation-settings${id ? `?id=${encodeURIComponent(id)}` : ""}`);
   };
 
-  // ── Self-fetch team OB and quotes targets ────────────────────────────────────
-  const [teamObTarget,     setTeamObTarget]     = useState<number | null>(null);
-  const [teamQuotesTarget, setTeamQuotesTarget] = useState<number | null>(null);
+  // ── Self-fetch team OB, quotes, and new account dev targets ────────────────
+  const [teamObTarget,         setTeamObTarget]         = useState<number | null>(null);
+  const [teamQuotesTarget,     setTeamQuotesTarget]     = useState<number | null>(null);
+  const [teamNewAccountTarget, setTeamNewAccountTarget] = useState<number | null>(null);
 
   const fetchTeamTargets = useCallback(async () => {
     if (!tsm) return;
@@ -419,10 +420,6 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
 
     try {
       // Quotes target — sum all agents' quote_target for the month
-      // Use tsm-agent-ob-target's sibling: query sales_quotation by agentIds
-      // Re-use the new tsm-site-visit-target pattern via a direct Supabase-equivalent:
-      // Fetch from /api/tsm-agent-quote-target if it exists, otherwise derive from
-      // /api/tsm-agent-ob-target response shape for quotes
       const qtRes = await fetch(`/api/tsm-agent-quote-target?${params.toString()}`);
       if (qtRes.ok) {
         const qtData = await qtRes.json();
@@ -436,13 +433,32 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
         }
       }
     } catch { /* silent */ }
+
+    try {
+      // New account dev target — sum all agents' target for the month
+      const naRes = await fetch(`/api/tsm-agent-account-development?${params.toString()}`);
+      if (naRes.ok) {
+        const naData = await naRes.json();
+        if (naData.success) {
+          const total = Object.values(naData.targets ?? {}).reduce(
+            (acc: number, agentMonths) => {
+              const monthVal = (agentMonths as Record<string, { target: number; count: number }>)[monthName];
+              return acc + (monthVal?.target ?? 0);
+            },
+            0
+          );
+          setTeamNewAccountTarget(total as number);
+        }
+      }
+    } catch { /* silent */ }
   }, [tsm, dateRange]);
 
   useEffect(() => { fetchTeamTargets(); }, [fetchTeamTargets]);
 
   // Use self-fetched team totals when available; fall back to prop values
-  const obCallsTarget   = teamObTarget     ?? propObCallsTarget     ?? 0;
-  const quotesTarget    = teamQuotesTarget ?? propQuotesTarget     ?? 0;
+  const obCallsTarget   = teamObTarget         ?? propObCallsTarget ?? 0;
+  const quotesTarget    = teamQuotesTarget     ?? propQuotesTarget  ?? 0;
+  const newAccountTarget = teamNewAccountTarget ?? propNewAccountTarget ?? 0;
 
   // ── Computations ────────────────────────────────────────────────────────────
   const obCallsPercentage = obCallsTarget > 0 ? Math.round((obCallsCount / obCallsTarget) * 100) : 0;

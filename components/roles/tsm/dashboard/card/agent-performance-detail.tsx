@@ -24,6 +24,11 @@ interface AgentRow {
   siPercentage: number;
   obCalls: number;
   obCallsTarget: number;
+  callsToQuote: number;
+  quoteToSOQuotation: number;
+  quoteToSOSalesOrder: number;
+  soToSISalesOrder: number;
+  soToSIDelivered: number;
   quotationAmountTarget: number;
   quotationAmount: number;
   siteVisits: number;
@@ -145,6 +150,11 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
       soActual: acc.soActual + a.soActual,
       obCalls: acc.obCalls + a.obCalls,
       obCallsTarget: acc.obCallsTarget + a.obCallsTarget,
+      callsToQuote: acc.callsToQuote + a.callsToQuote,
+      quoteToSOQuotation: acc.quoteToSOQuotation + a.quoteToSOQuotation,
+      quoteToSOSalesOrder: acc.quoteToSOSalesOrder + a.quoteToSOSalesOrder,
+      soToSISalesOrder: acc.soToSISalesOrder + a.soToSISalesOrder,
+      soToSIDelivered: acc.soToSIDelivered + a.soToSIDelivered,
       quotationAmountTarget: acc.quotationAmountTarget + a.quotationAmountTarget,
       quotationAmount: acc.quotationAmount + a.quotationAmount,
       siteVisits: acc.siteVisits + a.siteVisits,
@@ -153,11 +163,11 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
       accountDevelopmentTarget: acc.accountDevelopmentTarget + a.accountDevelopmentTarget,
       timeSpentMs: acc.timeSpentMs + a.timeSpentMs,
     }),
-    { plan: 0, siActual: 0, soActual: 0, obCalls: 0, obCallsTarget: 0, quotationAmountTarget: 0, quotationAmount: 0, siteVisits: 0, siteVisitTarget: 0, accountDevelopment: 0, accountDevelopmentTarget: 0, timeSpentMs: 0 }
+    { plan: 0, siActual: 0, soActual: 0, obCalls: 0, obCallsTarget: 0, callsToQuote: 0, quoteToSOQuotation: 0, quoteToSOSalesOrder: 0, soToSISalesOrder: 0, soToSIDelivered: 0, quotationAmountTarget: 0, quotationAmount: 0, siteVisits: 0, siteVisitTarget: 0, accountDevelopment: 0, accountDevelopmentTarget: 0, timeSpentMs: 0 }
   );
   const totalSiPct = totals.plan > 0 ? Math.round((totals.siActual / totals.plan) * 100) : 0;
 
-  const thCls = "text-right py-2 px-1 font-medium text-gray-500 whitespace-nowrap";
+  const thCls = "text-right py-2 px-1 font-bold text-gray-500 whitespace-nowrap";
   const tdCls = "text-right py-2.5 px-1 font-mono";
 
   return (
@@ -220,15 +230,17 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
 
             {/* Table if agents exist */}
             {agents.length > 0 && (
-              <table className="w-full text-xs relative">
+              <table className="min-w-full text-xs relative">
                 <thead>
                   <tr className="border-b border-gray-200">
-                    <th className="text-left py-2 px-1 font-medium text-gray-500 whitespace-nowrap">Agent</th>
+                    <th className="text-left py-2 px-1 font-medium text-gray-500 whitespace-nowrap sticky left-0 bg-white z-10 min-w-[140px]">Agent</th>
                     <th className={thCls}>Plan</th>
                     <th className={thCls}>SI Actual</th>
                     <th className={thCls}>SO Actual</th>
-                    <th className={thCls}>SI %</th>
                     <th className={thCls}>OB Calls</th>
+                    <th className={thCls}>Calls → Quote</th>
+                    <th className={thCls}>Quote → SO</th>
+                    <th className={thCls}>SO → SI</th>
                     <th className={thCls}>Quotation Target</th>
                     <th className={thCls}>Quotation Amount</th>
                     <th className={thCls}>Site Visits</th>
@@ -244,7 +256,7 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
 
                 <tbody>
                   {agents.map((agent) => (
-                    <tr key={agent.referenceid} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+                    <tr key={agent.referenceid} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors whitespace-nowrap">
                       <td className="py-2.5 px-1">
                         <div className="flex items-center gap-1">
                           <User className="w-3 h-3 text-gray-400 shrink-0" />
@@ -254,16 +266,22 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                       <td className={tdCls}>{fmtPeso(agent.plan)}</td>
                       <td className={`${tdCls} text-green-600`}>{fmtPeso(agent.siActual)}</td>
                       <td className={tdCls}>{fmtPeso(agent.soActual)}</td>
-                      <td className={`${tdCls} font-medium`}>
-                        <span className={
-                          agent.siPercentage >= 100 ? "text-green-600"
-                            : agent.siPercentage >= 70 ? "text-yellow-600"
-                              : "text-red-600"
-                        }>
-                          {agent.siPercentage}%
-                        </span>
-                      </td>
                       <td className={tdCls}>{agent.obCalls}{agent.obCallsTarget > 0 ? `/${agent.obCallsTarget}` : ""}</td>
+                      <td className={tdCls}>
+                        {agent.callsToQuote > 0 || agent.obCalls > 0
+                          ? `${agent.callsToQuote} (${agent.obCalls > 0 ? Math.round((agent.callsToQuote / agent.obCalls) * 100) : 0}%)`
+                          : "—"}
+                      </td>
+                      <td className={tdCls}>
+                        {agent.quoteToSOQuotation > 0
+                          ? `${agent.quoteToSOSalesOrder}/${agent.quoteToSOQuotation} (${Math.round((agent.quoteToSOSalesOrder / agent.quoteToSOQuotation) * 100)}%)`
+                          : "—"}
+                      </td>
+                      <td className={tdCls}>
+                        {agent.soToSISalesOrder > 0
+                          ? `${agent.soToSIDelivered}/${agent.soToSISalesOrder} (${Math.round((agent.soToSIDelivered / agent.soToSISalesOrder) * 100)}%)`
+                          : "—"}
+                      </td>
                       <td className={tdCls}>{fmtPeso(agent.quotationAmountTarget)}</td>
                       <td className={tdCls}>{fmtPeso(agent.quotationAmount)}</td>
                       <td className={tdCls}>{agent.siteVisits}{agent.siteVisitTarget > 0 ? `/${agent.siteVisitTarget}` : ""}</td>
@@ -273,17 +291,6 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                           <span style={{ color: dbCoverageBarColor(agent.dbCoverageTotal > 0 ? Math.round((agent.dbCoverageCovered / agent.dbCoverageTotal) * 100) : 0) }} className="font-medium">
                             {agent.dbCoverageCovered}/{agent.dbCoverageTotal}
                           </span>
-                          {agent.dbCoverageTotal > 0 && (
-                            <div className="w-20 bg-gray-200 h-1.5 rounded-full">
-                              <div
-                                className="h-1.5 rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${Math.min(Math.round((agent.dbCoverageCovered / agent.dbCoverageTotal) * 100), 100)}%`,
-                                  backgroundColor: dbCoverageBarColor(Math.min(Math.round((agent.dbCoverageCovered / agent.dbCoverageTotal) * 100), 100)),
-                                }}
-                              />
-                            </div>
-                          )}
                         </div>
                       </td>
                       <td className={tdCls}>{fmtTimeMs(agent.timeSpentMs)}</td>
@@ -297,7 +304,7 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
 
                 {/* Totals footer */}
                 <tfoot>
-                  <tr className="border-t-2 border-gray-200 bg-gray-50 font-bold">
+                  <tr className="border-t-2 border-gray-200 bg-gray-50 font-bold whitespace-nowrap">
                     <td className="py-2.5 px-1 text-xs font-black uppercase tracking-widest text-gray-600">Team Total</td>
                     <td className={tdCls}>{fmtPeso(totals.plan)}</td>
                     <td className={`${tdCls} text-green-700`}>{fmtPeso(totals.siActual)}</td>
@@ -312,6 +319,21 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                       </span>
                     </td>
                     <td className={tdCls}>{totals.obCalls}{totals.obCallsTarget > 0 ? `/${totals.obCallsTarget}` : ""}</td>
+                    <td className={tdCls}>
+                      {totals.callsToQuote > 0 || totals.obCalls > 0
+                        ? `${totals.callsToQuote} (${totals.obCalls > 0 ? Math.round((totals.callsToQuote / totals.obCalls) * 100) : 0}%)`
+                        : "—"}
+                    </td>
+                    <td className={tdCls}>
+                      {totals.quoteToSOQuotation > 0
+                        ? `${totals.quoteToSOSalesOrder}/${totals.quoteToSOQuotation} (${Math.round((totals.quoteToSOSalesOrder / totals.quoteToSOQuotation) * 100)}%)`
+                        : "—"}
+                    </td>
+                    <td className={tdCls}>
+                      {totals.soToSISalesOrder > 0
+                        ? `${totals.soToSIDelivered}/${totals.soToSISalesOrder} (${Math.round((totals.soToSIDelivered / totals.soToSISalesOrder) * 100)}%)`
+                        : "—"}
+                    </td>
                     <td className={tdCls}>{fmtPeso(totals.quotationAmountTarget)}</td>
                     <td className={tdCls}>{fmtPeso(totals.quotationAmount)}</td>
                     <td className={tdCls}>{totals.siteVisits}{totals.siteVisitTarget > 0 ? `/${totals.siteVisitTarget}` : ""}</td>

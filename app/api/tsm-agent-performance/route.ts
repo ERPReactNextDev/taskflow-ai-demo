@@ -638,6 +638,15 @@ export async function GET(req: Request) {
         .eq("year", quotaMonthYear)
     );
 
+    // Conversion pipeline — single query for calls→quote, quote→SO, SO→SI per agent
+    const convQ = fetchAllRows(
+      supabase.from("history")
+        .select("referenceid, activity_reference_number, source, type_activity")
+        .in("referenceid", agentIds)
+        .gte("date_created", rangeStartTs)
+        .lte("date_created", rangeEndTs)
+    );
+
     console.log("[tsm-agent-performance] Starting parallel queries");
     const [
       siData,
@@ -651,11 +660,12 @@ export async function GET(req: Request) {
       siteVisitTargetData,
       accountDevTargetData,
       obTargetData,
+      convData,
       csrMap,
       timeSpentMap,
       dbCoverageMap,
     ] = await Promise.all([
-      siQ, soQ, obQ, qaQ, svQ, naQ, quotaQ, quotationTargetQ, siteVisitTargetQ, accountDevTargetQ, obTargetQ,
+      siQ, soQ, obQ, qaQ, svQ, naQ, quotaQ, quotationTargetQ, siteVisitTargetQ, accountDevTargetQ, obTargetQ, convQ,
       calcCsrForAgents(agentIds, rangeStartDate, rangeEndDate, tsm),
       calcTimeSpentForAgents(agentIds, rangeStartDate, rangeEndDate, rangeStartTs, rangeEndTs),
       calcDbCoverageForAgents(agentIds, manilaMonthStart, manilaMonthEnd),
@@ -688,6 +698,50 @@ export async function GET(req: Request) {
     for (const r of accountDevTargetData) accountDevTargetMap[r.referenceid] = (accountDevTargetMap[r.referenceid] ?? 0) + (Number(r.target) || 0);
     for (const r of obTargetData)         obTargetMap[r.referenceid]         = (obTargetMap[r.referenceid]         ?? 0) + (Number(r.ob_target) || 0);
 
+    // ── Per-agent conversion counts (calls→quote, quote→SO, SO→SI) ────────────
+    // Group activity rows by agent + activity_reference_number, flag pipeline stages
+    type ConvGroup = { hasOutbound: boolean; hasQuotation: boolean; hasSalesOrder: boolean; hasDelivered: boolean };
+    const convGroups: Record<string, Map<string, ConvGroup>> = {};
+    for (const ref of agentIds) convGroups[ref] = new Map();
+
+    for (const r of convData) {
+      const ref = r.referenceid;
+      const arn = r.activity_reference_number;
+      if (!ref || !arn || !convGroups[ref]) continue;
+      if (!convGroups[ref].has(arn))
+        convGroups[ref].set(arn, { hasOutbound: false, hasQuotation: false, hasSalesOrder: false, hasDelivered: false });
+      const g = convGroups[ref].get(arn)!;
+      if (r.source         === "Outbound - Touchbase")                  g.hasOutbound   = true;
+      if (r.type_activity  === "Quotation Preparation")                 g.hasQuotation  = true;
+      if (r.type_activity  === "Sales Order Preparation")               g.hasSalesOrder = true;
+      if (r.type_activity  === "Delivered / Closed Transaction")        g.hasDelivered  = true;
+    }
+
+    // callsToQuote = groups with outbound + quotation
+    // quoteToSO_q  = groups with outbound + quotation (denominator for Q→SO)
+    // quoteToSO_so = groups with outbound + quotation + salesOrder
+    // soToSI_so    = groups with outbound + quotation + salesOrder (denominator for SO→SI)
+    // soToSI_si    = groups with outbound + quotation + salesOrder + delivered
+    const callsToQuoteMap: Record<string, number> = {};
+    const quoteToSOQuotMap: Record<string, number> = {};
+    const quoteToSOSoMap:   Record<string, number> = {};
+    const soToSISoMap:      Record<string, number> = {};
+    const soToSISiMap:      Record<string, number> = {};
+
+    for (const ref of agentIds) {
+      let c2q = 0, q2soQ = 0, q2soSO = 0, s2siSO = 0, s2siSI = 0;
+      convGroups[ref].forEach((g) => {
+        if (g.hasOutbound && g.hasQuotation)                                        { c2q++;  q2soQ++;  }
+        if (g.hasOutbound && g.hasQuotation && g.hasSalesOrder)                     { q2soSO++; s2siSO++; }
+        if (g.hasOutbound && g.hasQuotation && g.hasSalesOrder && g.hasDelivered)   { s2siSI++; }
+      });
+      callsToQuoteMap[ref] = c2q;
+      quoteToSOQuotMap[ref] = q2soQ;
+      quoteToSOSoMap[ref]   = q2soSO;
+      soToSISoMap[ref]      = s2siSO;
+      soToSISiMap[ref]      = s2siSI;
+    }
+
     // ── 5. Assemble result ────────────────────────────────────────────────────
     const result = agents.map(({ referenceid, name }) => {
       const plan  = quotaMap[referenceid] ?? 0;
@@ -706,6 +760,11 @@ export async function GET(req: Request) {
         siPercentage:         siPct,
         obCalls:              obMap[referenceid]        ?? 0,
         obCallsTarget:        obTargetMap[referenceid]  ?? 0,
+        callsToQuote:         callsToQuoteMap[referenceid]  ?? 0,
+        quoteToSOQuotation:   quoteToSOQuotMap[referenceid] ?? 0,
+        quoteToSOSalesOrder:  quoteToSOSoMap[referenceid]   ?? 0,
+        soToSISalesOrder:     soToSISoMap[referenceid]      ?? 0,
+        soToSIDelivered:      soToSISiMap[referenceid]      ?? 0,
         quotationAmountTarget: quotationTargetMap[referenceid] ?? 0,
         quotationAmount:      qaMap[referenceid]        ?? 0,
         siteVisits:           svMap[referenceid]        ?? 0,
