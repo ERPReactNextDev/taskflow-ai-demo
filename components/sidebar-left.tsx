@@ -71,7 +71,6 @@ const data = {
 
     { name: "Agent List", url: "/roles/tsm/agent", icon: Users },
 
-    { name: "My Team Sales Performance", url: "/roles/manager/sales-performance", icon: BarChart2 },
     { name: "Team List", url: "/roles/manager/agent", icon: Users },
 
     { name: "Sales Performance", url: "/roles/admin/sales-performance", icon: BarChart2 },
