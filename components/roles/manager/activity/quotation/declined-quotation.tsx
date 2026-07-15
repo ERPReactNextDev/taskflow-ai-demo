@@ -208,11 +208,14 @@ export const DeclinedQuotation: React.FC<CompletedProps> = ({
         }
     }, [referenceid, itemsPerPage, searchTerm, selectedTSM, selectedAgent, dateCreatedFilterRange]);
 
-    // Search handler - only fetches when search button is clicked
-    const handleSearch = useCallback(() => {
-        setCurrentPage(1);
-        fetchActivities(1, false);
-    }, [fetchActivities]);
+    // Debounced search - fetches automatically as user types
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setCurrentPage(1);
+            fetchActivities(1, false);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
 
     // Load more handler
     const handleLoadMore = useCallback(() => {
@@ -222,10 +225,10 @@ export const DeclinedQuotation: React.FC<CompletedProps> = ({
         }
     }, [currentPage, hasMore, loadingMore, fetchActivities]);
 
-    // Reset page when search or filter changes
+    // Reset page when filter changes (non-search)
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, selectedTSM, selectedAgent]);
+    }, [selectedTSM, selectedAgent]);
 
     // -----------------------------
     // FETCH AGENTS
@@ -516,23 +519,7 @@ export const DeclinedQuotation: React.FC<CompletedProps> = ({
                         className="input input-bordered input-sm flex-grow max-w-md rounded-none"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                handleSearch();
-                            }
-                        }}
                     />
-                    <Button
-                        onClick={handleSearch}
-                        disabled={loading}
-                        className="h-9 px-4 rounded-none bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium"
-                    >
-                        {loading ? (
-                            <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                        ) : (
-                            "Search"
-                        )}
-                    </Button>
                 </div>
 
                 {/* Active Filters Indicator */}

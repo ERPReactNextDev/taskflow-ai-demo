@@ -174,7 +174,7 @@ async function calcCsrForAgents(
 }
 
 /** Get all active TSAs under a manager (via TSMs) */
-async function getAgents(manager: string): Promise<{ referenceid: string; name: string }[]> {
+async function getAgents(manager: string): Promise<{ referenceid: string; name: string; tsm: string }[]> {
   // 1. Get all active TSMs under this manager
   const { data: tsms } = await supabase
     .from("users")
@@ -190,7 +190,7 @@ async function getAgents(manager: string): Promise<{ referenceid: string; name: 
   const data = await fetchAllRows(
     supabase
       .from("users")
-      .select("ReferenceID, Firstname, Lastname")
+      .select("ReferenceID, Firstname, Lastname, TSM")
       .in("TSM", tsmIds)
       .eq("Role", "Territory Sales Associate")
       .not("Status", "in", '("Resigned","Terminated","Inactive")')
@@ -200,6 +200,7 @@ async function getAgents(manager: string): Promise<{ referenceid: string; name: 
   return (data ?? []).map((a) => ({
     referenceid: a.ReferenceID,
     name: `${a.Firstname ?? ""} ${a.Lastname ?? ""}`.trim(),
+    tsm: a.TSM ?? "",
   }));
 }
 
@@ -254,9 +255,21 @@ export async function GET(req: Request) {
     // ── Agents ────────────────────────────────────────────────────────────────
     const agents = await getAgents(manager);
     if (agents.length === 0) {
-      return NextResponse.json({ success: true, agents: [] }, { status: 200 });
+      return NextResponse.json({ success: true, agents: [], tsmNames: {} }, { status: 200 });
     }
     const agentIds = agents.map((a) => a.referenceid);
+
+    // ── TSM name map for grouping ─────────────────────────────────────────────
+    const { data: tsmUsersData } = await supabase
+      .from("users")
+      .select("ReferenceID, Firstname, Lastname")
+      .eq("Manager", manager)
+      .eq("Role", "Territory Sales Manager")
+      .not("Status", "in", '("Resigned","Terminated","Inactive")');
+    const tsmNames: Record<string, string> = {};
+    for (const t of tsmUsersData ?? []) {
+      tsmNames[t.ReferenceID] = `${t.Firstname ?? ""} ${t.Lastname ?? ""}`.trim();
+    }
 
     // ── Parallel Supabase fetches ─────────────────────────────────────────────
     const [
@@ -354,7 +367,7 @@ export async function GET(req: Request) {
     const csrMetricsMap = await calcCsrForAgents(agentIds, csrFrom, csrTo, manager);
 
     // ── Assemble per-agent result ─────────────────────────────────────────────
-    const result = agents.map(({ referenceid, name }) => {
+    const result = agents.map(({ referenceid, name, tsm }) => {
       const groups     = pipelineMap[referenceid];
       const csrMetrics = csrMetricsMap[referenceid] || { avgResponseTime:0, avgQuotationHT:0, avgNonQuotationHT:0, avgSpfHT:0 };
 
@@ -372,6 +385,7 @@ export async function GET(req: Request) {
       return {
         referenceid,
         name,
+        tsm,
         runningTarget:            quotaMap[referenceid]           ?? 0,
         totalActualSales:         siMap[referenceid]              ?? 0,
         obCallsCount:             obMap[referenceid]              ?? 0,
@@ -394,7 +408,7 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json({ success: true, agents: result }, { status: 200 });
+    return NextResponse.json({ success: true, agents: result, tsmNames }, { status: 200 });
   } catch (err: any) {
     console.error("manager-kpi GET error:", err);
     return NextResponse.json(
