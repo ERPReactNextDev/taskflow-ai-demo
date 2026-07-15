@@ -22,6 +22,10 @@ import { ManagerRunningTargetCard } from "@/components/roles/manager/dashboard/c
 import { ManagerRunningSiCard } from "@/components/roles/manager/dashboard/card/running-si";
 import { ManagerRunningSoCard } from "@/components/roles/manager/dashboard/card/running-so";
 import { ManagerOutboundTouchbaseCountCard } from "@/components/roles/manager/dashboard/card/outbound-touchbase-count";
+import { ManagerKpiWeightedScores } from "@/components/roles/manager/dashboard/card/kpi-weighted-scores";
+import { ManagerSalesPipelineCard } from "@/components/roles/manager/dashboard/card/sales-pipeline";
+import { ManagerMonthlySiTrendCard } from "@/components/roles/manager/dashboard/card/monthly-si-trend";
+import { ManagerAgentPerformanceDetail } from "@/components/roles/manager/dashboard/card/agent-performance-detail";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,14 +41,26 @@ const VISIBILITY_KEY = "manager_dashboard_visibility";
 
 interface CardVisibility {
   summaryCards: boolean;
+  kpiScores:    boolean;
+  pipeline:     boolean;
+  siTrend:      boolean;
+  agentDetail:  boolean;
 }
 
 const DEFAULT_VISIBILITY: CardVisibility = {
   summaryCards: true,
+  kpiScores:    true,
+  pipeline:     true,
+  siTrend:      true,
+  agentDetail:  true,
 };
 
 const CARD_LABELS: Record<keyof CardVisibility, string> = {
   summaryCards: "Summary Cards (Target, SI, SO, OB Calls)",
+  kpiScores:    "KPI Weighted Scores — Team View",
+  pipeline:     "Sales Pipeline — Conversion Metrics",
+  siTrend:      "Monthly SI Trend",
+  agentDetail:  "Agent Performance Detail",
 };
 
 function loadVisibility(): CardVisibility {
@@ -203,6 +219,54 @@ function DashboardContent() {
 
   useEffect(() => { fetchOutbound(); }, [fetchOutbound]);
 
+  // ── Pipeline (manager-level) ─────────────────────────────────────────────────
+  const [quotesCount,             setQuotesCount]             = useState<number>(0);
+  const [callsToQuotesCount,      setCallsToQuotesCount]      = useState<number>(0);
+  const [quoteToSOQuotationCount, setQuoteToSOQuotationCount] = useState<number>(0);
+  const [quoteToSOSalesOrderCount,setQuoteToSOSalesOrderCount]= useState<number>(0);
+  const [soToSISalesOrderCount,   setSoToSISalesOrderCount]   = useState<number>(0);
+  const [soToSIDeliveredCount,    setSoToSIDeliveredCount]    = useState<number>(0);
+  const [newAccountCount,         setNewAccountCount]         = useState<number>(0);
+  const [newAccountTarget,        setNewAccountTarget]        = useState<number>(0);
+  const [loadingPipeline,         setLoadingPipeline]         = useState(false);
+
+  const fetchPipeline = useCallback(async () => {
+    const { referenceid } = userDetails;
+    if (!referenceid) return;
+    setLoadingPipeline(true);
+    try {
+      const dateParams = new URLSearchParams();
+      if (dateCreatedFilterRange?.from) dateParams.append("from", toDateStr(dateCreatedFilterRange.from));
+      if (dateCreatedFilterRange?.to)   dateParams.append("to",   toDateStr(dateCreatedFilterRange.to));
+      const dateSuffix = dateParams.toString() ? `&${dateParams}` : "";
+      const mBase = `manager=${encodeURIComponent(referenceid)}`;
+
+      const [quotesRes, c2qRes, q2soRes, soToSiRes, naCountRes, naTargetRes] = await Promise.all([
+        fetch(`/api/manager-history-quotations?${mBase}${dateSuffix}`),
+        fetch(`/api/manager-history-calls-to-quotes?${mBase}${dateSuffix}`),
+        fetch(`/api/manager-history-quote-to-so?${mBase}${dateSuffix}`),
+        fetch(`/api/manager-history-so-to-si?${mBase}${dateSuffix}`),
+        fetch(`/api/manager-account-development-plans?${mBase}${dateSuffix}`),
+        fetch(`/api/manager-new-account-development?${mBase}${dateSuffix}`),
+      ]);
+      const [quotesData, c2qData, q2soData, soToSiData, naCountData, naTargetData] = await Promise.all([
+        quotesRes.json(), c2qRes.json(), q2soRes.json(),
+        soToSiRes.json(), naCountRes.json(), naTargetRes.json(),
+      ]);
+
+      setQuotesCount(Number(quotesData.count)                   || 0);
+      setCallsToQuotesCount(Number(c2qData.count)               || 0);
+      setQuoteToSOQuotationCount(Number(q2soData.quoteToSOQuotationCount)   || 0);
+      setQuoteToSOSalesOrderCount(Number(q2soData.quoteToSOSalesOrderCount) || 0);
+      setSoToSISalesOrderCount(Number(soToSiData.soToSISalesOrderCount)     || 0);
+      setSoToSIDeliveredCount(Number(soToSiData.soToSIDeliveredCount)       || 0);
+      setNewAccountCount(Number(naCountData.count)              || 0);
+      setNewAccountTarget(Number(naTargetData.target)           || 0);
+    } catch { /* silent */ } finally { setLoadingPipeline(false); }
+  }, [userDetails.referenceid, dateCreatedFilterRange]);
+
+  useEffect(() => { fetchPipeline(); }, [fetchPipeline]);
+
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
@@ -309,6 +373,51 @@ function DashboardContent() {
                 userId={queryUserId}
               />
             </div>
+          )}
+
+          {/* KPI Weighted Scores — Team View */}
+          {visibility.kpiScores && userDetails.referenceid && (
+            <ManagerKpiWeightedScores
+              manager={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+            />
+          )}
+
+          {/* Sales Pipeline — Conversion Metrics */}
+          {visibility.pipeline && (
+            <ManagerSalesPipelineCard
+              manager={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+              obCallsCount={outboundCallsCount}
+              loadingObCalls={loadingOutboundCalls}
+              quotesCount={quotesCount}
+              loadingQuotes={loadingPipeline}
+              callsToQuotesCount={callsToQuotesCount}
+              loadingCallsToQuotes={loadingPipeline}
+              quoteToSOQuotationCount={quoteToSOQuotationCount}
+              quoteToSOSalesOrderCount={quoteToSOSalesOrderCount}
+              loadingQuoteToSO={loadingPipeline}
+              soToSISalesOrderCount={soToSISalesOrderCount}
+              soToSIDeliveredCount={soToSIDeliveredCount}
+              newAccountCount={newAccountCount}
+              newAccountTarget={newAccountTarget}
+              loadingNewAccount={loadingPipeline}
+            />
+          )}
+
+          {/* Monthly SI Trend — Team Total */}
+          {visibility.siTrend && userDetails.referenceid && (
+            <ManagerMonthlySiTrendCard
+              manager={userDetails.referenceid}
+            />
+          )}
+
+          {/* Agent Performance Detail — Team View */}
+          {visibility.agentDetail && userDetails.referenceid && (
+            <ManagerAgentPerformanceDetail
+              manager={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+            />
           )}
         </div>
 
