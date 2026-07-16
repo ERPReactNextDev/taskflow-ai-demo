@@ -401,7 +401,7 @@ export function SPFPreviewDialog({ open, onClose, currentSPF }: Props) {
                   const itemOffers = offers
                     .map((offer) => getOfferProductsForItem(offer, itemIndex, itemRowCode))
                     .flat();
-                  
+
                   return (
                     <div key={itemIndex} style={{ background: "#fff", borderRadius: "6px", border: "1px solid #e5e7eb", overflow: "hidden" }}>
                       {/* Item Header */}
@@ -450,17 +450,17 @@ export function SPFPreviewDialog({ open, onClose, currentSPF }: Props) {
                                   </div>
                                 </div>
                               )}
-                              
+
                               {/* Description */}
                               <div>
                                 <div className="flex items-center justify-between mb-2">
                                   <div style={{ ...F, fontSize: "9px", color: "#065f46", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase" }}>Description</div>
                                   <CopyButton text={(reqItem.item_description || "No description provided").replace(/([A-Za-z ]+:\s*)/g, "\n$1").trim()} />
                                 </div>
-                                <div style={{ 
-                                  background: "#fff", 
-                                  border: "1px solid #86efac", 
-                                  borderRadius: "4px", 
+                                <div style={{
+                                  background: "#fff",
+                                  border: "1px solid #86efac",
+                                  borderRadius: "4px",
                                   padding: "10px",
                                   ...F,
                                   fontSize: "11px",
@@ -566,20 +566,30 @@ export function SPFPreviewDialog({ open, onClose, currentSPF }: Props) {
                                               </div>
                                             </div>
                                             {/* Technical Specs */}
+                                            {/* Technical Specs */}
                                             {prod.spec.length > 0 && (
                                               <div>
                                                 <div style={{ ...F, fontSize: "9px", color: "#64748b", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "7px" }}>Specifications</div>
-                                                <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                                                  {prod.spec.slice(0, 2).map((cat, ci) => (
-                                                    <div key={ci} style={{ border: "1px solid #dbeafe", borderRadius: "5px", overflow: "hidden" }}>
-                                                      <div style={{ background: "#eff6ff", padding: "4px 10px", borderBottom: "1px solid #dbeafe" }}>
+                                                <div
+                                                  style={{
+                                                    display: "flex",
+                                                    flexDirection: "column",
+                                                    gap: "5px",
+                                                    maxHeight: "220px",
+                                                    overflowY: "auto",
+                                                    paddingRight: "4px",
+                                                  }}
+                                                >
+                                                  {prod.spec.map((cat, ci) => (
+                                                    <div key={ci} style={{ border: "1px solid #dbeafe", borderRadius: "5px", overflow: "hidden", flexShrink: 0 }}>
+                                                      <div style={{ background: "#eff6ff", padding: "4px 10px", borderBottom: "1px solid #dbeafe", position: "sticky", top: 0, zIndex: 1 }}>
                                                         <span style={{ ...F, fontSize: "8px", fontWeight: 800, color: "#1e40af", letterSpacing: "0.12em", textTransform: "uppercase" }}>{cat.name}</span>
                                                       </div>
                                                       <div style={{ padding: "5px 10px", background: "#fff" }}>
-                                                        {cat.items.slice(0, 4).map((item, ii) => (
-                                                          <div key={ii} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: ii < cat.items.slice(0, 4).length - 1 ? "1px solid #f0f9ff" : "none" }}>
+                                                        {cat.items.map((item, ii) => (
+                                                          <div key={ii} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: ii < cat.items.length - 1 ? "1px solid #f0f9ff" : "none" }}>
                                                             <span style={{ ...F, fontSize: "10px", color: "#64748b", fontWeight: 600 }}>{item.key}</span>
-                                                            <span style={{ ...F, fontSize: "11px", color: "#0f172a", fontWeight: 600 }}>
+                                                            <span style={{ ...F, fontSize: "11px", color: "#0f172a", fontWeight: 600, textAlign: "right", marginLeft: "8px" }}>
                                                               {item.multiValues.length > 1 ? item.multiValues.join(" • ") : item.value}
                                                             </span>
                                                           </div>
