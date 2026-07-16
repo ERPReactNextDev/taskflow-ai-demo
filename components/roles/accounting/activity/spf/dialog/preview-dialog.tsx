@@ -171,14 +171,14 @@ const parseSpec = (raw: string): SpecCategory[] => {
 const getBaseItemCode = (itemCode: string) => {
   const c = (itemCode || "").trim().toUpperCase();
   if (!c || c === "-") return "";
-  const m = c.match(/^(.*)-([A-Z])$/);
+  const m = c.match(/^(.*)-(OPT-[A-Z]?[0-9]*|[A-Z])$/);
   return m ? m[1] : c;
 };
 
 const getOptionSuffix = (itemCode: string) => {
   const c = (itemCode || "").trim().toUpperCase();
-  const m = c.match(/-([A-Z])$/);
-  return m ? m[1] : "";
+  const m = c.match(/-(OPT-([A-Z]?[0-9]*)|([A-Z]))$/);
+  return m ? (m[2] || m[3]) : "";
 };
 
 const parseOfferRows = (row: SPFCreationRow): OfferProduct[][] => {
