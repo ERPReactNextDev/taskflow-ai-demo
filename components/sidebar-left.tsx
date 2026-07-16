@@ -66,12 +66,12 @@ const data = {
     { name: "Dashboard", url: "/roles/tsa/dashboard", icon: LayoutDashboard },
     { name: "Dashboard", url: "/roles/manager/dashboard", icon: LayoutDashboard },
     { name: "Dashboard", url: "/roles/tsm/dashboard", icon: LayoutDashboard },
-    { name: "Sales Performance", url: "/roles/tsa/sales-performance", icon: BarChart2 },
+    //{ name: "Sales Performance", url: "/roles/tsa/sales-performance", icon: BarChart2 },
     { name: "National Call Ranking", url: "/roles/tsa/national-call-ranking", icon: Phone },
 
-    { name: "Agent List", url: "/roles/tsm/agent", icon: Users },
+    //{ name: "Agent List", url: "/roles/tsm/agent", icon: Users },
 
-    { name: "Team List", url: "/roles/manager/agent", icon: Users },
+    //{ name: "Team List", url: "/roles/manager/agent", icon: Users },
 
     { name: "Sales Performance", url: "/roles/admin/sales-performance", icon: BarChart2 },
     { name: "Employee List", url: "/roles/admin/employee-list", icon: Users },
@@ -95,6 +95,7 @@ const data = {
        
         // Manager
         { name: "All Clients", url: "/roles/manager/companies/all", icon: BookOpen },
+        { name: "Account Management Plan", url: "/roles/manager/companies/account-management-plan", icon: Building },
         { name: "Active", url: "/roles/admin/companies/active", icon: BookOpen },
         { name: "Group / Industry", url: "/roles/admin/companies/group", icon: Users },
         { name: "Pending Transferred", url: "/roles/admin/companies/transfer", icon: BookOpen },
