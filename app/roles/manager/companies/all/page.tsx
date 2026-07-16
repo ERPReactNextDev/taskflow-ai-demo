@@ -9,7 +9,7 @@ import {
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   X, Search, History, FileText, Hash,
-  Phone, Mail, TrendingUp, User, BarChart2, ArrowLeft,
+  Phone, Mail, TrendingUp, User, BarChart2, ArrowLeft, Download,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -1438,6 +1438,51 @@ function DashboardContent() {
   const withActivityCount = scopedAccounts.filter((a) => scopedAccountsWithActivity.has(a.account_reference_number?.toLowerCase() ?? "")).length;
   const withoutActivityCount = scopedAccounts.length - withActivityCount;
 
+  // ── Export filtered accounts to CSV / Excel ──
+  const exportToExcel = () => {
+    const rows = filteredAccounts;
+    if (rows.length === 0) return;
+
+    const headers = [
+      "Account Reference Number",
+      "Company Name",
+      "Contact Person",
+      "Contact Number",
+      "Email Address",
+      "Address",
+    ];
+
+    const escape = (val: unknown): string => {
+      const str = val == null ? "" : String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const csvLines = [
+      headers.map(escape).join(","),
+      ...rows.map((a) =>
+        [
+          a.account_reference_number,
+          a.company_name,
+          a.contact_person,
+          a.contact_number,
+          a.email_address,
+          a.address ?? "",
+        ]
+          .map(escape)
+          .join(",")
+      ),
+    ];
+
+    const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const label = selectedAgentName ?? selectedTsmName ?? "accounts";
+    link.href     = url;
+    link.download = `${label.replace(/\s+/g, "_")}_accounts_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   // ── Customer set: pre-built for O(1) lookup ──
   const customerRefSet = useMemo(() => {
     const s = new Set<string>();
@@ -2078,12 +2123,22 @@ function DashboardContent() {
                 ) : (
                   <>
                     {/* Search */}
-                    <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2 border border-slate-200">
-                      <Search size={13} className="text-slate-400" />
-                      <input type="text" placeholder="Search company, contact, email..."
-                        value={search} onChange={(e) => setSearch(e.target.value)}
-                        className="text-xs bg-transparent outline-none flex-1 text-slate-700 placeholder-slate-400" />
-                      {search && <button onClick={() => setSearch("")} className="text-slate-400 hover:text-slate-600"><X size={12} /></button>}
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-1 bg-slate-50 rounded-xl px-3 py-2 border border-slate-200">
+                        <Search size={13} className="text-slate-400" />
+                        <input type="text" placeholder="Search company, contact, email..."
+                          value={search} onChange={(e) => setSearch(e.target.value)}
+                          className="text-xs bg-transparent outline-none flex-1 text-slate-700 placeholder-slate-400" />
+                        {search && <button onClick={() => setSearch("")} className="text-slate-400 hover:text-slate-600"><X size={12} /></button>}
+                      </div>
+                      <button
+                        onClick={exportToExcel}
+                        disabled={filteredAccounts.length === 0}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl border border-emerald-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        <Download size={12} />
+                        Export Excel ({filteredAccounts.length})
+                      </button>
                     </div>
 
                     {/* Table */}
