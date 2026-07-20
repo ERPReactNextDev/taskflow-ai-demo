@@ -66,13 +66,12 @@ const data = {
     { name: "Dashboard", url: "/roles/tsa/dashboard", icon: LayoutDashboard },
     { name: "Dashboard", url: "/roles/manager/dashboard", icon: LayoutDashboard },
     { name: "Dashboard", url: "/roles/tsm/dashboard", icon: LayoutDashboard },
+    { name: "Dashboard", url: "/roles/admin/dashboard", icon: LayoutDashboard },
+
     //{ name: "Sales Performance", url: "/roles/tsa/sales-performance", icon: BarChart2 },
     { name: "National Call Ranking", url: "/roles/tsa/national-call-ranking", icon: Phone },
-
     //{ name: "Agent List", url: "/roles/tsm/agent", icon: Users },
-
     //{ name: "Team List", url: "/roles/manager/agent", icon: Users },
-
     { name: "Sales Performance", url: "/roles/admin/sales-performance", icon: BarChart2 },
     { name: "Employee List", url: "/roles/admin/employee-list", icon: Users },
   ],
@@ -115,7 +114,6 @@ const data = {
         { name: "Engr. Services", url: "/roles/tsa/activity/engineering", icon: Briefcase },
         
         // TSM
-        
         { name: "Activity Planner", url: "/roles/tsm/activity/planner", icon: Target },
         { name: "Pending Quotations", url: "/roles/tsm/activity/quotation/pending", icon: CalendarDays },
         { name: "Approved Quotations", url: "/roles/tsm/activity/quotation/approved", icon: CalendarDays },
