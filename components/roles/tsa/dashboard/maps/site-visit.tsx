@@ -96,7 +96,7 @@ export function SiteVisitCard({ referenceid, dateRange, name = "—" }: SiteVisi
     <Card className="rounded-xl border shadow-sm">
       <CardContent className="p-4">
         <p className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-4">
-          Site Visits
+          Site Visits (Based on Biolog)
         </p>
 
         {loading ? (

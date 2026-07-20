@@ -102,7 +102,7 @@ export const MonthlySiTrendCard: React.FC<MonthlySiTrendCardProps> = ({
     <Card className="bg-white z-10 text-black flex flex-col">
       <CardContent className="flex-1 flex flex-col items-start justify-start p-6 gap-4">
         <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
-          Monthly SI trend — team total
+          Monthly SI trend by TSA
         </div>
 
         {loading ? (
