@@ -670,7 +670,7 @@ export const Preview: React.FC<PreviewProps> = ({
                                             {/* Row 3: Net Sales */}
                                             <tr className="border-b border-gray-100">
                                                 <td className="px-3 py-1.5 text-right font-bold uppercase border-r-2 border-black w-[55%] text-[9px] text-gray-500">
-                                                    Net Sales {payload.vatType === "vat_inc" ? "(VAT Inclusive)" : "(Non-VAT)"}
+                                                    Net Sales {payload.vatType === "vat_inc" ? "(VAT Inclusive)" : ""}
                                                 </td>
                                                 <td className="px-3 py-1.5 text-right font-black text-gray-900">
                                                     ₱{netSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

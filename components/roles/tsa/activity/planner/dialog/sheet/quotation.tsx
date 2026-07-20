@@ -6219,7 +6219,7 @@ Procurement
                                 {/* Row 3: Net Sales */}
                                 <tr className="border-b border-gray-100">
                                   <td className="px-3 py-1.5 text-right font-bold uppercase border-r-2 border-black w-[55%] text-[9px] text-gray-500">
-                                    Net Sales {payload.vatTypeLabel === "VAT Inc" ? "(VAT Inclusive)" : "(Non-VAT)"}
+                                    Net Sales {payload.vatTypeLabel === "VAT Inc" ? "(VAT Inclusive)" : ""}
                                   </td>
                                   <td className="px-3 py-1.5 text-right font-black text-gray-900">
                                     ₱{(payload.totalGross || payload.totalPrice - payload.deliveryFee - (Number(restockingFee) || 0)).toLocaleString(undefined, {
@@ -6987,7 +6987,7 @@ Procurement
                   <table className="w-full text-[10px] border-collapse">
                     <tbody>
                       <tr className="bg-white text-yellow-900 border-b border-yellow-100">
-                        <td className="px-2 py-1 text-right font-bold uppercase text-gray-400 text-[8px]">Net Sales {confirmDialog?.title?.toLowerCase().includes('inclusive') ? "(VAT Inclusive)" : "(Non-VAT)"}</td>
+                        <td className="px-2 py-1 text-right font-bold uppercase text-gray-400 text-[8px]">Net Sales {confirmDialog?.title?.toLowerCase().includes('inclusive') ? "(VAT Inclusive)" : ""}</td>
                         <td className="px-2 py-1 text-right font-bold">₱100,000.00</td>
                       </tr>
                       <tr className="bg-white text-yellow-900 border-b border-yellow-100">

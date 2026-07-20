@@ -233,7 +233,7 @@ export const Preview: React.FC<PreviewProps> = ({ payload, quotationType }) => {
                                             {/* Net Sales */}
                                             <tr className="border-b border-gray-100">
                                                 <td className="px-3 py-1.5 text-right font-bold uppercase border-r-2 border-black text-gray-400 text-[9px]">
-                                                    Net Sales {payload.vatType === "vat_inc" ? "(VAT Inc)" : "(Non-VAT)"}
+                                                    Net Sales {payload.vatType === "vat_inc" ? "(VAT Inc)" : ""}
                                                 </td>
                                                 <td className="px-3 py-1.5 text-right font-black tabular-nums">
                                                     ₱{(payload.totalPrice - (Number(payload.deliveryFee) || 0) - (payload.restockingFee || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

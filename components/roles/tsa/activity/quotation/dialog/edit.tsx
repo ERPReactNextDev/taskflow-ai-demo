@@ -2556,7 +2556,7 @@ ${payload.whtType && payload.whtType !== "none"
 
           <tr class="${summaryDiscounts && _totalDiscount > 0 ? '' : 'border-b border-gray-100'}">
             <td class="sum-lbl">
-              ${summaryDiscounts ? `Net Sales ${payload.vatTypeLabel === "VAT Inc" ? "(VAT Inc)" : "(Non-VAT)"}` : `Net Sales ${payload.vatTypeLabel === "VAT Inc" ? "(VAT Inc)" : "(Non-VAT)"}`}
+              ${summaryDiscounts ? `Net Sales ${payload.vatTypeLabel === "VAT Inc" ? "(VAT Inc)" : ""}` : `Net Sales ${payload.vatTypeLabel === "VAT Inc" ? "(VAT Inc)" : ""}`}
             </td>
             <td class="sum-val">₱${peso(_netSales)}</td>
           </tr>
@@ -6848,7 +6848,7 @@ ${payload.whtType && payload.whtType !== "none"
                   {/* Mini Invoice Preview */}
                   <div className="space-y-1 text-[10px]">
                     <div className="flex justify-between py-0.5">
-                      <span className="text-gray-500">Net Sales (Non-VAT):</span>
+                      <span className="text-gray-500">Net Sales:</span>
                       <span className="font-mono font-medium">₱100,000.00</span>
                     </div>
                     <div className="flex justify-between py-0.5">

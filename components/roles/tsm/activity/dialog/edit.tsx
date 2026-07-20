@@ -891,7 +891,7 @@ export default function TaskListEditDialog({
               <div class="summary-right">
                 <table class="sum-tbl">
                   <tr>
-                    <td class="sum-lbl">Net Sales ${payload.vatTypeLabel === "VAT Inc" ? "(VAT Inc)" : "(Non-VAT)"}</td>
+                    <td class="sum-lbl">Net Sales ${payload.vatTypeLabel === "VAT Inc" ? "(VAT Inc)" : ""}</td>
                     <td class="sum-val">₱${_netSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   </tr>
                   <tr>
