@@ -36,9 +36,20 @@ export async function GET(req: Request) {
     const { data, error } = await query;
     if (error) throw error;
 
+    const rows = (data ?? []) as unknown as Array<{
+      id: any;
+      customer_name: string | null;
+      account_manager: string | null;
+      status: string | null;
+      created_at: string | null;
+      referenceid: string | null;
+      tsm: string | null;
+      [key: string]: any;
+    }>;
+
     // Enrich with TSA name and TSM name from users table
-    const referenceIds = [...new Set((data ?? []).map((p) => p.referenceid).filter(Boolean))];
-    const tsmIds       = [...new Set((data ?? []).map((p) => p.tsm).filter(Boolean))];
+    const referenceIds = [...new Set(rows.map((p) => p.referenceid).filter(Boolean))] as string[];
+    const tsmIds       = [...new Set(rows.map((p) => p.tsm).filter(Boolean))] as string[];
     const allIds       = [...new Set([...referenceIds, ...tsmIds])];
 
     let userMap: Record<string, string> = {};
@@ -53,10 +64,10 @@ export async function GET(req: Request) {
       }
     }
 
-    const plans = (data ?? []).map((p) => ({
+    const plans = rows.map((p) => ({
       ...p,
-      agent_name: userMap[p.referenceid] ?? p.referenceid ?? "-",
-      tsm_name:   userMap[p.tsm]         ?? p.tsm         ?? "-",
+      agent_name: userMap[p.referenceid ?? ""] ?? p.referenceid ?? "-",
+      tsm_name:   userMap[p.tsm ?? ""]         ?? p.tsm         ?? "-",
     }));
 
     return NextResponse.json({ success: true, plans }, { status: 200 });
