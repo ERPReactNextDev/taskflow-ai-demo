@@ -213,7 +213,7 @@ const DEFAULT_FORM: AccountFormData = {
   email_address: [""],
   address: "",
   region: "",
-  status: "For Approval",
+  status: "For Approval of TSM",
   delivery_address: "",
   type_client: "New Client",
   industry: "",
@@ -513,7 +513,7 @@ export function AccountDialog({
       tsm: userDetails.tsm,
       manager: userDetails.manager,
       // status is always "For Approval" on both create and edit
-      status: "For Approval",
+      status: "For Approval of TSM",
     };
 
     try {
@@ -1059,7 +1059,7 @@ export function AccountDialog({
               </FieldContent>
               <div className="mt-2 flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-sm">
                 <div className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
-                <span className="text-xs font-semibold text-amber-700">For Approval</span>
+                <span className="text-xs font-semibold text-amber-700">For Approval of TSM (Territory Sales Manager)</span>
                 <span className="text-[10px] text-amber-500 ml-auto">Pending admin review</span>
               </div>
             </div>

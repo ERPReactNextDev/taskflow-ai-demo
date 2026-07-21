@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 const Xchire_fetch = await Xchire_sql`
   SELECT * FROM accounts
   WHERE referenceid = ${referenceId}
-  AND LOWER(status) IN ('active', 'for approval');
+  AND LOWER(status) IN ('active', 'for approval of tsm');
 `;
 
     if (Xchire_fetch.length === 0) {
