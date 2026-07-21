@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 
 interface RunningSoCardProps {
+  referenceid?: string;
   targetTotal?: number;
   total?: number;
   totalRegular?: number;
@@ -13,6 +14,7 @@ interface RunningSoCardProps {
 }
 
 export const RunningSoCard: React.FC<RunningSoCardProps> = ({
+  referenceid,
   targetTotal = 8750000,
   total = 0,
   totalRegular = 0,
