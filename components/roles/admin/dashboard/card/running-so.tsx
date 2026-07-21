@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Settings } from "lucide-react";
 
 interface AdminRunningSoCardProps {
+  referenceid?: string;
   targetTotal?: number;
   total?: number;
   totalRegular?: number;
@@ -15,6 +16,7 @@ interface AdminRunningSoCardProps {
 }
 
 export const AdminRunningSoCard: React.FC<AdminRunningSoCardProps> = ({
+  referenceid,
   targetTotal = 0,
   total = 0,
   totalRegular = 0,

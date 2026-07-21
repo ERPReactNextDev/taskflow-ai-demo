@@ -17,6 +17,7 @@ interface ManagerRunningSoCardProps {
 }
 
 export const ManagerRunningSoCard: React.FC<ManagerRunningSoCardProps> = ({
+  referenceid,
   targetTotal = 0,
   total = 0,
   totalRegular = 0,
