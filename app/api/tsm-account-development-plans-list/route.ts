@@ -36,8 +36,14 @@ export async function GET(req: Request) {
     const { data, error } = await query;
     if (error) throw error;
 
+    const rows = (data ?? []) as unknown as Array<{
+      id: any;
+      referenceid: string | null;
+      [key: string]: any;
+    }>;
+
     // Enrich each plan with the TSA's full name from the users table
-    const referenceIds = [...new Set((data ?? []).map((p) => p.referenceid).filter(Boolean))];
+    const referenceIds = [...new Set(rows.map((p) => p.referenceid).filter(Boolean))] as string[];
 
     let agentMap: Record<string, string> = {};
     if (referenceIds.length > 0) {
@@ -51,9 +57,9 @@ export async function GET(req: Request) {
       }
     }
 
-    const plans = (data ?? []).map((p) => ({
+    const plans = rows.map((p) => ({
       ...p,
-      agent_name: agentMap[p.referenceid] ?? p.referenceid ?? "-",
+      agent_name: agentMap[p.referenceid ?? ""] ?? p.referenceid ?? "-",
     }));
 
     return NextResponse.json({ success: true, plans }, { status: 200 });
