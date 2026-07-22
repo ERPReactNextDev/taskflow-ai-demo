@@ -20,11 +20,11 @@ export async function GET(req: Request) {
       SELECT
         id, referenceid, tsm, company_name, contact_person, contact_number,
         email_address, address, region, type_client, industry,
-        status, date_created, account_reference_number
+        status, date_created, date_updated, account_reference_number
       FROM accounts
       WHERE tsm = ${tsm}
         AND LOWER(status) = 'for approval of tsm'
-      ORDER BY date_created DESC
+      ORDER BY date_updated DESC
     `;
 
     return NextResponse.json({ success: true, data: rows }, { status: 200 });

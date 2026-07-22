@@ -56,6 +56,7 @@ interface Account {
     region: string;
     type_client: string;
     date_created: string;
+    date_updated?: string;
     industry: string;
     status?: string;
     transfer_to: string;
@@ -741,7 +742,7 @@ function DashboardContent() {
                                                     <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">email</th>
                                                     <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">type</th>
                                                     <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">region</th>
-                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">date created</th>
+                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">date request</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
@@ -805,8 +806,10 @@ function DashboardContent() {
                                                             </td>
                                                             <td className="px-3 py-2.5 text-gray-600">{account.region || "—"}</td>
                                                             <td className="px-3 py-2.5 text-gray-500">
-                                                                {account.date_created
-                                                                    ? new Date(account.date_created).toLocaleDateString("en-PH", { dateStyle: "medium" })
+                                                                {account.date_updated
+                                                                    ? new Date(account.date_updated).toLocaleDateString("en-PH", { 
+                                                                        dateStyle: "medium"
+                                                                      })
                                                                     : "—"}
                                                             </td>
                                                         </tr>
@@ -815,6 +818,38 @@ function DashboardContent() {
                                             </tbody>
                                         </table>
                                     </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Card 7 - Pending Approval TSM Activities */}
+                        <Card className="rounded-none border">
+                            <CardHeader className="flex flex-col space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <AlertCircleIcon className="w-5 h-5 text-red-500" />
+                                    <CardTitle className="text-sm font-semibold">
+                                        Pending Activity Approval
+                                        {!loadingApprovalHistory && approvalHistory.length > 0 && (
+                                            <span className="ml-2 inline-flex items-center justify-center rounded-full bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 border border-red-200">
+                                                {approvalHistory.length}
+                                            </span>
+                                        )}
+                                    </CardTitle>
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                    activities that are pending tsm approval.
+                                </p>
+                            </CardHeader>
+                            <CardContent>
+                                {loadingApprovalHistory ? (
+                                    <div className="text-center py-4 text-xs text-gray-500">loading...</div>
+                                ) : (
+                                    <ApprovalHistory
+                                        history={approvalHistory}
+                                        dateCreatedFilterRange={dateCreatedFilterRange}
+                                        onRefresh={refreshApprovalHistory}
+                                        ownerNames={ownerNames}
+                                    />
                                 )}
                             </CardContent>
                         </Card>
