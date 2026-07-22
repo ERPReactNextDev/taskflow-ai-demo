@@ -52,7 +52,7 @@ export async function GET(req: Request) {
     const resultsRaw = allowFuzzy
       ? await sql`
           SELECT company_name, contact_person, contact_number, referenceid AS owner_referenceid,
-                 tsm, status, type_client, region, address
+            tsm, status, type_client, region, address
           FROM accounts
           WHERE (
             company_name ILIKE ${`%${cleaned}%`}
@@ -66,15 +66,17 @@ export async function GET(req: Request) {
             )
           )
             AND LOWER(status) NOT IN ('removed', 'approved for deletion')
+            AND LOWER(type_client) != 'prospect'
           ORDER BY date_created DESC
           LIMIT 15;
         `
       : await sql`
           SELECT company_name, contact_person, contact_number, referenceid AS owner_referenceid,
-                 tsm, status, type_client, region, address
+            tsm, status, type_client, region, address
           FROM accounts
           WHERE company_name ILIKE ${`%${cleaned}%`}
             AND LOWER(status) NOT IN ('removed', 'approved for deletion')
+            AND LOWER(type_client) != 'prospect'
           ORDER BY date_created DESC
           LIMIT 15;
         `;

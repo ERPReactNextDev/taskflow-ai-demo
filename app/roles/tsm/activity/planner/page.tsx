@@ -442,6 +442,9 @@ function DashboardContent() {
             const map: Record<string, any[]> = {};
             await Promise.all(
                 tsmApprovalAccounts.map(async (account) => {
+                    // Skip duplicate check if type client is Prospect
+                    if (account.type_client?.trim().toLowerCase() === "prospect") return;
+                    
                     try {
                         const res = await fetch(
                             `/api/com-check-duplicate-account?company_name=${encodeURIComponent(account.company_name)}`
