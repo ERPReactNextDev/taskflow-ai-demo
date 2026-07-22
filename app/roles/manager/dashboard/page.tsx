@@ -144,7 +144,7 @@ function DashboardContent() {
       .catch(() => sileo.error({ title: "Error", description: "Failed to load user.", duration: 4000, position: "top-center" }));
   }, [userId]);
 
-  // ── Sales Quota (manager-level) ───────────────────────────────────────────────
+  // ── Sales Quota (manager-level) — always current month ───────────────────────
   const [salesQuotaTotal,   setSalesQuotaTotal]   = useState<number>(0);
   const [loadingSalesQuota, setLoadingSalesQuota] = useState(false);
 
@@ -153,19 +153,21 @@ function DashboardContent() {
     if (!referenceid) { setSalesQuotaTotal(0); return; }
     setLoadingSalesQuota(true);
     try {
-      const year = dateCreatedFilterRange?.from
-        ? new Date(dateCreatedFilterRange.from).getFullYear().toString()
-        : new Date().getFullYear().toString();
-      const res  = await fetch(`/api/manager-sales-quota?manager=${encodeURIComponent(referenceid)}&year=${year}`);
+      const now   = new Date();
+      const year  = now.getFullYear().toString();
+      const month = now.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
+      const res   = await fetch(
+        `/api/manager-sales-quota?manager=${encodeURIComponent(referenceid)}&year=${year}&month=${encodeURIComponent(month)}`
+      );
       if (!res.ok) throw new Error();
       const data = await res.json();
       setSalesQuotaTotal(Number(data.total) || 0);
     } catch { /* silent */ } finally { setLoadingSalesQuota(false); }
-  }, [userDetails.referenceid, dateCreatedFilterRange]);
+  }, [userDetails.referenceid]);
 
   useEffect(() => { fetchSalesQuota(); }, [fetchSalesQuota]);
 
-  // ── History SI / SO (manager-level) ──────────────────────────────────────────
+  // ── History SI / SO — always current month to match the monthly target ────────
   const [totalActualSales, setTotalActualSales] = useState<number>(0);
   const [totalSoAmount,    setTotalSoAmount]    = useState<number>(0);
   const [totalSoRegular,   setTotalSoRegular]   = useState<number>(0);
@@ -177,14 +179,16 @@ function DashboardContent() {
     if (!referenceid) { setTotalActualSales(0); setTotalSoAmount(0); return; }
     setLoadingHistory(true);
     try {
-      const dateParams = new URLSearchParams();
-      if (dateCreatedFilterRange?.from) dateParams.append("from", toDateStr(dateCreatedFilterRange.from));
-      if (dateCreatedFilterRange?.to)   dateParams.append("to",   toDateStr(dateCreatedFilterRange.to));
-      const dateSuffix = dateParams.toString() ? `&${dateParams}` : "";
+      const now = new Date();
+      const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+      const [mYear, mMonth] = manilaToday.split("-");
+      const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
+      const monthFrom = `${mYear}-${mMonth}-01`;
+      const monthTo   = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
 
       const [siRes, soRes] = await Promise.all([
-        fetch(`/api/manager-history-si?manager=${encodeURIComponent(referenceid)}${dateSuffix}`),
-        fetch(`/api/manager-history-so?manager=${encodeURIComponent(referenceid)}${dateSuffix}`),
+        fetch(`/api/manager-history-si?manager=${encodeURIComponent(referenceid)}&from=${monthFrom}&to=${monthTo}`),
+        fetch(`/api/manager-history-so?manager=${encodeURIComponent(referenceid)}&from=${monthFrom}&to=${monthTo}`),
       ]);
       const siData = await siRes.json();
       const soData = await soRes.json();
@@ -193,7 +197,7 @@ function DashboardContent() {
       setTotalSoRegular(Number(soData.totalRegular) || 0);
       setTotalSoSPF(Number(soData.totalSPF)         || 0);
     } catch { /* silent */ } finally { setLoadingHistory(false); }
-  }, [userDetails.referenceid, dateCreatedFilterRange]);
+  }, [userDetails.referenceid]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 

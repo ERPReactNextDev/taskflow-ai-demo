@@ -8,9 +8,10 @@ const supabase = createClient(
 
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url);
-    const tsm  = url.searchParams.get("tsm");
-    const year = url.searchParams.get("year") ?? new Date().getFullYear().toString();
+    const url   = new URL(req.url);
+    const tsm   = url.searchParams.get("tsm");
+    const year  = url.searchParams.get("year") ?? new Date().getFullYear().toString();
+    const month = url.searchParams.get("month"); // optional — if provided, return only this month's quota
 
     if (!tsm) {
       return NextResponse.json(
@@ -18,7 +19,6 @@ export async function GET(req: Request) {
         { status: 400 }
       );
     }
-    const currentYear = new Date().getFullYear().toString();
 
     // Step 1: Get all TSA ReferenceIDs under this TSM
     const { data: agents, error: agentsError } = await supabase
@@ -36,12 +36,18 @@ export async function GET(req: Request) {
 
     const agentIds = agents.map((a) => a.ReferenceID);
 
-    // Step 2: Sum all quota amounts for those TSAs for the current year
-    const { data: quotaData, error: quotaError } = await supabase
+    // Step 2: Sum quota amounts — filtered by month if provided, otherwise full year
+    let quotaQuery = supabase
       .from("sales_quota")
       .select("amount")
       .in("referenceid", agentIds)
-      .eq("year", currentYear);
+      .eq("year", year);
+
+    if (month) {
+      quotaQuery = quotaQuery.eq("month", month);
+    }
+
+    const { data: quotaData, error: quotaError } = await quotaQuery;
 
     if (quotaError) throw quotaError;
 

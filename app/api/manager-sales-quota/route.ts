@@ -36,6 +36,7 @@ export async function GET(req: Request) {
     const url     = new URL(req.url);
     const manager = url.searchParams.get("manager");
     const year    = url.searchParams.get("year") ?? new Date().getFullYear().toString();
+    const month   = url.searchParams.get("month"); // optional — filter to single month
 
     if (!manager) {
       return NextResponse.json(
@@ -49,11 +50,17 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: true, total: 0 }, { status: 200 });
     }
 
-    const { data: quotaData, error: quotaError } = await supabase
+    let quotaQuery = supabase
       .from("sales_quota")
       .select("amount")
       .in("referenceid", agentIds)
       .eq("year", year);
+
+    if (month) {
+      quotaQuery = quotaQuery.eq("month", month);
+    }
+
+    const { data: quotaData, error: quotaError } = await quotaQuery;
 
     if (quotaError) throw quotaError;
 
