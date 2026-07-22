@@ -127,6 +127,8 @@ function DashboardContent() {
     const [tsmApprovalAccounts, setTsmApprovalAccounts] = useState<Account[]>([]);
     const [loadingTsmApproval, setLoadingTsmApproval] = useState(false);
     const [processingAccountId, setProcessingAccountId] = useState<string | null>(null);
+    // Owner name map: { [referenceid]: "Firstname Lastname" }
+    const [ownerNames, setOwnerNames] = useState<Record<string, string>>({});
 
     // Duplicate detection state
     const [duplicateMap, setDuplicateMap] = useState<Record<string, any[]>>({});
@@ -407,9 +409,27 @@ function DashboardContent() {
         return () => clearInterval(interval);
     }, [userDetails.referenceid]);
 
+    // Resolve owner names for all approval accounts using the TSM's agent list
+    useEffect(() => {
+        if (!userDetails.referenceid) return;
+        fetch(`/api/fetch-all-user?id=${encodeURIComponent(userDetails.referenceid)}`)
+            .then((r) => r.ok ? r.json() : [])
+            .then((agents: any[]) => {
+                const map: Record<string, string> = {};
+                for (const a of agents) {
+                    if (a.ReferenceID) {
+                        map[a.ReferenceID] = `${a.Firstname ?? ""} ${a.Lastname ?? ""}`.trim();
+                    }
+                }
+                setOwnerNames(map);
+            })
+            .catch(() => {});
+    }, [userDetails.referenceid]);
+
     // Check duplicates for all approval accounts
     useEffect(() => {
         if (tsmApprovalAccounts.length === 0) { setDuplicateMap({}); return; }
+
         const checkAll = async () => {
             const map: Record<string, any[]> = {};
             await Promise.all(
@@ -715,6 +735,7 @@ function DashboardContent() {
                                                 <tr className="bg-gray-50 border-b border-gray-200">
                                                     <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">actions</th>
                                                     <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">company name</th>
+                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">requestor</th>
                                                     <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">contact person</th>
                                                     <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">contact number</th>
                                                     <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">email</th>
@@ -764,6 +785,16 @@ function DashboardContent() {
                                                                     )}
                                                                 </div>
                                                             </td>
+                                                            <td className="px-3 py-2.5">
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-medium text-gray-800">
+                                                                        {ownerNames[account.referenceid] || account.referenceid || "—"}
+                                                                    </span>
+                                                                    {ownerNames[account.referenceid] && (
+                                                                        <span className="text-[10px] text-gray-400 font-mono">{account.referenceid}</span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
                                                             <td className="px-3 py-2.5 text-gray-600">{account.contact_person || "—"}</td>
                                                             <td className="px-3 py-2.5 text-gray-600">{account.contact_number || "—"}</td>
                                                             <td className="px-3 py-2.5 text-gray-600">{account.email_address || "—"}</td>
@@ -787,6 +818,7 @@ function DashboardContent() {
                                 )}
                             </CardContent>
                         </Card>
+
                         {/* 4-card grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
                             {/* Card 1 */}
@@ -876,33 +908,6 @@ function DashboardContent() {
                                         userDetails={userDetails}
                                         onRefreshAccountsAction={refreshDeletionRequests}
                                     />
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-1 gap-4">
-                            {/* Card 5 - Approval for TSM Outbound Calls */}
-                            <Card className="rounded-none border">
-                                <CardHeader className="flex flex-col space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <AlertCircleIcon className="w-5 h-5 text-orange-500" />
-                                        <CardTitle className="text-sm font-semibold">Approval for TSM - Outbound Calls</CardTitle>
-                                    </div>
-                                    <p className="text-xs text-gray-500">
-                                        Outbound calls awaiting TSM approval with "Approval for TSM" status.
-                                    </p>
-                                </CardHeader>
-                                <CardContent>
-                                    {loadingApprovalHistory ? (
-                                        <div className="text-center py-4 text-xs text-gray-500">Loading...</div>
-                                    ) : (
-                                        <ApprovalHistory
-                                            history={approvalHistory}
-                                            dateCreatedFilterRange={dateCreatedFilterRange}
-                                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-                                            onRefresh={refreshApprovalHistory}
-                                        />
-                                    )}
                                 </CardContent>
                             </Card>
                         </div>
