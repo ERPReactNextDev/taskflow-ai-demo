@@ -822,38 +822,7 @@ function DashboardContent() {
                             </CardContent>
                         </Card>
 
-                        {/* Card 7 - Pending Approval TSM Activities */}
-                        <Card className="rounded-none border">
-                            <CardHeader className="flex flex-col space-y-1">
-                                <div className="flex items-center gap-2">
-                                    <AlertCircleIcon className="w-5 h-5 text-red-500" />
-                                    <CardTitle className="text-sm font-semibold">
-                                        Pending Activity Approval
-                                        {!loadingApprovalHistory && approvalHistory.length > 0 && (
-                                            <span className="ml-2 inline-flex items-center justify-center rounded-full bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 border border-red-200">
-                                                {approvalHistory.length}
-                                            </span>
-                                        )}
-                                    </CardTitle>
-                                </div>
-                                <p className="text-xs text-gray-500">
-                                    activities that are pending tsm approval.
-                                </p>
-                            </CardHeader>
-                            <CardContent>
-                                {loadingApprovalHistory ? (
-                                    <div className="text-center py-4 text-xs text-gray-500">loading...</div>
-                                ) : (
-                                    <ApprovalHistory
-                                        history={approvalHistory}
-                                        dateCreatedFilterRange={dateCreatedFilterRange}
-                                        onRefresh={refreshApprovalHistory}
-                                        ownerNames={ownerNames}
-                                    />
-                                )}
-                            </CardContent>
-                        </Card>
-
+                        
                         {/* 4-card grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
                             {/* Card 1 */}
