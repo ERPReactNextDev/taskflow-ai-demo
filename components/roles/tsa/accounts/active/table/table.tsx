@@ -63,6 +63,7 @@ interface Account {
   type_client: string;
   date_created: string;
   date_updated: string;
+  tsm_remarks?: string;
   industry: string;
   company_group: string;
   status?: string;
@@ -793,6 +794,15 @@ export function AccountsTable({
             return <span className="text-[11px] text-slate-400">—</span>;
           }
         },
+      },
+      {
+        accessorKey: "tsm_remarks",
+        header: "TSM Remarks",
+        cell: ({ row }) => (
+          <p className="text-[11px] text-slate-500 max-w-[150px] line-clamp-2 leading-snug uppercase">
+            {row.original.tsm_remarks ?? "—"}
+          </p>
+        ),
       },
     ],
     []

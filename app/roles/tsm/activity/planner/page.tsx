@@ -19,7 +19,7 @@ import { type DateRange } from "react-day-picker";
 
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
 import { AlertCircleIcon, AlertTriangle, ExternalLink, X } from "lucide-react";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { UnifiedNotificationBellLazy } from "@/components/unified-notification-bell-lazy";
 
 import { Scheduled } from "@/components/roles/tsm/activity/quotation/pending/pending-quotation";
@@ -44,25 +44,27 @@ interface UserDetails {
 }
 
 interface Account {
-    id: string;
-    referenceid: string;
-    tsm: string;
-    company_name: string;
-    contact_person: string;
-    contact_number: string;
-    email_address: string;
-    address: string;
-    delivery_address: string;
-    region: string;
-    type_client: string;
-    date_created: string;
-    date_updated?: string;
-    industry: string;
-    status?: string;
-    transfer_to: string;
-    date_transferred: string;
-    date_removed: string;
-    remarks: string;
+  id: string;
+  referenceid: string;
+  tsm: string;
+  company_name: string;
+  contact_person: string;
+  contact_number: string;
+  email_address: string;
+  address: string;
+  delivery_address: string;
+  region: string;
+  type_client: string;
+  date_created: string;
+  date_updated?: string;
+  tsm_approve_date?: string;
+  industry: string;
+  status?: string;
+  transfer_to: string;
+  date_transferred: string;
+  date_removed: string;
+  remarks: string;
+  tsm_remarks?: string;
 }
 
 interface SPFRequest {
@@ -128,6 +130,11 @@ function DashboardContent() {
     const [tsmApprovalAccounts, setTsmApprovalAccounts] = useState<Account[]>([]);
     const [loadingTsmApproval, setLoadingTsmApproval] = useState(false);
     const [processingAccountId, setProcessingAccountId] = useState<string | null>(null);
+    // Remarks dialog state
+    const [remarksDialogOpen, setRemarksDialogOpen] = useState(false);
+    const [selectedAccountForRemarks, setSelectedAccountForRemarks] = useState<Account | null>(null);
+    const [tsmRemarksText, setTsmRemarksText] = useState("");
+    const [approvalActionType, setApprovalActionType] = useState<"active" | "inactive" | null>(null);
     // Owner name map: { [referenceid]: "Firstname Lastname" }
     const [ownerNames, setOwnerNames] = useState<Record<string, string>>({});
 
@@ -646,20 +653,37 @@ function DashboardContent() {
         }
     }
 
-    async function handleApproval(id: string, status: "active" | "inactive") {
-        setProcessingAccountId(id);
+    function handleApproval(id: string, status: "active" | "inactive") {
+        const account = tsmApprovalAccounts.find(a => a.id === id);
+        if (!account) return;
+        setSelectedAccountForRemarks(account);
+        setApprovalActionType(status);
+        setTsmRemarksText("");
+        setRemarksDialogOpen(true);
+    }
+
+    async function handleConfirmApproval() {
+        if (!selectedAccountForRemarks || !approvalActionType) return;
+        setProcessingAccountId(selectedAccountForRemarks.id);
         try {
             const res = await fetch("/api/com-fetch-tsm-approval-accounts", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id, status }),
+                body: JSON.stringify({ 
+                    id: selectedAccountForRemarks.id, 
+                    status: approvalActionType, 
+                    tsm_remarks: tsmRemarksText || null,
+                }),
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.error || "Failed to update");
-            setTsmApprovalAccounts((prev) => prev.filter((a) => a.id !== id));
+            setTsmApprovalAccounts((prev) => prev.filter((a) => a.id !== selectedAccountForRemarks.id));
+            setRemarksDialogOpen(false);
+            setSelectedAccountForRemarks(null);
+            setApprovalActionType(null);
             sileo.success({
-                title: status === "active" ? "Approved" : "Declined",
-                description: status === "active"
+                title: approvalActionType === "active" ? "Approved" : "Declined",
+                description: approvalActionType === "active"
                     ? "Account has been approved and set to active."
                     : "Account has been declined and set to inactive.",
                 duration: 3000,
@@ -822,7 +846,6 @@ function DashboardContent() {
                             </CardContent>
                         </Card>
 
-                        
                         {/* 4-card grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
                             {/* Card 1 */}
@@ -987,6 +1010,13 @@ function DashboardContent() {
                                             </p>
                                         )}
                                         
+                                        {match.address && (
+                                            <p className="text-slate-400">
+                                                <span className="text-slate-600">Address: </span>
+                                                {match.address}
+                                            </p>
+                                        )}
+                                        
                                         {match.tsm && (
                                             <p className="text-slate-400">
                                                 <span className="text-slate-600">TSM: </span>
@@ -1003,6 +1033,53 @@ function DashboardContent() {
                                 </div>
                             ))}
                         </div>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Remarks Dialog */}
+                <Dialog open={remarksDialogOpen} onOpenChange={setRemarksDialogOpen}>
+                    <DialogContent className="max-w-lg w-full">
+                        <DialogHeader>
+                            <DialogTitle className="text-sm font-bold">
+                                {approvalActionType === "active" ? "Approve Account" : "Decline Account"}
+                            </DialogTitle>
+                            <DialogDescription className="text-xs text-gray-500">
+                                {selectedAccountForRemarks?.company_name}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold uppercase text-gray-700 block mb-1">
+                                    TSM Remarks (Optional)
+                                </label>
+                                <textarea
+                                    value={tsmRemarksText}
+                                    onChange={(e) => setTsmRemarksText(e.target.value)}
+                                    placeholder="Enter remarks here..."
+                                    className="w-full border border-gray-300 rounded-md p-2 text-sm resize-none"
+                                    rows={4}
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter className="flex gap-2 mt-4">
+                            <Button
+                                variant="outline"
+                                onClick={() => setRemarksDialogOpen(false)}
+                                disabled={processingAccountId === selectedAccountForRemarks?.id}
+                                className="rounded-none"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleConfirmApproval}
+                                disabled={processingAccountId === selectedAccountForRemarks?.id}
+                                className="rounded-none"
+                            >
+                                {processingAccountId === selectedAccountForRemarks?.id 
+                                    ? "Processing..." 
+                                    : (approvalActionType === "active" ? "Confirm Approve" : "Confirm Decline")}
+                            </Button>
+                        </DialogFooter>
                     </DialogContent>
                 </Dialog>
             </ProtectedPageWrapper>

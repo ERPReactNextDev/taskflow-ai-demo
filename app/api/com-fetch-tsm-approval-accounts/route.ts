@@ -17,15 +17,15 @@ export async function GET(req: Request) {
     }
 
     const rows = await Xchire_sql`
-      SELECT
-        id, referenceid, tsm, company_name, contact_person, contact_number,
-        email_address, address, region, type_client, industry,
-        status, date_created, date_updated, account_reference_number
-      FROM accounts
-      WHERE tsm = ${tsm}
-        AND LOWER(status) = 'for approval of tsm'
-      ORDER BY date_updated DESC
-    `;
+  SELECT
+    id, referenceid, tsm, company_name, contact_person, contact_number,
+    email_address, address, region, type_client, industry,
+    status, date_created, date_updated, account_reference_number, tsm_remarks, tsm_approve_date
+  FROM accounts
+  WHERE tsm = ${tsm}
+    AND LOWER(status) = 'for approval of tsm'
+  ORDER BY date_updated DESC
+`;
 
     return NextResponse.json({ success: true, data: rows }, { status: 200 });
   } catch (err: any) {
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { id, status } = body;
+    const { id, status, tsm_remarks } = body;
 
     if (!id || !status) {
       return NextResponse.json({ success: false, error: "Missing id or status." }, { status: 400 });
@@ -51,7 +51,7 @@ export async function PATCH(req: Request) {
 
     await Xchire_sql`
       UPDATE accounts
-      SET status = ${status}, date_updated = NOW()
+      SET status = ${status}, date_updated = NOW(), tsm_remarks = ${tsm_remarks || null}, tsm_approve_date = NOW()
       WHERE id = ${id}
     `;
 
