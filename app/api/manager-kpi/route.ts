@@ -239,8 +239,13 @@ export async function GET(req: Request) {
     const naFrom = from ?? `${naYear}-${naMonth}-01`;
     const naTo   = to   ?? `${naYear}-${naMonth}-${String(naDaysInMonth).padStart(2, "0")}`;
 
-    const siStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
-    const siEnd   = to   ? `${to}T23:59:59.999+08:00` : `${manilaToday}T23:59:59.999+08:00`;
+    // SI always uses full month boundaries — never filtered by exact date range
+    const siRefDate   = from ? new Date(`${from}T00:00:00+08:00`) : now;
+    const siYear      = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
+    const siMonth     = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(5, 7);
+    const siMonthDays = new Date(Number(siYear), Number(siMonth), 0).getDate();
+    const siStart     = `${siYear}-${siMonth}-01T00:00:00+08:00`;
+    const siEnd       = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}T23:59:59.999+08:00`;
 
     const obStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
     const obEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
@@ -285,7 +290,7 @@ export async function GET(req: Request) {
       naCountData, naTargetData, siteVisitTargetData, clientVisitsData,
     ] = await Promise.all([
       fetchAllRows(supabase.from("sales_quota").select("referenceid, month, amount").in("referenceid", agentIds).eq("year", targetYearStr).eq("month", targetMonthLabel)),
-      fetchAllRows(supabase.from("history").select("referenceid, actual_sales").in("referenceid", agentIds).eq("type_activity", "Delivered / Closed Transaction").gte("date_created", siStart).lte("date_created", siEnd)),
+      fetchAllRows(supabase.from("history").select("referenceid, actual_sales").in("referenceid", agentIds).eq("type_activity", "Delivered / Closed Transaction").gte("delivery_date", siStart.slice(0,10)).lte("delivery_date", siEnd.slice(0,10))),
       fetchAllRows(supabase.from("history").select("referenceid").in("referenceid", agentIds).eq("source", "Outbound - Touchbase").gte("date_created", obStart).lte("date_created", obEnd)),
       fetchAllRows(supabase.from("sales_ob").select("id, referenceid, ob_target, month, year").in("referenceid", agentIds).eq("month", monthLabel(now)).eq("year", now.getFullYear().toString()).order("date_created", { ascending: false, nullsFirst: false }).order("id", { ascending: false })),
       fetchAllRows(supabase.from("history").select("referenceid, quotation_number").in("referenceid", agentIds).eq("type_activity", "Quotation Preparation").eq("status", "Quote-Done").gte("date_created", quotesStart).lte("date_created", quotesEnd)),
@@ -299,7 +304,7 @@ export async function GET(req: Request) {
 
     // ── Build lookup maps (identical to tsm-kpi) ──────────────────────────────
     const quotaMap: Record<string, number> = {};
-    for (const r of quotasData) quotaMap[r.referenceid] = (quotaMap[r.referenceid] ?? 0) + (Number(r.amount) || 0);
+    for (const r of quotasData) quotaMap[r.referenceid] = Number(r.amount) || 0;
 
     const siMap: Record<string, number> = {};
     for (const r of siData) siMap[r.referenceid] = (siMap[r.referenceid] ?? 0) + (Number(r.actual_sales) || 0);
