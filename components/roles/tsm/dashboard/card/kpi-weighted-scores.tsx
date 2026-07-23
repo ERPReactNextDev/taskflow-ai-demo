@@ -297,7 +297,7 @@ const DetailModal: React.FC<{ agent: AgentKpiData; onClose: () => void }> = ({ a
                       </span>
                     </div>
                   </div>
-                  {/* Rating + Weighted Score */}
+                  {/* Rating + Weighted Scoress */}
                   <div className="flex flex-col items-end shrink-0 gap-1">
                     <div className="text-right">
                       <span className={`text-lg font-extrabold leading-none ${ratingColor(row.rating)}`}>{row.rating}</span>
