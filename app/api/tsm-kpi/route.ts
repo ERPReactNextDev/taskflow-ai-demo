@@ -1,4 +1,5 @@
-﻿﻿import { NextResponse } from "next/server";
+﻿﻿// Monthly quota & SI logic (updated 2026-07-23)
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { MongoClient, Db } from "mongodb";
 

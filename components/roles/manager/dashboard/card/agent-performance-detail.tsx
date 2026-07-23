@@ -92,7 +92,7 @@ export const ManagerAgentPerformanceDetail: React.FC<ManagerAgentPerformanceDeta
   const getCacheKey = useCallback(() => {
     const fromStr = dateRange?.from ? toDateStr(dateRange.from) : "default";
     const toStr   = dateRange?.to   ? toDateStr(dateRange.to)   : "default";
-    return `manager-agent-performance-${manager}-${fromStr}-${toStr}`;
+    return `manager-agent-performance-${manager}-${fromStr}-${toStr}-v2`; // v2 = cache bust for YTD→monthly change
   }, [manager, dateRange]);
 
   useEffect(() => {

@@ -495,8 +495,13 @@ export async function GET(req: Request) {
     const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
 
     // SI (uses delivery_date, date-only) / SO (uses date_created with +08:00 timezone)
-    const siStart = from ? from : `${mYear}-01-01`;
-    const siEnd   = to   ? to : null;
+    // SI always uses full month boundaries — never filtered by exact date range
+    const siRefDate   = from ? new Date(`${from}T00:00:00+08:00`) : now;
+    const siYear      = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
+    const siMonth     = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(5, 7);
+    const siMonthDays = new Date(Number(siYear), Number(siMonth), 0).getDate();
+    const siStart     = `${siYear}-${siMonth}-01`;
+    const siEnd       = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}`;
 
     // SO uses full +08:00 timestamp bounds â€” same as tsm-history-so and tsm-agent-so
     const soStartISO = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
@@ -518,19 +523,21 @@ export async function GET(req: Request) {
     const svStart = rangeStartTs;
     const svEnd   = rangeEndTs;
 
-    // Quota year
-    const quotaYear = from ? new Date(`${from}T00:00:00+08:00`).getFullYear().toString() : currentYear;
+    // Quota month/year — derived from SI ref date (same month as SI query uses)
+    const quotaMonthDate = siRefDate;
+    const quotaMonth     = quotaMonthDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
+    const quotaMonthYear = siYear;
 
     // â”€â”€ 3. Parallel Supabase queries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    // SI (actual sales) - based on delivery_date
+    // SI (actual sales) - always full month boundaries
     const siQ = (() => {
       let q = supabase.from("history")
         .select("referenceid, actual_sales")
         .in("referenceid", agentIds)
         .eq("type_activity", "Delivered / Closed Transaction")
-        .gte("delivery_date", siStart);
-      if (siEnd) q = q.lte("delivery_date", siEnd);
+        .gte("delivery_date", siStart)
+        .lte("delivery_date", siEnd);
       return fetchAllRows(q);
     })();
 
@@ -586,19 +593,17 @@ export async function GET(req: Request) {
         .lte("created_at", naEnd)
     );
 
-    // Sales quota (annual plan)
+    // Sales quota (monthly, not annual)
     const quotaQ = fetchAllRows(
       supabase
         .from("sales_quota")
         .select("referenceid, amount")
         .in("referenceid", agentIds)
-        .eq("year", quotaYear)
+        .eq("year", quotaMonthYear)
+        .eq("month", quotaMonth)
     );
 
-    // Quotation amount target (from sales_quotation table, current month of the range)
-    const quotaMonthDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
-    const quotaMonth = quotaMonthDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
-    const quotaMonthYear = quotaMonthDate.toLocaleDateString("en-CA", { year: "numeric", timeZone: "Asia/Manila" }).split("-")[0];
+    // Quotation amount target (from sales_quotation table, same month as quota)
     const quotationTargetQ = fetchAllRows(
       supabase
         .from("sales_quotation")
@@ -692,7 +697,7 @@ export async function GET(req: Request) {
     for (const r of qaData)    qaMap[r.referenceid]    = (qaMap[r.referenceid]    ?? 0) + (Number(r.quotation_amount) || 0);
     for (const r of svData)    { if (r.Status === "Login") svMap[r.ReferenceID] = (svMap[r.ReferenceID] ?? 0) + 1; }
     for (const r of naData)    naMap[r.referenceid]    = (naMap[r.referenceid]    ?? 0) + 1;
-    for (const r of quotaData) quotaMap[r.referenceid] = (quotaMap[r.referenceid] ?? 0) + (Number(r.amount) || 0);
+    for (const r of quotaData) quotaMap[r.referenceid] = Number(r.amount) || 0;
     for (const r of quotationTargetData)  quotationTargetMap[r.referenceid]  = (quotationTargetMap[r.referenceid]  ?? 0) + (Number(r.quotation_amount_target) || 0);
     for (const r of siteVisitTargetData)  siteVisitTargetMap[r.referenceid]  = (siteVisitTargetMap[r.referenceid]  ?? 0) + (Number(r.target) || 0);
     for (const r of accountDevTargetData) accountDevTargetMap[r.referenceid] = (accountDevTargetMap[r.referenceid] ?? 0) + (Number(r.target) || 0);
