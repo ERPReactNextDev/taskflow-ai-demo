@@ -331,16 +331,8 @@ export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> =
   const [error,      setError]      = useState<string | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
 
-  const getCacheKey = useCallback(() => {
-    const fromStr = dateRange?.from ? toDateStr(dateRange.from) : "default";
-    const toStr   = dateRange?.to   ? toDateStr(dateRange.to)   : "default";
-    return `manager-kpi-${manager}-${fromStr}-${toStr}`;
-  }, [manager, dateRange]);
-
   const fetchData = useCallback(async () => {
     if (!manager) return;
-    const cacheKey = getCacheKey();
-    localStorage.removeItem(cacheKey);
     setLoading(true);
     setError(null);
     setHasFetched(true);
@@ -355,14 +347,13 @@ export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> =
       if (!data.success) throw new Error(data.error ?? "Unknown error");
       const newAgents = data.agents ?? [];
       setAgents(newAgents);
-      localStorage.setItem(cacheKey, JSON.stringify({ agents: newAgents }));
     } catch (err: any) {
       console.error("ManagerKpiWeightedScores fetch error:", err);
       setError(err.message ?? "Failed to load KPI data.");
     } finally {
       setLoading(false);
     }
-  }, [manager, dateRange, getCacheKey]);
+  }, [manager, dateRange]);
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border px-6 py-8">
