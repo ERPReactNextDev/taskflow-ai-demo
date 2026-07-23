@@ -53,25 +53,22 @@ export async function GET(req: Request) {
     if (agentIds.length === 0) return NextResponse.json({ success: true, total: 0, records: [], agents: [] }, { status: 200 });
 
     const now = new Date();
-    
-    // Helper to convert Date to YYYY-MM-DD string
-    function formatDateString(d: Date): string {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${year}-${month}-${day}`;
-    }
 
-    // Default range: start of current year
-    const defaultStart = new Date(now.getFullYear(), 0, 1);
-    const startDateStr = from ? from : formatDateString(defaultStart);
-    const endDateStr = to ? to : null;
+    // Default range: current calendar month in Manila time
+    const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }); // YYYY-MM-DD
+    const [mYear, mMonth] = manilaToday.split("-");
+    const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
+    const defaultStart = `${mYear}-${mMonth}-01`;
+    const defaultEnd   = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
+
+    const startDateStr = from ?? defaultStart;
+    const endDateStr   = to   ?? defaultEnd;
 
     let q = supabase.from("history").select("referenceid, actual_sales, delivery_date")
       .in("referenceid", agentIds)
       .eq("type_activity", "Delivered / Closed Transaction")
-      .gte("delivery_date", startDateStr);
-    if (endDateStr) q = q.lte("delivery_date", endDateStr);
+      .gte("delivery_date", startDateStr)
+      .lte("delivery_date", endDateStr);
 
     const records = await fetchAllRows(q);
 

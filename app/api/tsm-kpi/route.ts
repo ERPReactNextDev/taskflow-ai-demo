@@ -263,25 +263,26 @@ export async function GET(req: Request) {
 
     // ── Date scoping ──────────────────────────────────────────────────────────
     const now         = new Date();
-    const year        = now.getFullYear().toString();
+    
+    // Derive today and current month in Manila time
+    const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const [mYear, mMonth] = manilaToday.split("-");
+    const manilaMonthStart = `${mYear}-${mMonth}-01`;
+    const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
+    const manilaMonthEnd = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
+    
+    const year = mYear;
+    
     // Targets (OB, Quote, Site Visit) always use current month, date range only affects actuals
     const monthSlices = [
       {
-        year: now.getFullYear().toString(),
+        year: mYear,
         month: monthLabel(now),
-        daysInMonth: getDaysInMonth(now.getFullYear(), now.getMonth()),
-        coveredDays: getDaysInMonth(now.getFullYear(), now.getMonth()),
+        daysInMonth: monthDays,
+        coveredDays: monthDays,
       },
     ];
-    const targetMonths = [monthLabel(now)];
-    const targetYears = [now.getFullYear().toString()];
     const shouldProrateMonthlyTargets = false; // Targets are always full monthly values — never prorate
-
-    // Derive today's date string in Manila time (YYYY-MM-DD)
-    const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }); // e.g. "2026-07-08"
-    const [manilaYear, manilaMonthNum] = manilaToday.split("-");
-    const monthStartDate = `${manilaYear}-${manilaMonthNum}-01`;
-    const todayDate      = manilaToday;
 
     // New Account Dev scoped to the selected month (or current month in Manila time)
     const naRefDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
@@ -291,21 +292,26 @@ export async function GET(req: Request) {
     const naFrom = from ?? `${naYear}-${naMonth}-01`;
     const naTo   = to   ?? `${naYear}-${naMonth}-${String(naDaysInMonth).padStart(2, "0")}`;
 
-    // SI / SO use the full date range (YTD when no filter)
-    const siStart = from ? `${from}T00:00:00+08:00` : `${now.getFullYear()}-01-01T00:00:00+08:00`;
-    const siEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
+    // SI always uses full month boundaries derived from the 'from' date (or current month if not provided).
+    // SI total is never filtered by the selected date range — always the full month.
+    const siRefDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
+    const siYear    = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
+    const siMonth   = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(5, 7);
+    const siMonthDays = new Date(Number(siYear), Number(siMonth), 0).getDate();
+    const siStart   = `${siYear}-${siMonth}-01T00:00:00+08:00`;
+    const siEnd     = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}T23:59:59.999+08:00`;
 
     // OB Calls / Quotes / Pipeline: selected range, else current month
-    const obStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
-    const obEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
-    const quotesStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
-    const quotesEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
-    const pipelineStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
-    const pipelineEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
+    const obStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
+    const obEnd   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
+    const quotesStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
+    const quotesEnd   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
+    const pipelineStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
+    const pipelineEnd   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
 
     // Client Visits (tasklog): use +08:00 timezone like fetch-tasklog-supabase
-    const clientVisitsStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
-    const clientVisitsEnd   = to ? `${to}T23:59:59+08:00` : `${todayDate}T23:59:59+08:00`;
+    const clientVisitsStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
+    const clientVisitsEnd   = to ? `${to}T23:59:59+08:00` : `${manilaMonthEnd}T23:59:59+08:00`;
 
     // ── Fetch agents ──────────────────────────────────────────────────────────
     const agents = await getAgents(tsm);
@@ -317,14 +323,16 @@ export async function GET(req: Request) {
 
     // ── Parallel data fetches ─────────────────────────────────────────────────
 
-    // 1. Sales quotas per agent for the year
+    // 1. Sales quotas per agent for the current month (derived from SI query month)
+    const quotaMonth = siRefDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
     const quotasQuery = supabase
       .from("sales_quota")
-      .select("referenceid, month, amount")
+      .select("referenceid, amount")
       .in("referenceid", agentIds)
-      .eq("year", year);
+      .eq("year", siYear)
+      .eq("month", quotaMonth);
 
-    // 2. SI (actual sales) — YTD or selected range, matches TSA annual quota target
+    // 2. SI (actual sales) — always full month boundaries based on selected date
     const siQuery = supabase
       .from("history")
       .select("referenceid, actual_sales")
@@ -459,10 +467,10 @@ export async function GET(req: Request) {
 
     // ── Build per-agent KPI data ──────────────────────────────────────────────
 
-    // Sales quota map: { referenceid → total for selected period }
+    // Sales quota map: { referenceid → monthly quota }
     const quotaMap: Record<string, number> = {};
     for (const row of quotasData ?? []) {
-      quotaMap[row.referenceid] = (quotaMap[row.referenceid] ?? 0) + (Number(row.amount) || 0);
+      quotaMap[row.referenceid] = Number(row.amount) || 0;
     }
 
     // SI actual map: { referenceid → total }
@@ -565,19 +573,16 @@ export async function GET(req: Request) {
 
     // DEBUG: log target rows for diagnosis (safe to remove once verified in prod)
     console.log(
-      "[tsm-kpi] from=%s to=%s targetMonths=%s targetYears=%s obTargetData=%s quoteTargetData=%s",
-      from, to, JSON.stringify(targetMonths), JSON.stringify(targetYears),
+      "[tsm-kpi] from=%s to=%s siStart=%s siEnd=%s obTargetData=%s quoteTargetData=%s",
+      from, to, siStart, siEnd,
       JSON.stringify(obTargetData?.map(r => ({ ref: r.referenceid, ob: r.ob_target, m: r.month, y: r.year }))),
       JSON.stringify(quoteTargetData?.map(r => ({ ref: r.referenceid, qt: r.quote_target, m: r.month, y: r.year })))
     );
 
     // ── Calculate CSR metrics for each agent ──────────────────
-    // Derive today and current month in Manila time for CSR metrics using existing manilaToday
-    const [mYear, mMonth] = manilaToday.split("-");
-    const manilaMonthStart = `${mYear}-${mMonth}-01`;
-    const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
-    const csrFromDate = from || manilaMonthStart;
-    const csrToDate = to || manilaMonthEnd;
+    // CSR metrics use the full month from SI date (same as SI query)
+    const csrFromDate = `${siYear}-${siMonth}-01`;
+    const csrToDate   = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}`;
 
     const csrMetricsMap = await calcCsrForAgents(agentIds, csrFromDate, csrToDate, tsm);
 

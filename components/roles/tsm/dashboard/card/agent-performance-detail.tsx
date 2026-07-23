@@ -94,7 +94,7 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
   const getCacheKey = useCallback(() => {
     const fromStr = dateRange?.from ? toDateStr(dateRange.from) : "default";
     const toStr = dateRange?.to ? toDateStr(dateRange.to) : "default";
-    return `tsm-agent-performance-${tsm}-${fromStr}-${toStr}`;
+    return `tsm-agent-performance-${tsm}-${fromStr}-${toStr}-v2`; // v2 = cache bust for YTD→monthly change
   }, [tsm, dateRange]);
 
   // Load from localStorage on initial render

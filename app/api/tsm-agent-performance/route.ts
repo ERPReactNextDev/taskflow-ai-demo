@@ -494,9 +494,14 @@ export async function GET(req: Request) {
     const manilaMonthStart = `${mYear}-${mMonth}-01`;
     const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
 
-    // SI (uses delivery_date, date-only) / SO (uses date_created with +08:00 timezone)
-    const siStart = from ? from : manilaMonthStart;
-    const siEnd   = to   ? to   : manilaMonthEnd;
+    // SI always uses full month boundaries derived from the 'from' date (or current month if not provided).
+    // SI total is never filtered by the selected date range — always the full month.
+    const siRefDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
+    const siYear    = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
+    const siMonth   = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(5, 7);
+    const siMonthDays = new Date(Number(siYear), Number(siMonth), 0).getDate();
+    const siStart   = `${siYear}-${siMonth}-01`;
+    const siEnd     = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}`;
 
     // SO uses full +08:00 timestamp bounds — same as tsm-history-so and tsm-agent-so
     const soStartISO = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
@@ -523,14 +528,14 @@ export async function GET(req: Request) {
 
     // ── 3. Parallel Supabase queries ──────────────────────────────────────────
 
-    // SI (actual sales) - based on delivery_date
+    // SI (actual sales) - always based on full month boundaries of delivery_date
     const siQ = (() => {
       let q = supabase.from("history")
         .select("referenceid, actual_sales")
         .in("referenceid", agentIds)
         .eq("type_activity", "Delivered / Closed Transaction")
-        .gte("delivery_date", siStart);
-      if (siEnd) q = q.lte("delivery_date", siEnd);
+        .gte("delivery_date", siStart)
+        .lte("delivery_date", siEnd);
       return fetchAllRows(q);
     })();
 
