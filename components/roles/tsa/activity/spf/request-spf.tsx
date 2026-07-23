@@ -63,6 +63,7 @@ interface SPFRecord {
     item_photo?: string;
     item_qty?: string;
     spf_creation_id?: number;
+    spf_request_status?: string;
     tin_no?: string;
     date_updated?: string;
     created_at?: string;
@@ -74,6 +75,7 @@ interface SPFProps {
     tsm?: string;
     manager?: string;
     prepared_by?: string;
+    userDepartment?: string;
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -126,6 +128,123 @@ const StatusBadge = ({ status }: { status?: string }) => {
     return (
         <span className={`inline-block text-[10px] font-bold uppercase tracking-tighter px-2 py-0.5 border-transparent ${cls} rounded-none`}>
             {getDisplayText(status || "")}
+        </span>
+    );
+};
+
+
+
+// ─── Creation Status Badge (spf_creation.status, realtime) ────────────────────
+
+const CreationStatusBadge = ({ spfNumber }: { spfNumber: string }) => {
+    const [status, setStatus] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const fetchStatus = async () => {
+            const { data, error } = await supabase
+                .from("spf_creation")
+                .select("status")
+                .eq("spf_number", spfNumber)
+                .order("date_updated", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (isMounted) {
+                if (!error) setStatus(data?.status || null);
+                setLoading(false);
+            }
+        };
+
+        fetchStatus();
+
+        const channel = supabase
+            .channel(`spf-creation-status-${spfNumber}`)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "spf_creation", filter: `spf_number=eq.${spfNumber}` },
+                () => fetchStatus()
+            )
+            .subscribe();
+
+        return () => {
+            isMounted = false;
+            supabase.removeChannel(channel);
+        };
+    }, [spfNumber]);
+
+    if (loading || !status) return <span className="text-[10px] text-zinc-400">—</span>;
+
+    const s = status.toLowerCase();
+    const cls =
+        s.includes("approved") ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+            : s.includes("pending") ? "bg-amber-50 text-amber-700 border-amber-100"
+                : s.includes("declined") || s.includes("rejected") ? "bg-red-50 text-red-700 border-red-100"
+                    : s.includes("revision") ? "bg-blue-50 text-blue-700 border-blue-100"
+                        : "bg-zinc-100 text-zinc-600 border-zinc-200";
+
+    return (
+        <span className={`inline-block text-[10px] font-bold uppercase tracking-tighter px-2 py-0.5 border-transparent ${cls} rounded-none`}>
+            {status}
+        </span>
+    );
+};
+
+// ─── Latest Revision Result Badge (spf_request_revision_history, realtime) ────
+
+const LatestRevisionResultBadge = ({ spfNumber }: { spfNumber: string }) => {
+    const [revisionResult, setRevisionResult] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const fetchLatestRevision = async () => {
+            const { data, error } = await supabase
+                .from("spf_request_revision_history")
+                .select("revision_result, revision_date")
+                .eq("spf_number", spfNumber)
+                .order("revision_date", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (isMounted) {
+                if (!error) setRevisionResult(data?.revision_result || null);
+                setLoading(false);
+            }
+        };
+
+        fetchLatestRevision();
+
+        const channel = supabase
+            .channel(`spf-revision-result-${spfNumber}`)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "spf_request_revision_history", filter: `spf_number=eq.${spfNumber}` },
+                () => fetchLatestRevision()
+            )
+            .subscribe();
+
+        return () => {
+            isMounted = false;
+            supabase.removeChannel(channel);
+        };
+    }, [spfNumber]);
+
+    if (loading || !revisionResult) return <span className="text-[10px] text-zinc-400">—</span>;
+
+    const s = revisionResult.toLowerCase();
+    const cls =
+        s === "approved" ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+            : s === "rejected" ? "bg-red-50 text-red-700 border-red-100"
+                : s === "requested" ? "bg-amber-50 text-amber-700 border-amber-100"
+                    : "bg-zinc-100 text-zinc-600 border-zinc-200";
+
+    return (
+        <span className={`inline-block text-[10px] font-bold uppercase tracking-tighter px-2 py-0.5 border-transparent ${cls} rounded-none`}>
+            {revisionResult}
         </span>
     );
 };
@@ -191,7 +310,7 @@ const Pagination: React.FC<PaginationProps> = ({ total, current, perPage, onPage
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => {
+const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by, userDepartment }) => {
     const searchParams = useSearchParams();
     const highlight = searchParams?.get("highlight");
 
@@ -251,6 +370,7 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
     // Revision dialog state
     const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
     const [revisionTargetSpfNumber, setRevisionTargetSpfNumber] = useState<string | null>(null);
+    const [latestRevisionResults, setLatestRevisionResults] = useState<Record<string, string>>({});
 
     // Cancel dialog state
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -260,6 +380,7 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
     const endTimerRef = useRef<number | null>(null);
 
     const [tableStyles, setTableStyles] = useState<TableStyles>(DEFAULT_TABLE_STYLES);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     useEffect(() => {
         getTableStyles().then(setTableStyles);
@@ -343,6 +464,54 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
     useEffect(() => {
         fetchAccounts();
     }, [referenceid, fetchAccounts]);
+
+    // Fetch latest revision results for all SPFs
+    useEffect(() => {
+        const fetchLatestRevisions = async () => {
+            if (!allActivities.length) return;
+
+            const spfNumbers = allActivities.map(r => r.spf_number);
+            try {
+                const { data, error } = await supabase
+                    .from("spf_request_revision_history")
+                    .select("spf_number, revision_result, revision_number")
+                    .in("spf_number", spfNumbers);
+
+                if (error) {
+                    console.error("Error fetching latest revisions:", error);
+                    return;
+                }
+
+                // Get the latest revision for each spf_number (highest revision_number)
+                const latestMap: Record<string, { result: string; number: number }> = {};
+                data?.forEach(record => {
+                    const spfNumber = record.spf_number;
+                    const current = latestMap[spfNumber];
+                    const revisionNumber = parseInt(record.revision_number) || 0;
+
+                    if (!current || revisionNumber > current.number) {
+                        latestMap[spfNumber] = { result: record.revision_result, number: revisionNumber };
+                    }
+                });
+
+                // Extract just the revision results
+                const resultsMap: Record<string, string> = {};
+                Object.entries(latestMap).forEach(([spfNumber, data]) => {
+                    resultsMap[spfNumber] = data.result;
+                });
+
+                setLatestRevisionResults(resultsMap);
+            } catch (err) {
+                console.error("Error fetching latest revisions:", err);
+            }
+        };
+
+        fetchLatestRevisions();
+        
+        // Poll every 5 seconds as fallback
+        const interval = setInterval(fetchLatestRevisions, 5000);
+        return () => clearInterval(interval);
+    }, [allActivities]);
 
     // Accounts search handler - only fetches when search button is clicked
     const handleAccountsSearch = useCallback(() => {
@@ -474,6 +643,20 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
         }
     }, [recordsPage, hasMore, loadingMore, fetchActivities]);
 
+    // Refresh handler - refetches both SPF records and accounts
+    const handleRefresh = useCallback(async () => {
+        if (isRefreshing) return;
+        setIsRefreshing(true);
+        try {
+            await Promise.all([
+                fetchActivities(1, false),
+                fetchAccounts(1, false),
+            ]);
+        } finally {
+            setIsRefreshing(false);
+        }
+    }, [isRefreshing, fetchActivities, fetchAccounts]);
+
     // Reset page when search term changes
     useEffect(() => {
         setRecordsPage(1);
@@ -586,7 +769,7 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
 
     // ─── Request Revision ──────────────────────────────────────────────────────────
 
-    const openRevisionDialog = (spf_number: string) => {
+    const openRevisionDialog = async (spf_number: string) => {
         setRevisionTargetSpfNumber(spf_number);
         setRevisionDialogOpen(true);
     };
@@ -635,10 +818,13 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
     };
 
     const handleRequestRevision = async (spf_number: string, revision_type: string, revision_remarks: string, editedData?: any) => {
+        if (!userDepartment) {
+            throw new Error("User department not available");
+        }
         const res = await fetch("/api/activity/tsa/spf/request-revision", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ spf_number, revision_type, revision_remarks, edited_data: editedData }),
+            body: JSON.stringify({ spf_number, revision_type, revision_remarks, edited_data: editedData, userDepartment }),
         });
         if (!res.ok) {
             const data = await res.json();
@@ -794,7 +980,19 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
                             </div>
                         </div>
                         {/* SPF Records Search Bar */}
-                        <div className="relative flex gap-3 max-w-md w-full">
+                        <div className="relative flex gap-3 max-w-md w-full items-center">
+                            {/* Refresh Button */}
+                            <Button
+                                type="button"
+                                onClick={handleRefresh}
+                                disabled={isRefreshing}
+                                title="Refresh"
+                                variant="outline"
+                                size="sm"
+                                className="h-11 w-11 p-0 rounded-full border-zinc-200 hover:bg-zinc-100 hover:border-zinc-900 transition-all shrink-0"
+                            >
+                                <RefreshCw className={`w-4 h-4 text-zinc-600 ${isRefreshing ? "animate-spin" : ""}`} />
+                            </Button>
                             <div className="relative flex-1">
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-zinc-400" />
                                 <Input
@@ -837,11 +1035,11 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
                                 <TableHeader className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                                     <TableRow className="hover:bg-transparent border-none">
                                         {[
-                                            "Actions", "Status", "SPF No.", "Customer",
+                                            "Actions", "Creation Status", "Revision Result", "SPF No.", "Customer",
                                             "Contact Person", "Contact No.", "Reg. Address",
                                             "Delivery", "Billing", "Collection",
                                             "Payment", "Warranty", "Delivery Date",
-                                            "Prepared By", "Approved By", "Time Spent", "Date Modified"
+                                            "Prepared By", "Approved By"
                                         ].map((h) => (
                                             <TableHead key={h} className="h-12 text-[10px] font-black uppercase tracking-widest text-zinc-400 px-6 whitespace-nowrap">
                                                 {h}
@@ -852,6 +1050,7 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
                                 <TableBody>
                                     {filteredActivities.map((item: SPFRecord, idx: number) => {
                                         const isHighlighted = highlight === item.spf_number;
+                                        const isApprovedBySalesHead = (item.spf_request_status || "").trim().toLowerCase() === "approved by sales head";
                                         return (
                                             <TableRow key={item.id}
                                                 className={`group transition-all border-zinc-50/80 ${isHighlighted ? "bg-yellow-50/50 hover:bg-yellow-100/50" : "hover:bg-zinc-50/50"}`}>
@@ -860,7 +1059,7 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
                                                         <button
                                                             title="Edit"
                                                             onClick={() => openEditDialog(item)}
-                                                            disabled={item.is_cancelled}
+                                                            disabled={item.is_cancelled || isApprovedBySalesHead}
                                                             className="p-2 bg-white border border-zinc-100 rounded-full text-zinc-400 hover:text-zinc-900 hover:border-zinc-900 hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                                                         >
                                                             <PenIcon className="w-3.5 h-3.5" />
@@ -872,7 +1071,13 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
                                                         <button
                                                             title="Request Revision"
                                                             onClick={() => openRevisionDialog(item.spf_number)}
-                                                            disabled={item.is_cancelled}
+                                                            disabled={
+                                                                item.is_cancelled || 
+                                                                !isApprovedBySalesHead ||
+                                                                latestRevisionResults[item.spf_number] === "Requested By Engineering" ||
+                                                                latestRevisionResults[item.spf_number] === "Request Approved By Procurement" ||
+                                                                latestRevisionResults[item.spf_number] === "Request Rejected By Procurement"
+                                                            }
                                                             className="p-2 bg-white border border-zinc-100 rounded-full text-zinc-400 hover:text-amber-600 hover:border-amber-200 hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                                                         >
                                                             <RefreshCw className="w-3.5 h-3.5" />
@@ -890,7 +1095,10 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="px-6 py-4">
-                                                    <StatusBadge status={item.status} />
+                                                    <CreationStatusBadge spfNumber={item.spf_number} />
+                                                </TableCell>
+                                                <TableCell className="px-6 py-4">
+                                                    <LatestRevisionResultBadge spfNumber={item.spf_number} />
                                                 </TableCell>
                                                 <TableCell className="px-6 py-4 font-black text-[11px] text-zinc-900 whitespace-nowrap tracking-tight uppercase">
                                                     {item.spf_number}
@@ -931,25 +1139,9 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
                                                 <TableCell className="px-6 py-4 text-[10px] font-bold text-zinc-500 whitespace-nowrap uppercase">
                                                     {item.approved_by || "—"}
                                                 </TableCell>
-                                                <TableCell className="px-6 py-4">
-                                                    <span className="text-[10px] font-black text-zinc-400 font-mono whitespace-nowrap bg-zinc-50 px-2 py-1 rounded-full uppercase tracking-tighter">
-                                                        {calculateTimeSpent(item.start_date, item.end_date)}
-                                                    </span>
-                                                </TableCell>
-                                                <TableCell className="px-6 py-4 text-[10px] font-bold text-zinc-400 whitespace-nowrap uppercase tracking-tighter">
-                                                    {item.date_updated
-                                                        ? new Date(item.date_updated).toLocaleString("en-PH", {
-                                                            timeZone: "Asia/Manila",
-                                                            year: "numeric",
-                                                            month: "short",
-                                                            day: "2-digit",
-                                                            hour: "2-digit",
-                                                            minute: "2-digit",
-                                                        })
-                                                        : "—"}
-                                                </TableCell>
                                             </TableRow>
                                         );
+                                        
                                     })}
                                 </TableBody>
                             </Table>
@@ -1035,6 +1227,7 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
                 onClose={closeRevisionDialog}
                 spf_number={revisionTargetSpfNumber}
                 onRequestRevision={handleRequestRevision}
+                onSuccessClose={() => fetchActivities(1, false)}
             />
 
             {/* ── Cancel dialog ────────────────────────────────────────────────── */}
@@ -1045,6 +1238,7 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by }) => 
                 spfId={cancelTargetId || undefined}
                 onConfirm={handleCancel}
             />
+
         </div>
     );
 };

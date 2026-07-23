@@ -83,8 +83,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Merge status into the data
+    // Note: spf_request.status holds approval-flow values like "Approved by Sales Head"
+    // while spf_creation.status holds display values like "For Revision"/"Processing by PD".
+    // Keep both — the frontend needs spf_request_status for Edit/Revision button logic.
     const mergedData = (requestData || []).map(item => ({
       ...item,
+      spf_request_status: item.status || null,
       status: statusMap.get(item.spf_number) || item.status || "pending"
     }));
 

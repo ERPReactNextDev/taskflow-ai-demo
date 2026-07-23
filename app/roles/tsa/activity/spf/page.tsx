@@ -42,6 +42,7 @@ interface UserDetails {
     manager: string;
     target_quota: string;
     prepared_by: string;
+    department: string;
 }
 
 function DashboardContent() {
@@ -54,6 +55,7 @@ function DashboardContent() {
         manager: "",
         target_quota: "",
         prepared_by: "",
+        department: "",
     });
 
     const [posts, setPosts] = useState<Account[]>([]);
@@ -96,6 +98,7 @@ function DashboardContent() {
                     manager: data.Manager || "",
                     target_quota: data.TargetQuota || "",
                     prepared_by: preparedBy,
+                    department: data.Department || "",
                 });
 
                 sileo.success({
@@ -187,6 +190,7 @@ function DashboardContent() {
                                 tsm={userDetails.tsm}
                                 manager={userDetails.manager}
                                 prepared_by={userDetails.prepared_by}
+                                userDepartment={userDetails.department}
                             />
                         </div>
                     </main>
