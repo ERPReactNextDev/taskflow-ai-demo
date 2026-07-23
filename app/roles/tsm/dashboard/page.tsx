@@ -167,10 +167,9 @@ function DashboardContent() {
     if (!referenceid) { setSalesQuotaTotal(0); return; }
     setLoadingSalesQuota(true);
     try {
-      const now = new Date();
-      // Always use current month's quota for the "Running Target" card
-      const year  = now.getFullYear().toString();
-      const month = now.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
+      const refDate = dateCreatedFilterRange?.from ?? new Date();
+      const year    = refDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
+      const month   = refDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
       const res = await fetch(
         `/api/sales-quota-tsm?tsm=${encodeURIComponent(referenceid)}&year=${year}&month=${encodeURIComponent(month)}`
       );
@@ -178,11 +177,11 @@ function DashboardContent() {
       const data = await res.json();
       setSalesQuotaTotal(Number(data.total) || 0);
     } catch { /* silent */ } finally { setLoadingSalesQuota(false); }
-  }, [userDetails.referenceid]);
+  }, [userDetails.referenceid, dateCreatedFilterRange]);
 
   useEffect(() => { fetchSalesQuota(); }, [fetchSalesQuota]);
 
-  // ── History (SI / SO) — always current month to match the monthly target ─────
+  // ── History (SI / SO) — uses date range if set, otherwise current month ───────
   const [totalActualSales, setTotalActualSales] = useState<number>(0);
   const [totalSoAmount, setTotalSoAmount]       = useState<number>(0);
   const [totalSoRegular, setTotalSoRegular]     = useState<number>(0);
@@ -194,17 +193,25 @@ function DashboardContent() {
     if (!referenceid) { setTotalActualSales(0); setTotalSoAmount(0); return; }
     setLoadingHistory(true);
     try {
-      // Always use current month so SI/SO % is comparable to the monthly target
-      const now = new Date();
-      const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-      const [mYear, mMonth] = manilaToday.split("-");
-      const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
-      const monthFrom = `${mYear}-${mMonth}-01`;
-      const monthTo   = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
+      let fromStr: string;
+      let toStr: string;
+
+      if (dateCreatedFilterRange?.from && dateCreatedFilterRange?.to) {
+        // Use the selected range exactly
+        fromStr = toDateStr(dateCreatedFilterRange.from);
+        toStr   = toDateStr(dateCreatedFilterRange.to);
+      } else {
+        // Default: current calendar month in Manila time
+        const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+        const [mYear, mMonth] = manilaToday.split("-");
+        const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
+        fromStr = `${mYear}-${mMonth}-01`;
+        toStr   = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
+      }
 
       const [siRes, soRes] = await Promise.all([
-        fetch(`/api/tsm-history-si?tsm=${encodeURIComponent(referenceid)}&from=${monthFrom}&to=${monthTo}`),
-        fetch(`/api/tsm-history-so?tsm=${encodeURIComponent(referenceid)}&from=${monthFrom}&to=${monthTo}`),
+        fetch(`/api/tsm-history-si?tsm=${encodeURIComponent(referenceid)}&from=${fromStr}&to=${toStr}`),
+        fetch(`/api/tsm-history-so?tsm=${encodeURIComponent(referenceid)}&from=${fromStr}&to=${toStr}`),
       ]);
       const siData = await siRes.json();
       const soData = await soRes.json();
@@ -213,7 +220,7 @@ function DashboardContent() {
       setTotalSoRegular(Number(soData.totalRegular)  || 0);
       setTotalSoSPF(Number(soData.totalSPF)          || 0);
     } catch { /* silent */ } finally { setLoadingHistory(false); }
-  }, [userDetails.referenceid]);
+  }, [userDetails.referenceid, dateCreatedFilterRange]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
