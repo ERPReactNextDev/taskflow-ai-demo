@@ -29,19 +29,32 @@ export async function PUT(req: Request) {
         // Generate placeholders like $1, $2, ..., for the ids
         const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
 
-        // Status param will be at position ids.length + 1
-        // date_approved is set to CURRENT_DATE or NOW()
-        const query = `
-          UPDATE accounts
-          SET status = $${ids.length + 1},
-              date_approved = NOW()
-          WHERE id IN (${placeholders})
-          RETURNING *;
-        `;
+        let updatedRows: any[];
 
-        const params = [...ids, status];
-
-        const updatedRows = await Xchire_sql.query(query, params);
+        if (status === "Approval for Transfer") {
+          // Transfer approval: set status to Active, update referenceid to transfer_to,
+          // set date_approved and date_transferred to NOW()
+          const query = `
+            UPDATE accounts
+            SET status         = 'Active',
+                referenceid    = transfer_to,
+                date_approved  = NOW(),
+                date_transferred = NOW()
+            WHERE id IN (${placeholders})
+            RETURNING *;
+          `;
+          updatedRows = await Xchire_sql.query(query, ids);
+        } else {
+          // Normal approval: just update status and date_approved
+          const query = `
+            UPDATE accounts
+            SET status       = $${ids.length + 1},
+                date_approved = NOW()
+            WHERE id IN (${placeholders})
+            RETURNING *;
+          `;
+          updatedRows = await Xchire_sql.query(query, [...ids, status]);
+        }
 
         if (updatedRows.length === 0) {
             return NextResponse.json(
