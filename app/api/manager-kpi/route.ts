@@ -369,12 +369,9 @@ export async function GET(req: Request) {
       if (ref) clientVisitsCountMap[ref] = (clientVisitsCountMap[ref] ?? 0) + 1;
     }
 
-    // ── CSR metrics ───────────────────────────────────────────────────────────
-    const [mYear, mMonth] = manilaToday.split("-");
-    const manilaMonthStart = `${mYear}-${mMonth}-01`;
-    const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
-    const csrFrom = from || manilaMonthStart;
-    const csrTo   = to   || manilaMonthEnd;
+    // ── CSR metrics — use same month boundaries as SI (full month, not date range) ─
+    const csrFrom = `${siYear}-${siMonth}-01`;
+    const csrTo   = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}`;
 
     const csrMetricsMap = await calcCsrForAgents(agentIds, csrFrom, csrTo, manager);
 
