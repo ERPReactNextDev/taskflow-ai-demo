@@ -495,8 +495,8 @@ export async function GET(req: Request) {
     const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
 
     // SI (uses delivery_date, date-only) / SO (uses date_created with +08:00 timezone)
-    const siStart = from ? from : `${mYear}-01-01`;
-    const siEnd   = to   ? to : null;
+    const siStart = from ? from : manilaMonthStart;
+    const siEnd   = to   ? to   : manilaMonthEnd;
 
     // SO uses full +08:00 timestamp bounds — same as tsm-history-so and tsm-agent-so
     const soStartISO = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
@@ -586,19 +586,21 @@ export async function GET(req: Request) {
         .lte("created_at", naEnd)
     );
 
-    // Sales quota (annual plan)
+    // Quotation amount target (from sales_quotation table, current month of the range)
+    const quotaMonthDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
+    const quotaMonth = quotaMonthDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
+    const quotaMonthYear = quotaMonthDate.toLocaleDateString("en-CA", { year: "numeric", timeZone: "Asia/Manila" }).split("-")[0];
+
+    // Sales quota — monthly plan (filter by year + month to avoid summing the full year)
     const quotaQ = fetchAllRows(
       supabase
         .from("sales_quota")
         .select("referenceid, amount")
         .in("referenceid", agentIds)
         .eq("year", quotaYear)
+        .eq("month", quotaMonth)
     );
 
-    // Quotation amount target (from sales_quotation table, current month of the range)
-    const quotaMonthDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
-    const quotaMonth = quotaMonthDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
-    const quotaMonthYear = quotaMonthDate.toLocaleDateString("en-CA", { year: "numeric", timeZone: "Asia/Manila" }).split("-")[0];
     const quotationTargetQ = fetchAllRows(
       supabase
         .from("sales_quotation")

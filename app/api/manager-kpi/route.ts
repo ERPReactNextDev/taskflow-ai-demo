@@ -239,8 +239,8 @@ export async function GET(req: Request) {
     const naFrom = from ?? `${naYear}-${naMonth}-01`;
     const naTo   = to   ?? `${naYear}-${naMonth}-${String(naDaysInMonth).padStart(2, "0")}`;
 
-    const siStart = from ? `${from}T00:00:00+08:00` : `${now.getFullYear()}-01-01T00:00:00+08:00`;
-    const siEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
+    const siStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
+    const siEnd   = to   ? `${to}T23:59:59.999+08:00` : `${manilaToday}T23:59:59.999+08:00`;
 
     const obStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
     const obEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
@@ -272,12 +272,19 @@ export async function GET(req: Request) {
     }
 
     // ── Parallel Supabase fetches ─────────────────────────────────────────────
+    const targetMonthLabel = from
+      ? monthLabel(new Date(`${from}T00:00:00+08:00`))
+      : monthLabel(now);
+    const targetYearStr = from
+      ? new Date(`${from}T00:00:00+08:00`).getFullYear().toString()
+      : year;
+
     const [
       quotasData, siData, obData, obTargetData,
       quotesData, quoteTargetData, pipelineData,
       naCountData, naTargetData, siteVisitTargetData, clientVisitsData,
     ] = await Promise.all([
-      fetchAllRows(supabase.from("sales_quota").select("referenceid, month, amount").in("referenceid", agentIds).eq("year", year)),
+      fetchAllRows(supabase.from("sales_quota").select("referenceid, month, amount").in("referenceid", agentIds).eq("year", targetYearStr).eq("month", targetMonthLabel)),
       fetchAllRows(supabase.from("history").select("referenceid, actual_sales").in("referenceid", agentIds).eq("type_activity", "Delivered / Closed Transaction").gte("date_created", siStart).lte("date_created", siEnd)),
       fetchAllRows(supabase.from("history").select("referenceid").in("referenceid", agentIds).eq("source", "Outbound - Touchbase").gte("date_created", obStart).lte("date_created", obEnd)),
       fetchAllRows(supabase.from("sales_ob").select("id, referenceid, ob_target, month, year").in("referenceid", agentIds).eq("month", monthLabel(now)).eq("year", now.getFullYear().toString()).order("date_created", { ascending: false, nullsFirst: false }).order("id", { ascending: false })),
