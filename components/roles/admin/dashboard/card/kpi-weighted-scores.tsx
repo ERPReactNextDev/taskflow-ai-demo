@@ -100,8 +100,8 @@ function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
   const nqhtR=nonQuotationHTRating(d.avgNonQuotationHT); const nqhtA=d.avgNonQuotationHT>0?Math.min((24/d.avgNonQuotationHT)*100,100):0;
   const csrR=Math.round((rtR+qhtR+nqhtR)/3); const csrA=(rtA+qhtA+nqhtA)/3;
   const rows: KpiRow[] = [
-    { label:"Sales Performance (SO/SI)",          weight:0.5,  achievementPct:salesPct,       rating:standardRating(salesPct), weightedScore:0.5*standardRating(salesPct),  detail:`Actual: ${fmtPeso(d.totalActualSales)} / Target: ${fmtPeso(d.runningTarget)}` },
-    { label:"OB Calls",                           weight:0.1,  achievementPct:obPct,           rating:standardRating(obPct),    weightedScore:0.1*standardRating(obPct),     detail:`${d.obCallsCount} / Target: ${d.obCallsTarget>0?d.obCallsTarget:"—"}` },
+    { label:"Sales Performance",          weight:0.5,  achievementPct:salesPct,       rating:standardRating(salesPct), weightedScore:0.5*standardRating(salesPct),  detail:`Actual: ${fmtPeso(d.totalActualSales)} / Target: ${fmtPeso(d.runningTarget)}` },
+    { label:"OB Calls (Successful)",                           weight:0.1,  achievementPct:obPct,           rating:standardRating(obPct),    weightedScore:0.1*standardRating(obPct),     detail:`${d.obCallsCount} / Target: ${d.obCallsTarget>0?d.obCallsTarget:"—"}` },
     { label:"Quotes Generated (No. of Quotation)",weight:0.05, achievementPct:qPct,            rating:qR,                       weightedScore:0.05*qR,                       detail:`${d.quotesCount} quotes / Target: ${d.quotesTarget>0?d.quotesTarget:"—"}` },
     { label:"Amount of Quotation",                weight:0.05, achievementPct:quotationAmtPct, rating:quotationAmtR,            weightedScore:0.05*quotationAmtR,            detail:`₱${d.quotationAmountActual.toLocaleString(undefined,{maximumFractionDigits:2})} / Target: ₱${d.quotationAmountTarget>0?d.quotationAmountTarget.toLocaleString():"—"}` },
     { label:"Conversion Metrics",                 weight:0.05, achievementPct:convA,           rating:convR,                    weightedScore:0.05*convR,                    detail:`Calls→Quote: ${fmt(c2qRaw,0)}% (tgt 20%) · Quote→SO: ${fmt(q2soPct,0)}% (tgt 30%) · SO→SI: ${fmt(s2siPct,0)}% (tgt 70%)` },
@@ -184,7 +184,7 @@ const DetailModal: React.FC<{ agent: AgentKpiData; onClose: () => void }> = ({ a
             {[
               { label:"Sales Actual",  value:fmtPeso(agent.totalActualSales) },
               { label:"Sales Target",  value:fmtPeso(agent.runningTarget) },
-              { label:"OB Calls",      value:`${agent.obCallsCount} / ${agent.obCallsTarget>0?agent.obCallsTarget:"—"}` },
+              { label:"OB Calls (Successful)",      value:`${agent.obCallsCount} / ${agent.obCallsTarget>0?agent.obCallsTarget:"—"}` },
               { label:"Quotes",        value:`${agent.quotesCount} / ${agent.quotesTarget>0?agent.quotesTarget:"—"}` },
               { label:"Quote Amount",  value:`${fmtPeso(agent.quotationAmountActual)} / ${agent.quotationAmountTarget>0?fmtPeso(agent.quotationAmountTarget):"—"}` },
               { label:"Calls→Quote",   value:`${agent.callsToQuotesCount}` },

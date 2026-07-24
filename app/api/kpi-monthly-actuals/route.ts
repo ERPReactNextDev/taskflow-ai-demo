@@ -78,12 +78,13 @@ export async function GET(req: Request) {
       // 1. SI (Delivered / Closed) — YTD to match the annual sales quota target
       fetchAllRows(siQuery),
 
-      // 2. OB Calls this month
+      // 2. OB Calls this month — Successful only
       supabase
         .from("history")
         .select("id", { count: "exact", head: true })
         .eq("referenceid", referenceid)
         .eq("source", "Outbound - Touchbase")
+        .eq("call_status", "Successful")
         .gte("date_created", monthStart)
         .lte("date_created", todayEnd),
 

@@ -6,9 +6,28 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE!
 );
 
+const PAGE_SIZE = 1000;
+
+async function fetchAllRows<T = any>(query: any): Promise<T[]> {
+  let all: T[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return all;
+}
+
 async function getAgentIds(tsm: string): Promise<string[]> {
-  const { data } = await supabase.from("users").select("ReferenceID")
-    .eq("TSM", tsm).eq("Role", "Territory Sales Associate")
+  const { data } = await supabase
+    .from("users")
+    .select("ReferenceID")
+    .eq("TSM", tsm)
+    .eq("Role", "Territory Sales Associate")
     .not("Status", "in", '("Resigned","Terminated","Inactive")');
   return (data ?? []).map((a) => a.ReferenceID);
 }
@@ -20,14 +39,21 @@ export async function GET(req: Request) {
     const from = url.searchParams.get("from");
     const to   = url.searchParams.get("to");
 
-    if (!tsm) return NextResponse.json({ success: false, error: "Missing tsm." }, { status: 400 });
+    if (!tsm) {
+      return NextResponse.json({ success: false, error: "Missing tsm." }, { status: 400 });
+    }
 
     const agentIds = await getAgentIds(tsm);
-    if (agentIds.length === 0) return NextResponse.json({ success: true, count: 0 }, { status: 200 });
+    if (agentIds.length === 0) {
+      return NextResponse.json(
+        { success: true, count: 0, successful: 0, unsuccessful: 0 },
+        { status: 200 }
+      );
+    }
 
     const now = new Date();
 
-    // Helper to convert YYYY-MM-DD to Asia/Manila time range as UTC ISO strings
+    // Same helper as history-outbound — Manila +08:00 bounds
     function getManilaDateRange(dateStr: string): { start: string; end: string } {
       return {
         start: `${dateStr}T00:00:00+08:00`,
@@ -35,26 +61,38 @@ export async function GET(req: Request) {
       };
     }
 
-    // Default range: start of current month in Manila time
-    const manilaMonth = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 7);
+    // Default: start of current month in Manila time (same as history-outbound)
+    const manilaMonth     = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 7);
     const defaultStartISO = `${manilaMonth}-01T00:00:00+08:00`;
 
     const startISO = from ? getManilaDateRange(from).start : defaultStartISO;
-    const endISO   = to   ? getManilaDateRange(to).end   : (from ? getManilaDateRange(from).end : null);
+    const endISO   = to   ? getManilaDateRange(to).end
+                   : (from ? getManilaDateRange(from).end : null);
 
-    let q = supabase.from("history")
-      .select("id", { count: "exact", head: true })
+    // Fetch call_status for all Outbound - Touchbase rows in range
+    let q = supabase
+      .from("history")
+      .select("call_status")
       .in("referenceid", agentIds)
       .eq("source", "Outbound - Touchbase")
       .gte("date_created", startISO);
     if (endISO) q = q.lte("date_created", endISO);
 
-    const { count, error } = await q;
-    if (error) throw error;
+    const rows = await fetchAllRows(q);
 
-    return NextResponse.json({ success: true, count: count || 0 }, { status: 200 });
+    const successful   = rows.filter((r) => r.call_status === "Successful").length;
+    const unsuccessful = rows.length - successful;
+
+    return NextResponse.json(
+      { success: true, count: rows.length, successful, unsuccessful },
+      { status: 200 }
+    );
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    console.error("tsm-history-outbound GET error:", err);
+    return NextResponse.json(
+      { success: false, error: err.message || "Failed to fetch outbound calls." },
+      { status: 500 }
+    );
   }
 }
 

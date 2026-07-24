@@ -52,7 +52,7 @@ export const AdminRunningTargetCard: React.FC<AdminRunningTargetCardProps> = ({
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 text-sm text-gray-500">
             <Globe className="w-3.5 h-3.5" />
-            MTD goal — system-wide
+            MTD goal
           </div>
           {!loading && agentCount > 0 && (
             <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5">

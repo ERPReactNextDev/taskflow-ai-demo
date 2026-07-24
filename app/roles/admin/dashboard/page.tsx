@@ -136,7 +136,8 @@ function DashboardContent() {
       const res  = await fetch(`/api/admin-history-outbound${suffix}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setOutboundCallsCount(Number(data.count) || 0);
+      // Only Successful calls count
+      setOutboundCallsCount(Number(data.successful) || 0);
     } catch { /* silent */ } finally { setLoadingOutboundCalls(false); }
   }, [dateCreatedFilterRange]);
 

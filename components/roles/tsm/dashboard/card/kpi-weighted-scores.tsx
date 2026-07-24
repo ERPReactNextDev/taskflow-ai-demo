@@ -203,9 +203,9 @@ function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
   const csrAchievePct = (rtAchievePct + qhtAchievePct + nqhtAchievePct) / 3;
 
   const rows: KpiRow[] = [
-    { label:"Sales Performance (SO/SI)",weight:0.5, achievementPct:salesPct, rating:salesR, weightedScore:0.5*salesR,
+    { label:"Sales Performance",weight:0.5, achievementPct:salesPct, rating:salesR, weightedScore:0.5*salesR,
       detail:`Actual: ${fmtPeso(d.totalActualSales)} / Target: ${fmtPeso(d.runningTarget)}` },
-    { label:"OB Calls",                 weight:0.1, achievementPct:obPct,   rating:obR,    weightedScore:0.1*obR,
+    { label:"OB Calls (Successful)",                 weight:0.1, achievementPct:obPct,   rating:obR,    weightedScore:0.1*obR,
       detail:`${d.obCallsCount} calls / Target: ${d.obCallsTarget > 0 ? d.obCallsTarget : "—"}` },
     { label:"Quotes Generated (No. of Quotation)", weight:0.05, achievementPct:qPct, rating:qR, weightedScore:0.05*qR,
       detail:`${d.quotesCount} quotes / Target: ${d.quotesTarget > 0 ? d.quotesTarget : "—"}` },
@@ -328,7 +328,7 @@ const DetailModal: React.FC<{ agent: AgentKpiData; onClose: () => void }> = ({ a
             {[
               { label: "Sales Actual",     value: fmtPeso(agent.totalActualSales) },
               { label: "Sales Target",     value: fmtPeso(agent.runningTarget) },
-              { label: "OB Calls",         value: `${agent.obCallsCount} / ${agent.obCallsTarget > 0 ? agent.obCallsTarget : "—"}` },
+              { label: "OB Calls (Successful)",         value: `${agent.obCallsCount} / ${agent.obCallsTarget > 0 ? agent.obCallsTarget : "—"}` },
               { label: "Quotes",           value: `${agent.quotesCount} / ${agent.quotesTarget > 0 ? agent.quotesTarget : "—"}` },
               { label: "Quote Amount",     value: `${fmtPeso(agent.quotationAmountActual)} / ${agent.quotationAmountTarget > 0 ? fmtPeso(agent.quotationAmountTarget) : "—"}` },
               { label: "Calls→Quote",      value: `${agent.callsToQuotesCount}` },

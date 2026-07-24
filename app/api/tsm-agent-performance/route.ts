@@ -550,12 +550,13 @@ export async function GET(req: Request) {
       return fetchAllRows(q);
     })();
 
-    // OB calls
+    // OB calls — Successful only
     const obQ = fetchAllRows(
       supabase.from("history")
         .select("referenceid")
         .in("referenceid", agentIds)
         .eq("source", "Outbound - Touchbase")
+        .eq("call_status", "Successful")
         .gte("date_created", rangeStartDate)
         .lte("date_created", rangeEndDate)
     );

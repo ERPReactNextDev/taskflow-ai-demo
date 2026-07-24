@@ -224,7 +224,8 @@ function DashboardContent() {
 
       const res  = await fetch(`/api/manager-history-outbound?manager=${encodeURIComponent(referenceid)}${dateSuffix}`);
       const data = await res.json();
-      setOutboundCallsCount(Number(data.count) || 0);
+      // Only Successful calls count toward OB target
+      setOutboundCallsCount(Number(data.successful) || 0);
     } catch { /* silent */ } finally { setLoadingOutboundCalls(false); }
   }, [userDetails.referenceid, dateCreatedFilterRange]);
 

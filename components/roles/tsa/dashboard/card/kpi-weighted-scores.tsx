@@ -663,14 +663,14 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
 
   const rows: KpiRow[] = [
     {
-      label: "Sales Performance (SO/SI)",
+      label: "Sales Performance",
       weight: 0.5,
       achievementPct: salesPct,
       rating: salesRating,
       weightedScore: salesW,
     },
     {
-      label: "OB Calls",
+      label: "OB Calls (Successful)",
       weight: 0.1,
       achievementPct: obPct,
       rating: obRating,

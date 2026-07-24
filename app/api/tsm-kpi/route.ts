@@ -342,12 +342,13 @@ export async function GET(req: Request) {
       .gte("date_created", siStart)
       .lte("date_created", siEnd);
 
-    // 3. OB calls — scoped to the selected date range (or current month if no range)
+    // 3. OB calls — Successful only, scoped to the selected date range (or current month if no range)
     const obQuery = supabase
       .from("history")
       .select("referenceid")
       .in("referenceid", agentIds)
       .eq("source", "Outbound - Touchbase")
+      .eq("call_status", "Successful")
       .gte("date_created", obStart)
       .lte("date_created", obEnd);
 

@@ -197,8 +197,8 @@ export async function GET(req: Request) {
         totalSoAmount:            Number(historySoData.total)                         || 0,
         totalSoRegular:           Number(historySoData.totalRegular)                  || 0,
         totalSoSPF:               Number(historySoData.totalSPF)                      || 0,
-        // 2. OB Calls
-        obCallsCount:             Number(historyOutboundData.count)                   || 0,
+        // 2. OB Calls — only Successful calls count toward KPI
+        obCallsCount:             Number(historyOutboundData.successful)              || 0,
         obCallsTarget:            Number(salesObData.target)                          || 0,
         // 3. Quotes Generated
         quotesCount:              Number(historyQuotationsData.count)                 || 0,

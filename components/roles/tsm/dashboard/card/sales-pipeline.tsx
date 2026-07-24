@@ -361,7 +361,7 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
 export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   tsm,
   dateRange,
-  obCallsCount = 0,
+  obCallsCount: obCallsCountProp = 0,
   obCallsTarget: propObCallsTarget,
   loadingObCalls = false,
   loadingObCallsTarget = false,
@@ -389,7 +389,8 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
     router.push(`/roles/tsm/sales-quotation-settings${id ? `?id=${encodeURIComponent(id)}` : ""}`);
   };
 
-  // ── Self-fetch team OB, quotes, and new account dev targets ────────────────
+  // ── Self-fetch OB count (Successful) + targets ─────────────────────────────
+  const [selfObCallsCount,     setSelfObCallsCount]     = useState<number | null>(null);
   const [teamObTarget,         setTeamObTarget]         = useState<number | null>(null);
   const [teamQuotesTarget,     setTeamQuotesTarget]     = useState<number | null>(null);
   const [teamNewAccountTarget, setTeamNewAccountTarget] = useState<number | null>(null);
@@ -401,6 +402,30 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
                        "July","August","September","October","November","December"][refDate.getMonth()];
     const year      = refDate.getFullYear().toString();
     const params    = new URLSearchParams({ tsm, year });
+
+    // ── Actual OB count — same API + same date defaults as the OB Calls card ──
+    try {
+      const now  = new Date();
+      const from = dateRange?.from
+        ? dateRange.from.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+        : new Date(now.getFullYear(), now.getMonth(), 1)
+            .toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+      const to   = dateRange?.to
+        ? dateRange.to.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+        : now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+
+      const res = await fetch(
+        `/api/tsm-agent-outbound-history?tsm=${encodeURIComponent(tsm)}&from=${from}&to=${to}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const history: any[] = data.history ?? [];
+        const successful = history.filter(
+          (r) => r.source === "Outbound - Touchbase" && r.call_status === "Successful"
+        ).length;
+        setSelfObCallsCount(successful);
+      }
+    } catch { /* silent */ }
 
     try {
       // OB target — sum all agents' ob_target for the month
@@ -455,7 +480,8 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
 
   useEffect(() => { fetchTeamTargets(); }, [fetchTeamTargets]);
 
-  // Use self-fetched team totals when available; fall back to prop values
+  // Use self-fetched values when available; fall back to props
+  const obCallsCount    = selfObCallsCount     ?? obCallsCountProp;
   const obCallsTarget   = teamObTarget         ?? propObCallsTarget ?? 0;
   const quotesTarget    = teamQuotesTarget     ?? propQuotesTarget  ?? 0;
   const newAccountTarget = teamNewAccountTarget ?? propNewAccountTarget ?? 0;
@@ -566,7 +592,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
               <div className="text-3xl font-extrabold text-gray-900">
                 {loadingObCalls ? <Spinner className="w-6 h-6" /> : obCallsCount}
               </div>
-              <div className="text-xs font-medium text-gray-600">OB Calls</div>
+              <div className="text-xs font-medium text-gray-600">OB Calls (Successful)</div>
               <div className="text-xs text-gray-500">
                 Target: {loadingObCallsTarget ? "..." : obCallsTarget} · Achievement: {obCallsPercentage}% · Rating: {obCallsRating}
               </div>

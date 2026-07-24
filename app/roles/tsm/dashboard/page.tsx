@@ -256,8 +256,9 @@ function DashboardContent() {
       ]);
       const countData  = await countRes.json();
       const targetData = await targetRes.json();
-      setOutboundCallsCount(Number(countData.count)    || 0);
-      setOutboundCallsTarget(Number(targetData.target) || 0);
+      // Only Successful calls count toward OB target
+      setOutboundCallsCount(Number(countData.successful) || 0);
+      setOutboundCallsTarget(Number(targetData.target)   || 0);
     } catch { /* silent */ } finally {
       setLoadingOutboundCalls(false);
       setLoadingOutboundCallsTarget(false);
