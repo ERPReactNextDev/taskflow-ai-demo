@@ -41,11 +41,26 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, error: "Missing manager." }, { status: 400 });
     }
 
-    // 1. Get all active TSA agents under this manager
+    // 1. Get all active TSMs under this manager
+    const { data: tsmRows, error: tsmErr } = await supabase
+      .from("users")
+      .select("ReferenceID")
+      .eq("Manager", manager)
+      .eq("Role", "Territory Sales Manager")
+      .not("Status", "in", '("Resigned","Terminated","Inactive")');
+
+    if (tsmErr) throw tsmErr;
+    if (!tsmRows || tsmRows.length === 0) {
+      return NextResponse.json({ success: true, history: [], agents: [] }, { status: 200 });
+    }
+
+    const tsmIds = tsmRows.map((t) => t.ReferenceID);
+
+    // 2. Get all active TSA agents under those TSMs
     const { data: agentRows, error: agentErr } = await supabase
       .from("users")
       .select("ReferenceID, Firstname, Lastname, profilePicture")
-      .eq("Manager", manager)
+      .in("TSM", tsmIds)
       .eq("Role", "Territory Sales Associate")
       .not("Status", "in", '("Resigned","Terminated","Inactive")')
       .order("Lastname", { ascending: true });

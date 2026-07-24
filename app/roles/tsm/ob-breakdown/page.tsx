@@ -567,7 +567,8 @@ function ObBreakdownContent() {
           {activeTab === "outbound_history" && (
             <div className="p-4">
               <OutboundCard
-                tsm={tsm}
+                history={outboundHistory}
+                agents={outboundAgents}
                 dateRange={outboundDateRange}
               />
             </div>

@@ -495,7 +495,7 @@ export function OutboundCard({ history: historyProp = [], agents: agentsProp = [
     }
   };
 
-  if (!tsm && outboundCalls.length === 0) return null;
+  if (!tsm && statsByAgent.length === 0 && historyProp.length === 0) return null;
 
   if (selfLoading) {
     return (
