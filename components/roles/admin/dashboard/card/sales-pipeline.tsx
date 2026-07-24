@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
@@ -190,7 +190,7 @@ function ExplainPanel({ open, onClose, obCallsCount, quotesCount, callsToQuotesC
 // ── Main Card ─────────────────────────────────────────────────────────────────
 
 export const AdminSalesPipelineCard: React.FC<AdminSalesPipelineCardProps> = ({
-  obCallsCount = 0, loadingObCalls = false,
+  obCallsCount: obCallsCountProp = 0, loadingObCalls = false,
   quotesCount = 0,  loadingQuotes = false,
   callsToQuotesCount = 0,
   quoteToSOQuotationCount = 0, quoteToSOSalesOrderCount = 0,
@@ -198,6 +198,27 @@ export const AdminSalesPipelineCard: React.FC<AdminSalesPipelineCardProps> = ({
   loadingPipeline = false,
 }) => {
   const [explainOpen, setExplainOpen] = useState(false);
+
+  // Self-fetch successful OB calls — same source as AdminOutboundTouchbaseCountCard
+  const [selfObCallsCount, setSelfObCallsCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchOb = async () => {
+      try {
+        const now        = new Date();
+        const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+        const monthStart  = `${manilaToday.slice(0, 7)}-01`;
+        const params      = new URLSearchParams({ from: monthStart, to: manilaToday });
+        const res  = await fetch(`/api/admin-history-outbound?${params.toString()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setSelfObCallsCount(Number(data.successful) || 0);
+      } catch { /* silent */ }
+    };
+    fetchOb();
+  }, []);
+
+  const obCallsCount = selfObCallsCount ?? obCallsCountProp;
 
   // Conversion percentages
   const c2qPct   = obCallsCount > 0              ? Math.round((callsToQuotesCount / obCallsCount) * 100)             : 0;
