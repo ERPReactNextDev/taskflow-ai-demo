@@ -62,7 +62,16 @@ const hasShownToday = (): boolean => {
 const markShownToday = () => {
   if (typeof window === "undefined") return;
   const today = new Date().toISOString().split('T')[0];
-  localStorage.setItem(SHOWN_KEY, today);
+  try {
+    localStorage.setItem(SHOWN_KEY, today);
+  } catch {
+    // Quota exceeded — clear old activity keys and retry
+    try {
+      localStorage.removeItem(SHOWN_KEY);
+      localStorage.removeItem(DISMISSED_KEY);
+      localStorage.setItem(SHOWN_KEY, today);
+    } catch {}
+  }
 };
 
 const STATUS_STYLES: Record<string, string> = {
