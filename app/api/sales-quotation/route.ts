@@ -104,7 +104,20 @@ export async function GET(req: Request) {
 
     const quoteTarget = await calculateRangedTarget(referenceid, fromDate, toDate, 80);
 
-    return NextResponse.json({ success: true, quoteTarget }, { status: 200 });
+    // Also fetch quotation amount target for the current/selected month
+    const refDate = fromDate ?? new Date();
+    const amtYear = refDate.getFullYear().toString();
+    const amtMonth = monthNames[refDate.getMonth()];
+    const { data: amtData } = await supabase
+      .from("sales_quotation")
+      .select("quotation_amount_target")
+      .eq("referenceid", referenceid)
+      .eq("month", amtMonth)
+      .eq("year", amtYear)
+      .maybeSingle();
+    const quotationAmountTarget = Number(amtData?.quotation_amount_target) || 0;
+
+    return NextResponse.json({ success: true, quoteTarget, quotationAmountTarget }, { status: 200 });
   } catch (err: any) {
     console.error("Error fetching sales quotation:", err);
     return NextResponse.json(

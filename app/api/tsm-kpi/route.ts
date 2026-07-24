@@ -369,26 +369,22 @@ export async function GET(req: Request) {
     //    (or current month if no range — matches kpi-monthly-actuals)
     const quotesQuery = supabase
       .from("history")
-      .select("referenceid, quotation_number")
+      .select("referenceid, quotation_number, quotation_amount")
       .in("referenceid", agentIds)
       .eq("type_activity", "Quotation Preparation")
       .eq("status", "Quote-Done")
       .gte("date_created", quotesStart)
       .lte("date_created", quotesEnd);
 
-    // 6. Quote targets per agent — fetch all months in the target range (like obTargetPromise)
-    // Secondary order by id DESC is a deterministic tie-breaker: if there are duplicate rows
-    // for the same referenceid+month+year with equal (or null) date_created, ordering by
-    // date_created alone is not enough — Postgres can return them in any order, which is
-    // exactly why "120" vs "4" was flip-flopping between identical requests.
+    // 6. Quote targets per agent (count target + amount target)
     const quoteTargetQuery = supabase
       .from("sales_quotation")
-      .select("id, referenceid, quote_target, month, year")
+      .select("id, referenceid, quote_target, quotation_amount_target, month, year")
       .in("referenceid", agentIds)
-      .eq("month", monthLabel(now))         // always current calendar month
-      .eq("year", now.getFullYear().toString())
+      .eq("month", quotaMonth)
+      .eq("year", siYear)
       .order("date_created", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: false }); // ✅ FIX: deterministic tie-breaker — this is the real fix
+      .order("id", { ascending: false });
 
     // 7. Pipeline activities — same scope as OB/quotes
     const pipelineQuery = supabase
@@ -503,19 +499,22 @@ export async function GET(req: Request) {
       });
     }
 
-    // Quotes map: { referenceid → unique quotation numbers }
+    // Quotes map: { referenceid → unique quotation numbers } + quotation amount
     const quotesSetMap: Record<string, Set<string>> = {};
+    const quotationAmountMap: Record<string, number> = {};
     for (const row of quotesData ?? []) {
       if (!quotesSetMap[row.referenceid]) quotesSetMap[row.referenceid] = new Set();
       if (row.quotation_number) quotesSetMap[row.referenceid].add(row.quotation_number);
+      quotationAmountMap[row.referenceid] = (quotationAmountMap[row.referenceid] ?? 0) + (Number(row.quotation_amount) || 0);
     }
 
-    // Quote target map: { referenceid → rows } — first row per agent+month wins (latest due to ORDER BY date_created DESC, id DESC)
+    // Quote target map: { referenceid → rows } — first row per agent+month wins
     const quoteTargetMap: Record<string, Array<{ month: string; year: string; targetValue: number }>> = {};
-    const quoteTargetSeen = new Set<string>(); // deduplicate: referenceid+month+year
+    const quotationAmountTargetMap: Record<string, number> = {};
+    const quoteTargetSeen = new Set<string>();
     for (const row of quoteTargetData ?? []) {
       const key = `${row.referenceid}|${row.month}|${row.year}`;
-      if (quoteTargetSeen.has(key)) continue; // skip older duplicates
+      if (quoteTargetSeen.has(key)) continue;
       quoteTargetSeen.add(key);
       if (!quoteTargetMap[row.referenceid]) quoteTargetMap[row.referenceid] = [];
       quoteTargetMap[row.referenceid].push({
@@ -523,6 +522,10 @@ export async function GET(req: Request) {
         year: row.year,
         targetValue: Number(row.quote_target) || 0,
       });
+      // Store quotation amount target (take first/latest row per agent)
+      if (!quotationAmountTargetMap[row.referenceid]) {
+        quotationAmountTargetMap[row.referenceid] = Number(row.quotation_amount_target) || 0;
+      }
     }
 
     // Pipeline groups: { referenceid → Map<activity_ref → { hasOB, hasQuote, hasSO, hasSI }> }
@@ -621,9 +624,11 @@ export async function GET(req: Request) {
         quotesTarget:             calculateRangedTarget(
                                    quoteTargetMap[referenceid] ?? [],
                                    monthSlices,
-                                   0,   // 0 = no target set; avoids misleading hardcoded fallback
+                                   0,
                                    shouldProrateMonthlyTargets
                                  ),
+        quotationAmountActual:    quotationAmountMap[referenceid]      ?? 0,
+        quotationAmountTarget:    quotationAmountTargetMap[referenceid] ?? 0,
         callsToQuotesCount:       c2qCount,
         quoteToSOQuotationCount:  q2soQuotation,
         quoteToSOSalesOrderCount: q2soSalesOrder,

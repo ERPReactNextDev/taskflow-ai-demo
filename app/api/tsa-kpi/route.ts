@@ -145,8 +145,7 @@ export async function GET(req: Request) {
       fetch(`${url.origin}/api/sales-ob?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}`),
       // 3. Quotes
       fetch(`${url.origin}/api/history-quotations?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
-      fetch(`${url.origin}/api/sales-quotation?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}`),
-      // 4. Conversion
+      fetch(`${url.origin}/api/sales-quotation?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}`),      // 4. Conversion
       fetch(`${url.origin}/api/history-calls-to-quotes?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       fetch(`${url.origin}/api/history-quote-to-so?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       fetch(`${url.origin}/api/history-so-to-si?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
@@ -204,6 +203,8 @@ export async function GET(req: Request) {
         // 3. Quotes Generated
         quotesCount:              Number(historyQuotationsData.count)                 || 0,
         quotesTarget:             Number(salesQuotationData.quoteTarget)              || 120,
+        quotationAmountActual:    Number(historyQuotationsData.totalAmount)           || 0,
+        quotationAmountTarget:    Number(salesQuotationData.quotationAmountTarget)    || 0,
         // 4. Conversion Metrics
         callsToQuotesCount:       Number(historyCallsToQuotesData.count)              || 0,
         quoteToSOSalesOrderCount: Number(historyQuoteToSOData.quoteToSOSalesOrderCount) || 0,

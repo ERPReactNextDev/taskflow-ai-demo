@@ -279,34 +279,6 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
     if (propName) setName(propName);
   }, [propName]);
 
-  // Create a unique cache key based on referenceid and date range
-  const getCacheKey = useCallback(() => {
-    const fromStr = dateCreatedFilterRange?.from ? toDateStr(dateCreatedFilterRange.from) : "default";
-    const toStr = dateCreatedFilterRange?.to ? toDateStr(dateCreatedFilterRange.to) : "default";
-    return `tsa-kpi-${referenceid}-${fromStr}-${toStr}`;
-  }, [referenceid, dateCreatedFilterRange]);
-
-  // Load from localStorage on initial render
-  useEffect(() => {
-    const cacheKey = getCacheKey();
-    const cachedData = localStorage.getItem(cacheKey);
-    if (cachedData) {
-      try {
-        const parsed = JSON.parse(cachedData);
-        setKpiData(parsed.kpiData);
-        setSiteVisitTarget(parsed.siteVisitTarget);
-        setClientVisitsCount(parsed.clientVisitsCount);
-        setObCallsTarget(parsed.obCallsTarget);
-        setQuotesTarget(parsed.quotesTarget);
-        setCsrMetrics(parsed.csrMetrics);
-        setHasFetched(true);
-      } catch (err) {
-        console.error("Failed to parse cached data:", err);
-        localStorage.removeItem(cacheKey);
-      }
-    }
-  }, [getCacheKey]);
-
   // --- Fetch KPI data from our NEW API ---
   const fetchKpiData = useCallback(async () => {
     if (!referenceid) {
@@ -510,12 +482,9 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
     }
   }, [referenceid, dateCreatedFilterRange, propAvgResponseTime, propAvgQuotationHT, propAvgNonQuotationHT]);
 
-  // --- Fetch all data and save to localStorage ---
+  // --- Fetch all data ---
   const fetchAllData = useCallback(async () => {
     if (!referenceid) return;
-    const cacheKey = getCacheKey();
-    // Delete old cache
-    localStorage.removeItem(cacheKey);
     setLoading(true);
     setHasFetched(true);
     setError(null);
@@ -534,22 +503,7 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [referenceid, getCacheKey, fetchKpiData, fetchCsrMetrics]);
-
-  // --- Save to localStorage whenever data changes ---
-  useEffect(() => {
-    if (hasFetched && !loading) {
-      const cacheKey = getCacheKey();
-      localStorage.setItem(cacheKey, JSON.stringify({
-        kpiData,
-        siteVisitTarget,
-        clientVisitsCount,
-        obCallsTarget,
-        quotesTarget,
-        csrMetrics
-      }));
-    }
-  }, [kpiData, siteVisitTarget, clientVisitsCount, obCallsTarget, quotesTarget, csrMetrics, hasFetched, loading, getCacheKey]);
+  }, [referenceid, fetchKpiData, fetchCsrMetrics]);
 
   // --- Use fallback props if provided, otherwise use API data ---
   const finalClientVisitsTarget = propClientVisitsTarget ?? (siteVisitTarget || 10);
@@ -567,8 +521,7 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
         obCallsTarget: finalObCallsTarget,
         quotesCount: propQuotesCount || 0,
         quotesTarget: finalQuotesTarget,
-        callsToQuotesCount: propCallsToQuotesCount || 0,
-        quoteToSOSalesOrderCount: propQuoteToSOSalesOrderCount || 0,
+        callsToQuotesCount: propCallsToQuotesCount || 0,        quoteToSOSalesOrderCount: propQuoteToSOSalesOrderCount || 0,
         quoteToSOQuotationCount: propQuoteToSOQuotationCount || 0,
         soToSIDeliveredCount: propSoToSIDeliveredCount || 0,
         soToSISalesOrderCount: propSoToSISalesOrderCount || 0,
@@ -611,13 +564,23 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
   const obRating = standardRating(obPct);
   const obW = 0.1 * obRating;
 
-  // 3. Quotes Generated — 10%
+  // 3a. Quotes Generated (No. of Quotation) — 5%
   const quotesPct = Math.min(
     100,
     data.quotesTarget > 0 ? (data.quotesCount / data.quotesTarget) * 100 : 0
   );
   const quotesRating = standardRating(quotesPct);
-  const quotesW = 0.1 * quotesRating;
+  const quotesW = 0.05 * quotesRating;
+
+  // 3b. Amount of Quotation — 5%
+  const quotationAmountActual = data.quotationAmountActual ?? 0;
+  const quotationAmountTarget = data.quotationAmountTarget ?? 0;
+  const quotationAmtPct = Math.min(
+    100,
+    quotationAmountTarget > 0 ? (quotationAmountActual / quotationAmountTarget) * 100 : 0
+  );
+  const quotationAmtRating = standardRating(quotationAmtPct);
+  const quotationAmtW = 0.05 * quotationAmtRating;
 
   // 4. Conversion Metrics — combined 5%
   // Raw conversion %s (used for rating — can exceed target)
@@ -694,7 +657,7 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
 
   // Total
   const totalScore =
-    salesW + obW + quotesW + convW + cvW + csrW + naW;
+    salesW + obW + quotesW + quotationAmtW + convW + cvW + csrW + naW;
   const { label: statusLabel, color: statusColor } = scoreLabel(totalScore);
   const totalFillPct = (totalScore / 5) * 100;
 
@@ -714,11 +677,18 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
       weightedScore: obW,
     },
     {
-      label: "Quotes Generated",
-      weight: 0.1,
+      label: "Quotes Generated (No. of Quotation)",
+      weight: 0.05,
       achievementPct: quotesPct,
       rating: quotesRating,
       weightedScore: quotesW,
+    },
+    {
+      label: `Amount of Quotation (target: ₱${quotationAmountTarget > 0 ? quotationAmountTarget.toLocaleString() : "—"})`,
+      weight: 0.05,
+      achievementPct: quotationAmtPct,
+      rating: quotationAmtRating,
+      weightedScore: quotationAmtW,
     },
     {
       label: "Conversion Metrics (Calls→Quote · Quote→SO · SO→SI)",

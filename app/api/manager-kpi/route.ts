@@ -281,8 +281,8 @@ export async function GET(req: Request) {
       fetchAllRows(supabase.from("history").select("referenceid, actual_sales").in("referenceid", agentIds).eq("type_activity", "Delivered / Closed Transaction").gte("date_created", siStart).lte("date_created", siEnd)),
       fetchAllRows(supabase.from("history").select("referenceid").in("referenceid", agentIds).eq("source", "Outbound - Touchbase").gte("date_created", obStart).lte("date_created", obEnd)),
       fetchAllRows(supabase.from("sales_ob").select("id, referenceid, ob_target, month, year").in("referenceid", agentIds).eq("month", monthLabel(now)).eq("year", now.getFullYear().toString()).order("date_created", { ascending: false, nullsFirst: false }).order("id", { ascending: false })),
-      fetchAllRows(supabase.from("history").select("referenceid, quotation_number").in("referenceid", agentIds).eq("type_activity", "Quotation Preparation").eq("status", "Quote-Done").gte("date_created", quotesStart).lte("date_created", quotesEnd)),
-      fetchAllRows(supabase.from("sales_quotation").select("id, referenceid, quote_target, month, year").in("referenceid", agentIds).eq("month", monthLabel(now)).eq("year", now.getFullYear().toString()).order("date_created", { ascending: false, nullsFirst: false }).order("id", { ascending: false })),
+      fetchAllRows(supabase.from("history").select("referenceid, quotation_number, quotation_amount").in("referenceid", agentIds).eq("type_activity", "Quotation Preparation").eq("status", "Quote-Done").gte("date_created", quotesStart).lte("date_created", quotesEnd)),
+      fetchAllRows(supabase.from("sales_quotation").select("id, referenceid, quote_target, quotation_amount_target, month, year").in("referenceid", agentIds).eq("month", monthLabel(now)).eq("year", now.getFullYear().toString()).order("date_created", { ascending: false, nullsFirst: false }).order("id", { ascending: false })),
       fetchAllRows(supabase.from("history").select("referenceid, activity_reference_number, source, type_activity").in("referenceid", agentIds).gte("date_created", pipelineStart).lte("date_created", pipelineEnd)),
       fetchAllRows(supabase.from("account_development_plans").select("referenceid").in("referenceid", agentIds).gte("created_at", `${naFrom}T00:00:00+08:00`).lte("created_at", `${naTo}T23:59:59.999+08:00`)),
       fetchAllRows(supabase.from("sales_account_development").select("referenceid, target").in("referenceid", agentIds).eq("month", monthLabel(naRefDate)).eq("year", naRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4))),
@@ -311,12 +311,15 @@ export async function GET(req: Request) {
     }
 
     const quotesSetMap: Record<string, Set<string>> = {};
+    const quotationAmountMap: Record<string, number> = {};
     for (const r of quotesData) {
       if (!quotesSetMap[r.referenceid]) quotesSetMap[r.referenceid] = new Set();
       if (r.quotation_number) quotesSetMap[r.referenceid].add(r.quotation_number);
+      quotationAmountMap[r.referenceid] = (quotationAmountMap[r.referenceid] ?? 0) + (Number(r.quotation_amount) || 0);
     }
 
     const quoteTargetMap: Record<string, Array<{ month: string; year: string; targetValue: number }>> = {};
+    const quotationAmountTargetMap: Record<string, number> = {};
     const quoteTargetSeen = new Set<string>();
     for (const r of quoteTargetData) {
       const k = `${r.referenceid}|${r.month}|${r.year}`;
@@ -324,6 +327,9 @@ export async function GET(req: Request) {
       quoteTargetSeen.add(k);
       if (!quoteTargetMap[r.referenceid]) quoteTargetMap[r.referenceid] = [];
       quoteTargetMap[r.referenceid].push({ month: r.month, year: r.year, targetValue: Number(r.quote_target) || 0 });
+      if (!quotationAmountTargetMap[r.referenceid]) {
+        quotationAmountTargetMap[r.referenceid] = Number(r.quotation_amount_target) || 0;
+      }
     }
 
     type PipelineGroup = { hasOutbound: boolean; hasQuotation: boolean; hasSalesOrder: boolean; hasDelivered: boolean };
@@ -392,6 +398,8 @@ export async function GET(req: Request) {
         obCallsTarget:            calculateRangedTarget(obTargetMap[referenceid] ?? [], monthSlices, 0, false),
         quotesCount:              quotesSetMap[referenceid]?.size ?? 0,
         quotesTarget:             calculateRangedTarget(quoteTargetMap[referenceid] ?? [], monthSlices, 0, false),
+        quotationAmountActual:    quotationAmountMap[referenceid]       ?? 0,
+        quotationAmountTarget:    quotationAmountTargetMap[referenceid] ?? 0,
         callsToQuotesCount:       c2qCount,
         quoteToSOQuotationCount:  q2soQuotation,
         quoteToSOSalesOrderCount: q2soSalesOrder,
