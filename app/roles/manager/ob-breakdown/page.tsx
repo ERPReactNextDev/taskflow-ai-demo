@@ -432,18 +432,16 @@ function ObBreakdownContent() {
     if (!manager) return;
     setLoadingOutbound(true);
 
-    const from = outboundDateRange.from.toISOString().split("T")[0];
-    const to   = outboundDateRange.to.toISOString().split("T")[0];
+    const from = outboundDateRange.from.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const to   = outboundDateRange.to.toLocaleDateString("en-CA",   { timeZone: "Asia/Manila" });
 
-    Promise.all([
-      fetch(`/api/manager-all-agent-history?referenceid=${encodeURIComponent(manager)}&from=${from}&to=${to}`)
-        .then((r) => r.ok ? r.json() : { activities: [] }),
-      fetch(`/api/fetch-all-user-manager?id=${encodeURIComponent(manager)}`)
-        .then((r) => r.ok ? r.json() : []),
-    ])
-      .then(([historyData, agentsData]) => {
-        setOutboundHistory(historyData.activities ?? []);
-        setOutboundAgents(Array.isArray(agentsData) ? agentsData : []);
+    // Use manager-agent-outbound-history — same data source and timezone handling
+    // as the OutboundCard (Outbound History tab) self-fetch, so both tabs tally.
+    fetch(`/api/manager-agent-outbound-history?manager=${encodeURIComponent(manager)}&from=${from}&to=${to}`)
+      .then((r) => r.ok ? r.json() : { history: [], agents: [] })
+      .then((data) => {
+        setOutboundHistory(data.history ?? []);
+        setOutboundAgents(data.agents  ?? []);
       })
       .catch(() => {})
       .finally(() => setLoadingOutbound(false));
