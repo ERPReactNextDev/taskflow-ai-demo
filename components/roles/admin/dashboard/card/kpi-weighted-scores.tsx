@@ -208,7 +208,7 @@ const DetailModal: React.FC<{ agent: AgentKpiData; onClose: () => void }> = ({ a
   );
 };
 
-// ── Agent summary card ────────────────────────────────────────────────────────
+// ── Main export ───────────────────────────────────────────────────────────────
 
 const AgentSummaryCard: React.FC<{ agent: AgentKpiData }> = ({ agent }) => {
   const [showDetail, setShowDetail] = useState(false);

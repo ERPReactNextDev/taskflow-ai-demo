@@ -55,13 +55,20 @@ function DashboardContent() {
   const [agentCount,        setAgentCount]        = useState<number>(0);
   const [loadingSalesQuota, setLoadingSalesQuota] = useState(false);
 
+  const MONTH_NAMES = [
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December",
+  ];
+
   const fetchSalesQuota = useCallback(async () => {
     setLoadingSalesQuota(true);
     try {
-      const year = dateCreatedFilterRange?.from
-        ? new Date(dateCreatedFilterRange.from).getFullYear().toString()
-        : new Date().getFullYear().toString();
-      const res  = await fetch(`/api/admin-sales-quota?year=${year}`);
+      const refDate = dateCreatedFilterRange?.from
+        ? new Date(dateCreatedFilterRange.from)
+        : new Date();
+      const year  = refDate.getFullYear().toString();
+      const month = MONTH_NAMES[refDate.getMonth()];
+      const res   = await fetch(`/api/admin-sales-quota?year=${year}&month=${month}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
       setSalesQuotaTotal(Number(data.total)      || 0);

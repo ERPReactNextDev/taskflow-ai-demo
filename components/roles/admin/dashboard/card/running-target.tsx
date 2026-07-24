@@ -17,8 +17,10 @@ export const AdminRunningTargetCard: React.FC<AdminRunningTargetCardProps> = ({
   agentCount = 0,
   loading = false,
 }) => {
-  const currentYear = new Date().getFullYear();
-  const router      = useRouter();
+  const now         = new Date();
+  const currentMonth = now.toLocaleDateString("en-US", { month: "long" });
+  const currentYear  = now.getFullYear();
+  const router       = useRouter();
 
   const formatAmount = (amount: number) => {
     if (amount >= 1_000_000_000) return `₱${(amount / 1_000_000_000).toFixed(2)}B`;
@@ -32,7 +34,7 @@ export const AdminRunningTargetCard: React.FC<AdminRunningTargetCardProps> = ({
       <CardContent className="flex-1 flex flex-col items-start justify-start p-6 gap-2">
         <div className="flex items-center justify-between w-full">
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
-            {currentYear} RUNNING TARGET
+            {currentMonth} {currentYear} RUNNING TARGET
           </div>
           <button
             onClick={() => router.push("/roles/admin/quota-settings")}
@@ -50,7 +52,7 @@ export const AdminRunningTargetCard: React.FC<AdminRunningTargetCardProps> = ({
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 text-sm text-gray-500">
             <Globe className="w-3.5 h-3.5" />
-            YTD goal — system-wide
+            MTD goal — system-wide
           </div>
           {!loading && agentCount > 0 && (
             <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5">
