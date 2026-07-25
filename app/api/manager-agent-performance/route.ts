@@ -239,69 +239,80 @@ async function calcTimeSpentForAgents(
   rangeEndDate: string,
   rangeStartTs: string,
   rangeEndTs: string
-): Promise<Record<string, number>> {
-  const result: Record<string, number> = {};
+): Promise<Record<string, { total: number; breakdown: Record<string, number> }>> {
+  const result: Record<string, { total: number; breakdown: Record<string, number> }> = {};
   try {
-    
-    // Fetch from history table (date-only date_created)
-    const historyQ = (() => {
-      let q = supabase.from("history")
+
+    const addMs = (ref: string, activity: string, ms: number) => {
+      if (!result[ref]) result[ref] = { total: 0, breakdown: {} };
+      result[ref].total += ms;
+      result[ref].breakdown[activity] = (result[ref].breakdown[activity] ?? 0) + ms;
+    };
+
+    // Fetch from history table — include type_activity for breakdown
+    const historyQ = fetchAllRows(
+      supabase.from("history")
+        .select("referenceid, start_date, end_date, type_activity")
+        .in("referenceid", agentIds)
+        .gte("date_created", rangeStartDate)
+        .lte("date_created", rangeEndDate)
+    );
+    const revisedQ = fetchAllRows(
+      supabase.from("revised_quotations")
         .select("referenceid, start_date, end_date")
         .in("referenceid", agentIds)
         .gte("date_created", rangeStartDate)
-        .lte("date_created", rangeEndDate);
-      return fetchAllRows(q);
-    })();
-
-    // Fetch from revised_quotations table (date-only date_created)
-    const revisedQ = (() => {
-      let q = supabase.from("revised_quotations")
-        .select("referenceid, start_date, end_date")
-        .in("referenceid", agentIds)
-        .gte("date_created", rangeStartDate)
-        .lte("date_created", rangeEndDate);
-      return fetchAllRows(q);
-    })();
-
-    // Fetch from meetings table (timestamp date_created)
-    const meetingsQ = (() => {
-      let q = supabase.from("meetings")
+        .lte("date_created", rangeEndDate)
+    );
+    const meetingsQ = fetchAllRows(
+      supabase.from("meetings")
         .select("referenceid, start_date, end_date")
         .in("referenceid", agentIds)
         .gte("date_created", rangeStartTs)
-        .lte("date_created", rangeEndTs);
-      return fetchAllRows(q);
-    })();
-
-    // Fetch from documentation table (timestamp date_created)
-    const docsQ = (() => {
-      let q = supabase.from("documentation")
+        .lte("date_created", rangeEndTs)
+    );
+    const docsQ = fetchAllRows(
+      supabase.from("documentation")
         .select("referenceid, start_date, end_date")
         .in("referenceid", agentIds)
         .gte("date_created", rangeStartTs)
-        .lte("date_created", rangeEndTs);
-      return fetchAllRows(q);
-    })();
+        .lte("date_created", rangeEndTs)
+    );
 
     const [historyData, revisedData, meetingsData, docsData] = await Promise.all([
       historyQ, revisedQ, meetingsQ, docsQ
     ]);
 
-    const allData = [...historyData, ...revisedData, ...meetingsData, ...docsData];
-
-    for (const row of allData) {
+    for (const row of historyData) {
       const ref = row.referenceid;
-      if (!ref) continue;
-      if (row.start_date && row.end_date) {
-        const s = new Date(row.start_date).getTime();
-        const e = new Date(row.end_date).getTime();
-        if (!isNaN(s) && !isNaN(e) && e > s) {
-          result[ref] = (result[ref] ?? 0) + (e - s);
-        }
-      }
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) addMs(ref, row.type_activity || "Other", e - s);
+    }
+    for (const row of revisedData) {
+      const ref = row.referenceid;
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) addMs(ref, "Revised Quotation", e - s);
+    }
+    for (const row of meetingsData) {
+      const ref = row.referenceid;
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) addMs(ref, "Client Meeting", e - s);
+    }
+    for (const row of docsData) {
+      const ref = row.referenceid;
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) addMs(ref, "Documentation", e - s);
     }
   } catch (err) {
-    console.error("tsm-agent-performance: time spent error", err);
+    console.error("manager-agent-performance: time spent error", err);
   }
   return result;
 }
@@ -324,39 +335,28 @@ async function calcDbCoverageForAgents(
 ): Promise<Record<string, DbCoverageResult>> {
   const result: Record<string, DbCoverageResult> = {};
   try {
-    console.log("[calcDbCoverageForAgents] Starting with agentIds:", agentIds, "monthStart:", monthStartDate, "monthEnd:", monthEndDate);
-    // Fetch all cluster accounts for these agents, excluding removed, approved for deletion, and subject for transfer
+    // Only Active accounts with a valid type_client
     const clusterAccounts = await sql`
       SELECT referenceid, company_name, account_reference_number, status, type_client
       FROM accounts
-      WHERE referenceid = ANY(${agentIds}) 
-        AND LOWER(status) NOT IN ('removed', 'approved for deletion', 'subject for transfer')
+      WHERE referenceid = ANY(${agentIds})
+        AND LOWER(TRIM(status)) = 'active'
     `;
-    console.log("[calcDbCoverageForAgents] Found clusterAccounts:", clusterAccounts.length, clusterAccounts);
 
-    // Fetch activities from ALL 5 relevant tables for these agents (full month)
     const allActivities: any[] = [];
     const tables = ["history"];
-    
     for (const table of tables) {
       let query = supabase.from(table)
         .select("referenceid, company_name, account_reference_number, date_created")
         .in("referenceid", agentIds)
         .gte("date_created", monthStartDate);
-      
       const d = new Date(monthEndDate);
       d.setHours(23, 59, 59, 999);
       query = query.lte("date_created", d.toISOString());
-      
       const data = await fetchAllRows(query);
-      if (data) {
-        console.log("[calcDbCoverageForAgents] Table", table, "returned", data.length, "rows");
-        allActivities.push(...data);
-      }
+      if (data) allActivities.push(...data);
     }
-    console.log("[calcDbCoverageForAgents] Total allActivities:", allActivities.length);
 
-    // Group accounts per agent
     const agentAccounts: Record<string, any[]> = {};
     for (const acc of clusterAccounts) {
       const ref = acc.referenceid;
@@ -364,73 +364,49 @@ async function calcDbCoverageForAgents(
       agentAccounts[ref].push(acc);
     }
 
-    // Group touched account reference numbers/companies per agent
     const agentTouchedAccountRefs: Record<string, Set<string>> = {};
-    const agentTouchedCompanies: Record<string, Set<string>> = {};
+    const agentTouchedCompanies:   Record<string, Set<string>> = {};
 
     for (const act of allActivities) {
       const ref = act.referenceid;
       if (!ref) continue;
-
       const dateStr = act.date_created.toString().split("T")[0];
       const [y, m, day] = dateStr.split("-").map(Number);
       if (!y || !m || !day) continue;
-      const actDate = Date.UTC(y, m - 1, day);
-      const [monthStartY, monthStartM] = monthStartDate.split("-").map(Number);
-      const [monthEndY, monthEndM] = monthEndDate.split("-").map(Number);
-      const monthStart = Date.UTC(monthStartY, monthStartM - 1, 1);
-      const monthEnd = Date.UTC(monthEndY, monthEndM, 0, 23, 59, 59, 999);
+      const actDate    = Date.UTC(y, m - 1, day);
+      const [msY, msM] = monthStartDate.split("-").map(Number);
+      const [meY, meM] = monthEndDate.split("-").map(Number);
+      const monthStart = Date.UTC(msY, msM - 1, 1);
+      const monthEnd   = Date.UTC(meY, meM, 0, 23, 59, 59, 999);
       if (actDate < monthStart || actDate > monthEnd) continue;
-
       if (!agentTouchedAccountRefs[ref]) agentTouchedAccountRefs[ref] = new Set();
-      if (!agentTouchedCompanies[ref]) agentTouchedCompanies[ref] = new Set();
-
-      if (act.account_reference_number) {
+      if (!agentTouchedCompanies[ref])   agentTouchedCompanies[ref]   = new Set();
+      if (act.account_reference_number)
         agentTouchedAccountRefs[ref].add(act.account_reference_number.toString().trim());
-      }
       const companyName = act.company_name || act.customer_name || act.company;
-      if (companyName) {
-        agentTouchedCompanies[ref].add(normalizeCompany(companyName));
-      }
+      if (companyName) agentTouchedCompanies[ref].add(normalizeCompany(companyName));
     }
 
-    // Filter accounts and compute coverage - match database-coverage.tsx logic (no status === "active" extra check)
-    const excludedStatuses = new Set(["removed", "approved for deletion", "subject for transfer"]);
     const allowedTypes = new Set(["top 50", "next 30", "balance 20", "tsa client", "csr client", "new client"]);
 
     for (const ref of agentIds) {
       const accounts = agentAccounts[ref] || [];
       const filteredAccounts = accounts.filter((acc) => {
-        const status = (acc.status || "").toLowerCase();
-        const typeClient = (acc.type_client || "").toLowerCase();
-        return status && typeClient && !excludedStatuses.has(status) && allowedTypes.has(typeClient);
+        const typeClient = (acc.type_client || "").toLowerCase().trim();
+        return allowedTypes.has(typeClient);
       });
-      console.log("[calcDbCoverageForAgents] Agent", ref, "filteredAccounts:", filteredAccounts.length, filteredAccounts);
-
-      const touchedAccountRefs = agentTouchedAccountRefs[ref] || new Set();
-      const touchedCompanies = agentTouchedCompanies[ref] || new Set();
-      console.log("[calcDbCoverageForAgents] Agent", ref, "touchedAccountRefs:", Array.from(touchedAccountRefs));
-      console.log("[calcDbCoverageForAgents] Agent", ref, "touchedCompanies:", Array.from(touchedCompanies));
-
+      const touchedAccountRefs = agentTouchedAccountRefs[ref] || new Set<string>();
+      const touchedCompanies   = agentTouchedCompanies[ref]   || new Set<string>();
       const coveredCount = filteredAccounts.filter((acc) => {
-        // Check if account_reference_number matches
-        if (acc.account_reference_number && touchedAccountRefs.has(acc.account_reference_number.toString().trim())) {
-          console.log("[calcDbCoverageForAgents] Matched account by ref:", acc.company_name, acc.account_reference_number);
-          return true;
-        }
-        // If no account_reference_number match, check company_name
-        if (acc.company_name && touchedCompanies.has(normalizeCompany(acc.company_name))) {
-          console.log("[calcDbCoverageForAgents] Matched account by name:", acc.company_name);
-          return true;
-        }
+        if (acc.account_reference_number &&
+            touchedAccountRefs.has(acc.account_reference_number.toString().trim())) return true;
+        if (acc.company_name && touchedCompanies.has(normalizeCompany(acc.company_name))) return true;
         return false;
       }).length;
-
       result[ref] = { coveredCount, totalCount: filteredAccounts.length };
-      console.log("[calcDbCoverageForAgents] Agent", ref, "result:", result[ref]);
     }
   } catch (err) {
-    console.error("tsm-agent-performance: db coverage error", err);
+    console.error("manager-agent-performance: db coverage error", err);
     for (const ref of agentIds) {
       result[ref] = { coveredCount: 0, totalCount: 0 };
     }
@@ -779,7 +755,8 @@ export async function GET(req: Request) {
         accountDevelopmentTarget: accountDevTargetMap[referenceid] ?? 0,
         dbCoverageCovered:    dbCov.coveredCount,
         dbCoverageTotal:      dbCov.totalCount,
-        timeSpentMs:          timeSpentMap[referenceid] ?? 0,
+        timeSpentMs:          timeSpentMap[referenceid]?.total      ?? 0,
+        timeSpentBreakdown:   timeSpentMap[referenceid]?.breakdown  ?? {},
         avgResponseTime:      csr.avgResponseTime,
         avgNonQuotationHT:    csr.avgNonQuotationHT,
         avgQuotationHT:       csr.avgQuotationHT,
