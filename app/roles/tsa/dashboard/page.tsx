@@ -369,7 +369,7 @@ function DashboardContent() {
       if (dateCreatedFilterRange?.from) quotationParams.append("from", toDateStr(dateCreatedFilterRange.from));
 
       const [quotaRes, quotationRes] = await Promise.all([
-        fetch(`/api/sales-quota?referenceid=${encodeURIComponent(referenceid)}`),
+        fetch(`/api/sales-quota?referenceid=${encodeURIComponent(referenceid)}${dateCreatedFilterRange?.from ? `&month=${new Date(dateCreatedFilterRange.from).toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" })}` : ""}`),
         fetch(`/api/sales-quotation?${quotationParams.toString()}`),
       ]);
 

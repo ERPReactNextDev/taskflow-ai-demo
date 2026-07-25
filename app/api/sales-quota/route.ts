@@ -24,12 +24,17 @@ export async function GET(req: Request) {
       );
     }
 
-    // Fetch total amount for the year
-    const { data: amountData, error: amountError } = await supabase
+    // Fetch total amount for the year — filtered by month if provided
+    const month = Xchire_url.searchParams.get("month") ?? currentMonth;
+
+    let query = supabase
       .from("sales_quota")
       .select("amount")
       .eq("referenceid", referenceId)
-      .eq("year", currentYear);
+      .eq("year", currentYear)
+      .eq("month", month);
+
+    const { data: amountData, error: amountError } = await query;
 
     if (amountError) throw amountError;
 
