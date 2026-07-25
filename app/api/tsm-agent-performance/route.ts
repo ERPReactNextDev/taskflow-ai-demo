@@ -112,7 +112,6 @@ async function calcCsrForAgents(
 ): Promise<Record<string, CsrMetrics>> {
   const result: Record<string, CsrMetrics> = {};
   try {
-    console.log("[tsm-agent-performance] calcCsrForAgents called with tsmId:", tsmId, "agentIds:", agentIds, "fromDate:", fromDate, "toDate:", toDate);
     const { db } = await connectToDatabase();
     const col = db.collection("activity");
 
@@ -239,66 +238,84 @@ async function calcTimeSpentForAgents(
   rangeEndDate: string,
   rangeStartTs: string,
   rangeEndTs: string
-): Promise<Record<string, number>> {
-  const result: Record<string, number> = {};
+): Promise<Record<string, { total: number; breakdown: Record<string, number> }>> {
+  const result: Record<string, { total: number; breakdown: Record<string, number> }> = {};
   try {
-    
-    // Fetch from history table (date-only date_created)
-    const historyQ = (() => {
-      let q = supabase.from("history")
+    // Fetch from history table — include type_activity for breakdown
+    const historyQ = fetchAllRows(
+      supabase.from("history")
+        .select("referenceid, start_date, end_date, type_activity")
+        .in("referenceid", agentIds)
+        .gte("date_created", rangeStartDate)
+        .lte("date_created", rangeEndDate)
+    );
+
+    // Fetch from revised_quotations table
+    const revisedQ = fetchAllRows(
+      supabase.from("revised_quotations")
         .select("referenceid, start_date, end_date")
         .in("referenceid", agentIds)
         .gte("date_created", rangeStartDate)
-        .lte("date_created", rangeEndDate);
-      return fetchAllRows(q);
-    })();
+        .lte("date_created", rangeEndDate)
+    );
 
-    // Fetch from revised_quotations table (date-only date_created)
-    const revisedQ = (() => {
-      let q = supabase.from("revised_quotations")
-        .select("referenceid, start_date, end_date")
-        .in("referenceid", agentIds)
-        .gte("date_created", rangeStartDate)
-        .lte("date_created", rangeEndDate);
-      return fetchAllRows(q);
-    })();
-
-    // Fetch from meetings table (timestamp date_created)
-    const meetingsQ = (() => {
-      let q = supabase.from("meetings")
+    // Fetch from meetings table
+    const meetingsQ = fetchAllRows(
+      supabase.from("meetings")
         .select("referenceid, start_date, end_date")
         .in("referenceid", agentIds)
         .gte("date_created", rangeStartTs)
-        .lte("date_created", rangeEndTs);
-      return fetchAllRows(q);
-    })();
+        .lte("date_created", rangeEndTs)
+    );
 
-    // Fetch from documentation table (timestamp date_created)
-    const docsQ = (() => {
-      let q = supabase.from("documentation")
+    // Fetch from documentation table
+    const docsQ = fetchAllRows(
+      supabase.from("documentation")
         .select("referenceid, start_date, end_date")
         .in("referenceid", agentIds)
         .gte("date_created", rangeStartTs)
-        .lte("date_created", rangeEndTs);
-      return fetchAllRows(q);
-    })();
+        .lte("date_created", rangeEndTs)
+    );
 
     const [historyData, revisedData, meetingsData, docsData] = await Promise.all([
       historyQ, revisedQ, meetingsQ, docsQ
     ]);
 
-    const allData = [...historyData, ...revisedData, ...meetingsData, ...docsData];
+    const addMs = (ref: string, activity: string, ms: number) => {
+      if (!result[ref]) result[ref] = { total: 0, breakdown: {} };
+      result[ref].total += ms;
+      result[ref].breakdown[activity] = (result[ref].breakdown[activity] ?? 0) + ms;
+    };
 
-    for (const row of allData) {
+    for (const row of historyData) {
       const ref = row.referenceid;
-      if (!ref) continue;
-      if (row.start_date && row.end_date) {
-        const s = new Date(row.start_date).getTime();
-        const e = new Date(row.end_date).getTime();
-        if (!isNaN(s) && !isNaN(e) && e > s) {
-          result[ref] = (result[ref] ?? 0) + (e - s);
-        }
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) {
+        addMs(ref, row.type_activity || "Other", e - s);
       }
+    }
+    for (const row of revisedData) {
+      const ref = row.referenceid;
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) addMs(ref, "Revised Quotation", e - s);
+    }
+    for (const row of meetingsData) {
+      const ref = row.referenceid;
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) addMs(ref, "Client Meeting", e - s);
+    }
+    for (const row of docsData) {
+      const ref = row.referenceid;
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) addMs(ref, "Documentation", e - s);
     }
   } catch (err) {
     console.error("tsm-agent-performance: time spent error", err);
@@ -325,12 +342,12 @@ async function calcDbCoverageForAgents(
   const result: Record<string, DbCoverageResult> = {};
   try {
     console.log("[calcDbCoverageForAgents] Starting with agentIds:", agentIds, "monthStart:", monthStartDate, "monthEnd:", monthEndDate);
-    // Fetch all cluster accounts for these agents, excluding removed, approved for deletion, and subject for transfer
+    // Fetch all cluster accounts for these agents — only Active status
     const clusterAccounts = await sql`
       SELECT referenceid, company_name, account_reference_number, status, type_client
       FROM accounts
       WHERE referenceid = ANY(${agentIds}) 
-        AND LOWER(status) NOT IN ('removed', 'approved for deletion', 'subject for transfer')
+        AND LOWER(TRIM(status)) = 'active'
     `;
     console.log("[calcDbCoverageForAgents] Found clusterAccounts:", clusterAccounts.length, clusterAccounts);
 
@@ -394,40 +411,35 @@ async function calcDbCoverageForAgents(
       }
     }
 
-    // Filter accounts and compute coverage - match database-coverage.tsx logic (no status === "active" extra check)
-    const excludedStatuses = new Set(["removed", "approved for deletion", "subject for transfer"]);
+    // Filter accounts — only Active status, valid type_client
     const allowedTypes = new Set(["top 50", "next 30", "balance 20", "tsa client", "csr client", "new client"]);
 
     for (const ref of agentIds) {
       const accounts = agentAccounts[ref] || [];
+      // Only count accounts with status = "active" and a valid type_client
       const filteredAccounts = accounts.filter((acc) => {
-        const status = (acc.status || "").toLowerCase();
-        const typeClient = (acc.type_client || "").toLowerCase();
-        return status && typeClient && !excludedStatuses.has(status) && allowedTypes.has(typeClient);
+        const status     = (acc.status     || "").toLowerCase().trim();
+        const typeClient = (acc.type_client || "").toLowerCase().trim();
+        return status === "active" && allowedTypes.has(typeClient);
       });
-      console.log("[calcDbCoverageForAgents] Agent", ref, "filteredAccounts:", filteredAccounts.length, filteredAccounts);
 
-      const touchedAccountRefs = agentTouchedAccountRefs[ref] || new Set();
-      const touchedCompanies = agentTouchedCompanies[ref] || new Set();
-      console.log("[calcDbCoverageForAgents] Agent", ref, "touchedAccountRefs:", Array.from(touchedAccountRefs));
-      console.log("[calcDbCoverageForAgents] Agent", ref, "touchedCompanies:", Array.from(touchedCompanies));
+      const touchedAccountRefs = agentTouchedAccountRefs[ref] || new Set<string>();
+      const touchedCompanies   = agentTouchedCompanies[ref]   || new Set<string>();
 
       const coveredCount = filteredAccounts.filter((acc) => {
-        // Check if account_reference_number matches
-        if (acc.account_reference_number && touchedAccountRefs.has(acc.account_reference_number.toString().trim())) {
-          console.log("[calcDbCoverageForAgents] Matched account by ref:", acc.company_name, acc.account_reference_number);
+        // Match by account_reference_number first
+        if (acc.account_reference_number &&
+            touchedAccountRefs.has(acc.account_reference_number.toString().trim())) {
           return true;
         }
-        // If no account_reference_number match, check company_name
+        // Fallback: match by normalized company name
         if (acc.company_name && touchedCompanies.has(normalizeCompany(acc.company_name))) {
-          console.log("[calcDbCoverageForAgents] Matched account by name:", acc.company_name);
           return true;
         }
         return false;
       }).length;
 
       result[ref] = { coveredCount, totalCount: filteredAccounts.length };
-      console.log("[calcDbCoverageForAgents] Agent", ref, "result:", result[ref]);
     }
   } catch (err) {
     console.error("tsm-agent-performance: db coverage error", err);
@@ -781,7 +793,8 @@ export async function GET(req: Request) {
         accountDevelopmentTarget: accountDevTargetMap[referenceid] ?? 0,
         dbCoverageCovered:    dbCov.coveredCount,
         dbCoverageTotal:      dbCov.totalCount,
-        timeSpentMs:          timeSpentMap[referenceid] ?? 0,
+        timeSpentMs:          timeSpentMap[referenceid]?.total   ?? 0,
+        timeSpentBreakdown:   timeSpentMap[referenceid]?.breakdown ?? {},
         avgResponseTime:      csr.avgResponseTime,
         avgNonQuotationHT:    csr.avgNonQuotationHT,
         avgQuotationHT:       csr.avgQuotationHT,
