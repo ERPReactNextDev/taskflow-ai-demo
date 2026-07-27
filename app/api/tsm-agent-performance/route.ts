@@ -342,12 +342,12 @@ async function calcDbCoverageForAgents(
   const result: Record<string, DbCoverageResult> = {};
   try {
     console.log("[calcDbCoverageForAgents] Starting with agentIds:", agentIds, "monthStart:", monthStartDate, "monthEnd:", monthEndDate);
-    // Fetch all cluster accounts for these agents — only Active status
+    // Fetch accounts — exclude removed/approved for deletion/subject for transfer (matches companies page)
     const clusterAccounts = await sql`
       SELECT referenceid, company_name, account_reference_number, status, type_client
       FROM accounts
       WHERE referenceid = ANY(${agentIds}) 
-        AND LOWER(TRIM(status)) = 'active'
+        AND LOWER(TRIM(status)) NOT IN ('removed', 'approved for deletion', 'subject for transfer')
     `;
     console.log("[calcDbCoverageForAgents] Found clusterAccounts:", clusterAccounts.length, clusterAccounts);
 
@@ -411,33 +411,27 @@ async function calcDbCoverageForAgents(
       }
     }
 
-    // Filter accounts — only Active status, valid type_client
-    const allowedTypes = new Set(["top 50", "next 30", "balance 20", "tsa client", "csr client", "new client"]);
+    // Filter accounts — exclude removed/approved for deletion/subject for transfer
+    const EXCLUDED_STATUSES = new Set(["removed", "approved for deletion", "subject for transfer"]);
+    const allowedTypes      = new Set(["top 50", "next 30", "balance 20", "tsa client", "csr client", "new client"]);
 
     for (const ref of agentIds) {
       const accounts = agentAccounts[ref] || [];
-      // Only count accounts with status = "active" and a valid type_client
       const filteredAccounts = accounts.filter((acc) => {
         const status     = (acc.status     || "").toLowerCase().trim();
         const typeClient = (acc.type_client || "").toLowerCase().trim();
-        return status === "active" && allowedTypes.has(typeClient);
+        if (!acc.status || !acc.type_client) return false;
+        if (EXCLUDED_STATUSES.has(status)) return false;
+        if (!allowedTypes.has(typeClient)) return false;
+        return true;
       });
 
-      const touchedAccountRefs = agentTouchedAccountRefs[ref] || new Set<string>();
-      const touchedCompanies   = agentTouchedCompanies[ref]   || new Set<string>();
+      const touchedCompanies = agentTouchedCompanies[ref] || new Set<string>();
 
-      const coveredCount = filteredAccounts.filter((acc) => {
-        // Match by account_reference_number first
-        if (acc.account_reference_number &&
-            touchedAccountRefs.has(acc.account_reference_number.toString().trim())) {
-          return true;
-        }
-        // Fallback: match by normalized company name
-        if (acc.company_name && touchedCompanies.has(normalizeCompany(acc.company_name))) {
-          return true;
-        }
-        return false;
-      }).length;
+      // Match by normalized company name only
+      const coveredCount = filteredAccounts.filter((acc) =>
+        acc.company_name ? touchedCompanies.has(normalizeCompany(acc.company_name)) : false
+      ).length;
 
       result[ref] = { coveredCount, totalCount: filteredAccounts.length };
     }
@@ -622,7 +616,7 @@ export async function GET(req: Request) {
     const quotationTargetQ = fetchAllRows(
       supabase
         .from("sales_quotation")
-        .select("referenceid, quotation_amount_target")
+        .select("referenceid, quotation_amount_target, quote_target")
         .in("referenceid", agentIds)
         .eq("month", quotaMonth)
         .eq("year", quotaMonthYear)
@@ -698,10 +692,12 @@ export async function GET(req: Request) {
     const soMap:    Record<string, number> = {};
     const obMap:    Record<string, number> = {};
     const qaMap:    Record<string, number> = {};
+    const qaCountMap: Record<string, number> = {};
     const svMap:    Record<string, number> = {};
     const naMap:    Record<string, number> = {};
     const quotaMap: Record<string, number> = {};
     const quotationTargetMap:  Record<string, number> = {};
+    const quoteTargetMap:      Record<string, number> = {};
     const siteVisitTargetMap:  Record<string, number> = {};
     const accountDevTargetMap: Record<string, number> = {};
     const obTargetMap:         Record<string, number> = {};
@@ -709,11 +705,17 @@ export async function GET(req: Request) {
     for (const r of siData)    siMap[r.referenceid]    = (siMap[r.referenceid]    ?? 0) + (Number(r.actual_sales)     || 0);
     for (const r of soData)    soMap[r.referenceid]    = (soMap[r.referenceid]    ?? 0) + (Number(r.so_amount)        || 0);
     for (const r of obData)    obMap[r.referenceid]    = (obMap[r.referenceid]    ?? 0) + 1;
-    for (const r of qaData)    qaMap[r.referenceid]    = (qaMap[r.referenceid]    ?? 0) + (Number(r.quotation_amount) || 0);
+    for (const r of qaData) {
+      qaMap[r.referenceid]      = (qaMap[r.referenceid]      ?? 0) + (Number(r.quotation_amount) || 0);
+      qaCountMap[r.referenceid] = (qaCountMap[r.referenceid] ?? 0) + 1;
+    }
     for (const r of svData)    { if (r.Status === "Login") svMap[r.ReferenceID] = (svMap[r.ReferenceID] ?? 0) + 1; }
     for (const r of naData)    naMap[r.referenceid]    = (naMap[r.referenceid]    ?? 0) + 1;
     for (const r of quotaData) quotaMap[r.referenceid] = (quotaMap[r.referenceid] ?? 0) + (Number(r.amount) || 0);
-    for (const r of quotationTargetData)  quotationTargetMap[r.referenceid]  = (quotationTargetMap[r.referenceid]  ?? 0) + (Number(r.quotation_amount_target) || 0);
+    for (const r of quotationTargetData) {
+      quotationTargetMap[r.referenceid] = (quotationTargetMap[r.referenceid] ?? 0) + (Number(r.quotation_amount_target) || 0);
+      quoteTargetMap[r.referenceid]     = (quoteTargetMap[r.referenceid]     ?? 0) + (Number(r.quote_target)            || 0);
+    }
     for (const r of siteVisitTargetData)  siteVisitTargetMap[r.referenceid]  = (siteVisitTargetMap[r.referenceid]  ?? 0) + (Number(r.target) || 0);
     for (const r of accountDevTargetData) accountDevTargetMap[r.referenceid] = (accountDevTargetMap[r.referenceid] ?? 0) + (Number(r.target) || 0);
     for (const r of obTargetData)         obTargetMap[r.referenceid]         = (obTargetMap[r.referenceid]         ?? 0) + (Number(r.ob_target) || 0);
@@ -787,6 +789,8 @@ export async function GET(req: Request) {
         soToSIDelivered:      soToSISiMap[referenceid]      ?? 0,
         quotationAmountTarget: quotationTargetMap[referenceid] ?? 0,
         quotationAmount:      qaMap[referenceid]        ?? 0,
+        quotesCount:          qaCountMap[referenceid]   ?? 0,
+        quotesTarget:         quoteTargetMap[referenceid] ?? 0,
         siteVisits:           svMap[referenceid]        ?? 0,
         siteVisitTarget:      siteVisitTargetMap[referenceid]  ?? 0,
         accountDevelopment:   naMap[referenceid]        ?? 0,

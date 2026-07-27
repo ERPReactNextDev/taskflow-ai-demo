@@ -31,6 +31,8 @@ interface AgentRow {
   soToSIDelivered: number;
   quotationAmountTarget: number;
   quotationAmount: number;
+  quotesCount: number;
+  quotesTarget: number;
   siteVisits: number;
   siteVisitTarget: number;
   accountDevelopment: number;
@@ -296,13 +298,14 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
       soToSIDelivered: acc.soToSIDelivered + a.soToSIDelivered,
       quotationAmountTarget: acc.quotationAmountTarget + a.quotationAmountTarget,
       quotationAmount: acc.quotationAmount + a.quotationAmount,
+      quotesCount: acc.quotesCount + (a.quotesCount ?? 0),
       siteVisits: acc.siteVisits + a.siteVisits,
       siteVisitTarget: acc.siteVisitTarget + a.siteVisitTarget,
       accountDevelopment: acc.accountDevelopment + a.accountDevelopment,
       accountDevelopmentTarget: acc.accountDevelopmentTarget + a.accountDevelopmentTarget,
       timeSpentMs: acc.timeSpentMs + a.timeSpentMs,
     }),
-    { plan: 0, siActual: 0, soActual: 0, obCalls: 0, obCallsTarget: 0, callsToQuote: 0, quoteToSOQuotation: 0, quoteToSOSalesOrder: 0, soToSISalesOrder: 0, soToSIDelivered: 0, quotationAmountTarget: 0, quotationAmount: 0, siteVisits: 0, siteVisitTarget: 0, accountDevelopment: 0, accountDevelopmentTarget: 0, timeSpentMs: 0 }
+    { plan: 0, siActual: 0, soActual: 0, obCalls: 0, obCallsTarget: 0, callsToQuote: 0, quoteToSOQuotation: 0, quoteToSOSalesOrder: 0, soToSISalesOrder: 0, soToSIDelivered: 0, quotationAmountTarget: 0, quotationAmount: 0, quotesCount: 0, siteVisits: 0, siteVisitTarget: 0, accountDevelopment: 0, accountDevelopmentTarget: 0, timeSpentMs: 0 }
   );
   const totalSiPct = totals.plan > 0 ? Math.round((totals.siActual / totals.plan) * 100) : 0;
 
@@ -382,6 +385,7 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                     <th className={thCls}>SO → SI</th>
                     <th className={thCls}>Quotation Target</th>
                     <th className={thCls}>Quotation Amount</th>
+                    <th className={thCls}>Quotes Qty</th>
                     <th className={thCls}>Site Visits</th>
                     <th className={thCls}>Account Dev</th>
                     <th className={thCls}>DB Coverage</th>
@@ -423,6 +427,11 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                       </td>
                       <td className={tdCls}>{fmtPeso(agent.quotationAmountTarget)}</td>
                       <td className={tdCls}>{fmtPeso(agent.quotationAmount)}</td>
+                      <td className={tdCls}>
+                        {(agent.quotesCount ?? 0) > 0
+                          ? `${agent.quotesCount}${(agent.quotesTarget ?? 0) > 0 ? `/${agent.quotesTarget}` : ""}`
+                          : "—"}
+                      </td>
                       <td className={tdCls}>{agent.siteVisits}{agent.siteVisitTarget > 0 ? `/${agent.siteVisitTarget}` : ""}</td>
                       <td className={tdCls}>{agent.accountDevelopment}{agent.accountDevelopmentTarget > 0 ? `/${agent.accountDevelopmentTarget}` : ""}</td>
                       <td className={tdCls}>
@@ -466,6 +475,7 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                     </td>
                     <td className={tdCls}>{fmtPeso(totals.quotationAmountTarget)}</td>
                     <td className={tdCls}>{fmtPeso(totals.quotationAmount)}</td>
+                    <td className={tdCls}>{totals.quotesCount > 0 ? totals.quotesCount : "—"}</td>
                     <td className={tdCls}>{totals.siteVisits}{totals.siteVisitTarget > 0 ? `/${totals.siteVisitTarget}` : ""}</td>
                     <td className={tdCls}>{totals.accountDevelopment}{totals.accountDevelopmentTarget > 0 ? `/${totals.accountDevelopmentTarget}` : ""}</td>
                     <td className={tdCls}>—</td>
