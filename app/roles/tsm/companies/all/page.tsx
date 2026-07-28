@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   X, Search, History, FileText, Hash, Phone, Mail, TrendingUp, User,
-  ArrowLeft, MapPin, BarChart2, Building2,
+  ArrowLeft, MapPin, BarChart2, Building2, Download,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -550,6 +550,33 @@ function HistoryDialog({ open, onClose, companyName, loading, records, account }
   );
 }
 
+/* ─── CSV Export Helper ──────────────────────────────────────────── */
+function convertToCSV(accounts: Account[]): string | null {
+  if (!accounts.length) return null;
+  const headers = ["Company Name", "Account Reference", "Type Client", "Contact Person", "Contact Number", "Email", "Address", "Region", "Industry", "Subsidiaries", "Date Created"];
+  const csvRows = [
+    headers.join(","),
+    ...accounts.map((item) =>
+      [
+        item.company_name,
+        item.account_reference_number,
+        item.type_client,
+        item.contact_person,
+        item.contact_number,
+        item.email_address,
+        item.address || item.delivery_address || "",
+        item.region,
+        item.industry,
+        item.company_group || "",
+        item.date_created,
+      ]
+        .map((field) => `"${String(field || "").replace(/"/g, '""')}"`)
+        .join(",")
+    ),
+  ];
+  return csvRows.join("\n");
+}
+
 /* ─── Main Dashboard Content ─────────────────────────────────────── */
 function DashboardContent() {
   const searchParams = useSearchParams();
@@ -771,6 +798,20 @@ function DashboardContent() {
   };
 
   const accentColors = ["#6366f1", "#f59e0b", "#10b981", "#ef4444", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6"];
+
+  const handleDownloadCSV = () => {
+    const csv = convertToCSV(filteredAccounts);
+    if (!csv) return;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `companies_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
   const loading = loadingUser || loadingData;
 
   const goToAgents = () => {
@@ -845,6 +886,11 @@ function DashboardContent() {
                     <button onClick={() => setSearchDialogOpen(true)}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 rounded-lg transition-all shadow-sm">
                       <Search size={12} /> Advance Search
+                    </button>
+                    {/* Export CSV button */}
+                    <button onClick={handleDownloadCSV} disabled={filteredAccounts.length === 0}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 bg-white border border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50 rounded-lg transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">
+                      <Download size={12} /> Export CSV
                     </button>
                     {drillLevel === "accounts" && (
                       <button onClick={goToAgents} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">

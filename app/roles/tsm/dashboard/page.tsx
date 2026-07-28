@@ -23,6 +23,15 @@ import { RunningSiCard } from "@/components/roles/tsm/dashboard/card/running-si"
 import { RunningSoCard } from "@/components/roles/tsm/dashboard/card/running-so";
 import { OutboundTouchbaseCountCard } from "@/components/roles/tsm/dashboard/card/outbound-touchbase-count";
 import { SalesPipelineCard } from "@/components/roles/tsm/dashboard/card/sales-pipeline";
+import { SalesForecastCard } from "@/components/roles/tsm/dashboard/card/sales-forecast";
+import { SiPacingCard } from "@/components/roles/tsm/dashboard/card/si-pacing";
+import { FunnelLeakageHeatmap } from "@/components/roles/tsm/dashboard/card/funnel-leakage-heatmap";
+import { AgentAttainmentRanking } from "@/components/roles/tsm/dashboard/card/agent-attainment-ranking";
+import { SalesCycleTimeCard } from "@/components/roles/tsm/dashboard/card/sales-cycle-time";
+import { ActivityEfficiencyScore } from "@/components/roles/tsm/dashboard/card/activity-efficiency-score";
+import { WeeklyAgentTrend } from "@/components/roles/tsm/dashboard/card/weekly-agent-trend";
+import { NewVsExistingRevenue } from "@/components/roles/tsm/dashboard/card/new-vs-existing-revenue";
+import { WeightedPipelineCard } from "@/components/roles/tsm/dashboard/card/weighted-pipeline";
 import { TsmKpiWeightedScores } from "@/components/roles/tsm/dashboard/card/kpi-weighted-scores";
 import { MonthlySiTrendCard } from "@/components/roles/tsm/dashboard/card/monthly-si-trend";
 import { AgentPerformanceDetail } from "@/components/roles/tsm/dashboard/card/agent-performance-detail";
@@ -43,24 +52,42 @@ interface UserDetails {
 const VISIBILITY_KEY = "tsm_dashboard_visibility";
 
 interface CardVisibility {
-  summaryCards: boolean;
-  kpiScores:    boolean;
-  siTrend:      boolean;
-  agentDetail:  boolean;
+  summaryCards:        boolean;
+  analyticsCards:      boolean;  // Pacing + Pipeline + Cycle Time + Forecast
+  kpiScores:           boolean;
+  attainmentRanking:   boolean;
+  efficiencyScore:     boolean;
+  siTrend:             boolean;
+  weeklyTrend:         boolean;
+  newVsExisting:       boolean;
+  funnelHeatmap:       boolean;
+  agentDetail:         boolean;
 }
 
 const DEFAULT_VISIBILITY: CardVisibility = {
-  summaryCards: true,
-  kpiScores:    true,
-  siTrend:      true,
-  agentDetail:  true,
+  summaryCards:        true,
+  analyticsCards:      false,  // hidden by default
+  kpiScores:           true,
+  attainmentRanking:   false,
+  efficiencyScore:     false,
+  siTrend:             true,
+  weeklyTrend:         false,
+  newVsExisting:       false,
+  funnelHeatmap:       false,
+  agentDetail:         true,
 };
 
 const CARD_LABELS: Record<keyof CardVisibility, string> = {
-  summaryCards: "Summary Cards (Target, SI, SO, OB Calls)",
-  kpiScores:    "KPI Weighted Scores — Team View",
-  siTrend:      "Monthly SI Trend",
-  agentDetail:  "Agent Performance Detail",
+  summaryCards:        "Summary Cards (Target, SI, SO, OB Calls)",
+  analyticsCards:      "Analytics Row (Pacing · Pipeline · Cycle Time · Forecast)",
+  kpiScores:           "KPI Weighted Scores — Team View",
+  attainmentRanking:   "Agent Attainment Ranking Board",
+  efficiencyScore:     "Activity Efficiency Score",
+  siTrend:             "Monthly SI Trend",
+  weeklyTrend:         "Weekly Performance Trend",
+  newVsExisting:       "New vs Existing Account Revenue",
+  funnelHeatmap:       "Funnel Leakage Heatmap",
+  agentDetail:         "Agent Performance Detail",
 };
 
 function loadVisibility(): CardVisibility {
@@ -74,7 +101,7 @@ function loadVisibility(): CardVisibility {
 }
 
 function saveVisibility(v: CardVisibility) {
-  try { localStorage.setItem(VISIBILITY_KEY, JSON.stringify(v)); } catch {}
+  try { localStorage.setItem(VISIBILITY_KEY, JSON.stringify(v)); } catch { }
 }
 
 /** Format a Date to YYYY-MM-DD for API params (Asia/Manila local time) */
@@ -96,12 +123,12 @@ function DashboardContent() {
 
   // ── Date range — defaults to today, optional custom range ────────────────────
   const todayStart = () => new Date(new Date().setHours(0, 0, 0, 0));
-  const todayEnd   = () => new Date(new Date().setHours(23, 59, 59, 999));
+  const todayEnd = () => new Date(new Date().setHours(23, 59, 59, 999));
 
   const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] =
     React.useState<DateRange | undefined>({
       from: todayStart(),
-      to:   todayEnd(),
+      to: todayEnd(),
     });
 
   // When the user clears the date picker, reset back to today instead of undefined
@@ -109,14 +136,14 @@ function DashboardContent() {
     if (!dateCreatedFilterRange) {
       setDateCreatedFilterRangeAction({
         from: todayStart(),
-        to:   todayEnd(),
+        to: todayEnd(),
       });
     }
   }, [dateCreatedFilterRange]);
 
   // ── Settings ────────────────────────────────────────────────────────────────
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [visibility, setVisibility]     = useState<CardVisibility>(DEFAULT_VISIBILITY);
+  const [visibility, setVisibility] = useState<CardVisibility>(DEFAULT_VISIBILITY);
 
   useEffect(() => { setVisibility(loadVisibility()); }, []);
 
@@ -145,12 +172,12 @@ function DashboardContent() {
       })
       .then((data) => {
         setUserDetails({
-          referenceid:  data.ReferenceID  || "",
-          tsm:          data.TSM          || "",
-          manager:      data.Manager      || "",
-          target_quota: data.TargetQuota  || "",
-          firstname:    data.Firstname    || "",
-          lastname:     data.Lastname     || "",
+          referenceid: data.ReferenceID || "",
+          tsm: data.TSM || "",
+          manager: data.Manager || "",
+          target_quota: data.TargetQuota || "",
+          firstname: data.Firstname || "",
+          lastname: data.Lastname || "",
         });
         toast.success("User data loaded successfully!");
       })
@@ -168,8 +195,8 @@ function DashboardContent() {
     setLoadingSalesQuota(true);
     try {
       const refDate = dateCreatedFilterRange?.from ?? new Date();
-      const year    = refDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
-      const month   = refDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
+      const year = refDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
+      const month = refDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
       const res = await fetch(
         `/api/sales-quota-tsm?tsm=${encodeURIComponent(referenceid)}&year=${year}&month=${encodeURIComponent(month)}`
       );
@@ -183,10 +210,10 @@ function DashboardContent() {
 
   // ── History (SI / SO) — uses date range if set, otherwise current month ───────
   const [totalActualSales, setTotalActualSales] = useState<number>(0);
-  const [totalSoAmount, setTotalSoAmount]       = useState<number>(0);
-  const [totalSoRegular, setTotalSoRegular]     = useState<number>(0);
-  const [totalSoSPF, setTotalSoSPF]             = useState<number>(0);
-  const [loadingHistory, setLoadingHistory]     = useState(false);
+  const [totalSoAmount, setTotalSoAmount] = useState<number>(0);
+  const [totalSoRegular, setTotalSoRegular] = useState<number>(0);
+  const [totalSoSPF, setTotalSoSPF] = useState<number>(0);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const fetchHistory = useCallback(async () => {
     const { referenceid } = userDetails;
@@ -199,14 +226,14 @@ function DashboardContent() {
       if (dateCreatedFilterRange?.from && dateCreatedFilterRange?.to) {
         // Use the selected range exactly for SO
         fromStr = toDateStr(dateCreatedFilterRange.from);
-        toStr   = toDateStr(dateCreatedFilterRange.to);
+        toStr = toDateStr(dateCreatedFilterRange.to);
       } else {
         // Default: current calendar month in Manila time
         const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
         const [mYear, mMonth] = manilaToday.split("-");
         const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
         fromStr = `${mYear}-${mMonth}-01`;
-        toStr   = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
+        toStr = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
       }
 
       // SI follows the selected date range (same as SO)
@@ -216,19 +243,19 @@ function DashboardContent() {
       ]);
       const siData = await siRes.json();
       const soData = await soRes.json();
-      setTotalActualSales(Number(siData.total)       || 0);
-      setTotalSoAmount(Number(soData.total)          || 0);
-      setTotalSoRegular(Number(soData.totalRegular)  || 0);
-      setTotalSoSPF(Number(soData.totalSPF)          || 0);
+      setTotalActualSales(Number(siData.total) || 0);
+      setTotalSoAmount(Number(soData.total) || 0);
+      setTotalSoRegular(Number(soData.totalRegular) || 0);
+      setTotalSoSPF(Number(soData.totalSPF) || 0);
     } catch { /* silent */ } finally { setLoadingHistory(false); }
   }, [userDetails.referenceid, dateCreatedFilterRange]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
   // ── OB Calls — query by tsm column ───────────────────────────────────────────
-  const [outboundCallsCount,  setOutboundCallsCount]  = useState<number>(0);
+  const [outboundCallsCount, setOutboundCallsCount] = useState<number>(0);
   const [outboundCallsTarget, setOutboundCallsTarget] = useState<number>(0);
-  const [loadingOutboundCalls,       setLoadingOutboundCalls]       = useState(false);
+  const [loadingOutboundCalls, setLoadingOutboundCalls] = useState(false);
   const [loadingOutboundCallsTarget, setLoadingOutboundCallsTarget] = useState(false);
 
   const fetchOutbound = useCallback(async () => {
@@ -239,18 +266,18 @@ function DashboardContent() {
     try {
       const dateParams = new URLSearchParams();
       if (dateCreatedFilterRange?.from) dateParams.append("from", toDateStr(dateCreatedFilterRange.from));
-      if (dateCreatedFilterRange?.to)   dateParams.append("to",   toDateStr(dateCreatedFilterRange.to));
+      if (dateCreatedFilterRange?.to) dateParams.append("to", toDateStr(dateCreatedFilterRange.to));
       const dateSuffix = dateParams.toString() ? `&${dateParams}` : "";
 
       const [countRes, targetRes] = await Promise.all([
         fetch(`/api/tsm-history-outbound?tsm=${encodeURIComponent(referenceid)}${dateSuffix}`),
         fetch(`/api/sales-ob?referenceid=${encodeURIComponent(referenceid)}${dateSuffix}`),
       ]);
-      const countData  = await countRes.json();
+      const countData = await countRes.json();
       const targetData = await targetRes.json();
       // Only Successful calls count toward OB target
       setOutboundCallsCount(Number(countData.successful) || 0);
-      setOutboundCallsTarget(Number(targetData.target)   || 0);
+      setOutboundCallsTarget(Number(targetData.target) || 0);
     } catch { /* silent */ } finally {
       setLoadingOutboundCalls(false);
       setLoadingOutboundCallsTarget(false);
@@ -260,16 +287,16 @@ function DashboardContent() {
   useEffect(() => { fetchOutbound(); }, [fetchOutbound]);
 
   // ── Pipeline (Quotes, Calls→Quote, Quote→SO, SO→SI, New Account) ────────────
-  const [quotesCount,             setQuotesCount]             = useState<number>(0);
+  const [quotesCount, setQuotesCount] = useState<number>(0);
   const [quoteTarget, setQuoteTarget] = useState<number>(0);
-  const [callsToQuotesCount,      setCallsToQuotesCount]      = useState<number>(0);
+  const [callsToQuotesCount, setCallsToQuotesCount] = useState<number>(0);
   const [quoteToSOQuotationCount, setQuoteToSOQuotationCount] = useState<number>(0);
-  const [quoteToSOSalesOrderCount,setQuoteToSOSalesOrderCount]= useState<number>(0);
-  const [soToSISalesOrderCount,   setSoToSISalesOrderCount]   = useState<number>(0);
-  const [soToSIDeliveredCount,    setSoToSIDeliveredCount]    = useState<number>(0);
-  const [newAccountCount,         setNewAccountCount]         = useState<number>(0);
-  const [newAccountTarget,        setNewAccountTarget]        = useState<number>(2);
-  const [loadingPipeline,         setLoadingPipeline]         = useState(false);
+  const [quoteToSOSalesOrderCount, setQuoteToSOSalesOrderCount] = useState<number>(0);
+  const [soToSISalesOrderCount, setSoToSISalesOrderCount] = useState<number>(0);
+  const [soToSIDeliveredCount, setSoToSIDeliveredCount] = useState<number>(0);
+  const [newAccountCount, setNewAccountCount] = useState<number>(0);
+  const [newAccountTarget, setNewAccountTarget] = useState<number>(2);
+  const [loadingPipeline, setLoadingPipeline] = useState(false);
 
   const fetchPipeline = useCallback(async () => {
     const { referenceid } = userDetails;
@@ -278,7 +305,7 @@ function DashboardContent() {
     try {
       const dateParams = new URLSearchParams();
       if (dateCreatedFilterRange?.from) dateParams.append("from", toDateStr(dateCreatedFilterRange.from));
-      if (dateCreatedFilterRange?.to)   dateParams.append("to",   toDateStr(dateCreatedFilterRange.to));
+      if (dateCreatedFilterRange?.to) dateParams.append("to", toDateStr(dateCreatedFilterRange.to));
       const dateSuffix = dateParams.toString() ? `&${dateParams}` : "";
       const tsmBase = `tsm=${encodeURIComponent(referenceid)}`;
 
@@ -421,12 +448,63 @@ function DashboardContent() {
                 dateRange={dateCreatedFilterRange}
                 userId={queryUserId}
               />
+
             </div>
           )}
 
+          {/* Second row: Pacing + Pipeline + Forecast */}
+          {visibility.analyticsCards && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <SiPacingCard
+                  monthlyTarget={salesQuotaTotal}
+                  siActual={totalActualSales}
+                  loading={loadingHistory || loadingSalesQuota}
+                />
+                <WeightedPipelineCard
+                  monthlyTarget={salesQuotaTotal}
+                  siActual={totalActualSales}
+                  soActual={totalSoAmount}
+                  funnelQuotesCount={callsToQuotesCount}
+                  quoteToSOCount={quoteToSOSalesOrderCount}
+                  soToSICount={soToSIDeliveredCount}
+                  loading={loadingHistory || loadingPipeline || loadingSalesQuota}
+                />
+                <SalesCycleTimeCard
+                  obCallsCount={outboundCallsCount}
+                  funnelQuotes={callsToQuotesCount}
+                  quoteToSOCount={quoteToSOSalesOrderCount}
+                  soToSICount={soToSIDeliveredCount}
+                  loading={loadingOutboundCalls || loadingPipeline}
+                />
+              </div>
+              <SalesForecastCard
+                monthlyTarget={salesQuotaTotal}
+                siActual={totalActualSales}
+                soActual={totalSoAmount}
+                loading={loadingHistory || loadingSalesQuota}
+              />
+            </>
+          )}
           {/* KPI Weighted Scores — Team View */}
           {visibility.kpiScores && userDetails.referenceid && (
             <TsmKpiWeightedScores
+              tsm={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+            />
+          )}
+
+          {/* Agent Attainment Ranking Board */}
+          {visibility.attainmentRanking && userDetails.referenceid && (
+            <AgentAttainmentRanking
+              tsm={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+            />
+          )}
+
+          {/* Activity Efficiency Score */}
+          {visibility.efficiencyScore && userDetails.referenceid && (
+            <ActivityEfficiencyScore
               tsm={userDetails.referenceid}
               dateRange={dateCreatedFilterRange}
             />
@@ -452,10 +530,36 @@ function DashboardContent() {
             loadingNewAccount={loadingPipeline}
           />
 
+          {/* New vs Existing Account Revenue */}
+          {visibility.newVsExisting && (
+            <NewVsExistingRevenue
+              totalSI={totalActualSales}
+              totalSO={totalSoAmount}
+              newAccountCount={newAccountCount}
+              newAccountTarget={newAccountTarget || 1}
+              loading={loadingHistory || loadingPipeline}
+            />
+          )}
+
           {/* Monthly SI Trend — Team Total */}
           {visibility.siTrend && userDetails.referenceid && (
             <MonthlySiTrendCard
               tsm={userDetails.referenceid}
+            />
+          )}
+
+          {/* Weekly Agent Performance Trend */}
+          {visibility.weeklyTrend && userDetails.referenceid && (
+            <WeeklyAgentTrend
+              tsm={userDetails.referenceid}
+            />
+          )}
+
+          {/* Funnel Leakage Heatmap — Per-Agent Diagnostics */}
+          {visibility.funnelHeatmap && userDetails.referenceid && (
+            <FunnelLeakageHeatmap
+              tsm={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
             />
           )}
 

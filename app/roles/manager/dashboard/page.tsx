@@ -27,6 +27,12 @@ import { ManagerSalesPipelineCard } from "@/components/roles/manager/dashboard/c
 import { ManagerMonthlySiTrendCard } from "@/components/roles/manager/dashboard/card/monthly-si-trend";
 import { ManagerAgentPerformanceDetail } from "@/components/roles/manager/dashboard/card/agent-performance-detail";
 
+// ── Analytics cards (shared from TSM — pure prop-driven, no API calls) ────────
+import { SiPacingCard } from "@/components/roles/tsm/dashboard/card/si-pacing";
+import { WeightedPipelineCard } from "@/components/roles/tsm/dashboard/card/weighted-pipeline";
+import { SalesCycleTimeCard } from "@/components/roles/tsm/dashboard/card/sales-cycle-time";
+import { SalesForecastCard } from "@/components/roles/tsm/dashboard/card/sales-forecast";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface UserDetails {
@@ -41,6 +47,7 @@ const VISIBILITY_KEY = "manager_dashboard_visibility";
 
 interface CardVisibility {
   summaryCards: boolean;
+  analyticsCards: boolean;
   kpiScores:    boolean;
   pipeline:     boolean;
   siTrend:      boolean;
@@ -48,19 +55,21 @@ interface CardVisibility {
 }
 
 const DEFAULT_VISIBILITY: CardVisibility = {
-  summaryCards: true,
-  kpiScores:    true,
-  pipeline:     true,
-  siTrend:      true,
-  agentDetail:  true,
+  summaryCards:   true,
+  analyticsCards: false,
+  kpiScores:      true,
+  pipeline:       true,
+  siTrend:        true,
+  agentDetail:    true,
 };
 
 const CARD_LABELS: Record<keyof CardVisibility, string> = {
-  summaryCards: "Summary Cards (Target, SI, SO, OB Calls)",
-  kpiScores:    "KPI Weighted Scores — Team View",
-  pipeline:     "Sales Pipeline — Conversion Metrics",
-  siTrend:      "Monthly SI Trend",
-  agentDetail:  "Agent Performance Detail",
+  summaryCards:   "Summary Cards (Target, SI, SO, OB Calls)",
+  analyticsCards: "Analytics Row (Pacing · Pipeline · Cycle Time · Forecast)",
+  kpiScores:      "KPI Weighted Scores — Team View",
+  pipeline:       "Sales Pipeline — Conversion Metrics",
+  siTrend:        "Monthly SI Trend",
+  agentDetail:    "Agent Performance Detail",
 };
 
 function loadVisibility(): CardVisibility {
@@ -385,6 +394,41 @@ function DashboardContent() {
                 userId={queryUserId}
               />
             </div>
+          )}
+
+          {/* Analytics Row — Pacing + Pipeline + Cycle Time + Forecast */}
+          {visibility.analyticsCards && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <SiPacingCard
+                  monthlyTarget={salesQuotaTotal}
+                  siActual={totalActualSales}
+                  loading={loadingHistory || loadingSalesQuota}
+                />
+                <WeightedPipelineCard
+                  monthlyTarget={salesQuotaTotal}
+                  siActual={totalActualSales}
+                  soActual={totalSoAmount}
+                  funnelQuotesCount={callsToQuotesCount}
+                  quoteToSOCount={quoteToSOSalesOrderCount}
+                  soToSICount={soToSIDeliveredCount}
+                  loading={loadingHistory || loadingPipeline || loadingSalesQuota}
+                />
+                <SalesCycleTimeCard
+                  obCallsCount={outboundCallsCount}
+                  funnelQuotes={callsToQuotesCount}
+                  quoteToSOCount={quoteToSOSalesOrderCount}
+                  soToSICount={soToSIDeliveredCount}
+                  loading={loadingOutboundCalls || loadingPipeline}
+                />
+              </div>
+              <SalesForecastCard
+                monthlyTarget={salesQuotaTotal}
+                siActual={totalActualSales}
+                soActual={totalSoAmount}
+                loading={loadingHistory || loadingSalesQuota}
+              />
+            </>
           )}
 
           {/* KPI Weighted Scores — Team View */}
