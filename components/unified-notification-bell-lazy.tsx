@@ -2,7 +2,7 @@
 
 import React, { Suspense } from "react";
 import { Bell } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";//
 
 // Lazy load the actual UnifiedNotificationBell
 const UnifiedNotificationBell = React.lazy(() => 

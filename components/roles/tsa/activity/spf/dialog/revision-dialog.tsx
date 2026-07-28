@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, RefreshCw, Package, DollarSign, Settings2, Layers, ArrowRight, Plus, Trash2, Check, ImageIcon } from "lucide-react";
+import { Loader2, RefreshCw, Package, DollarSign, Settings2, Layers, ArrowRight, Plus, Trash2, Check, ImageIcon, Lock } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import imageCompression from "browser-image-compression";
 
@@ -82,10 +82,23 @@ interface Props {
     open: boolean;
     onClose: () => void;
     spf_number: string | null;
+    /**
+     * Current spf_request.status of the record the revision is being
+     * requested for. Per business rule:
+     *   - status === "Approved by Sales Head"  -> Request Revision allowed
+     *   - status !== "Approved by Sales Head"  -> Request Revision blocked
+     * This is enforced again here (in addition to the disabled state on the
+     * trigger button in the parent table) as a guard against stale rows or
+     * race conditions where the status changed after the row was rendered.
+     */
+    status?: string | null;
     onRequestRevision: (spf_number: string, revision_type: string, revision_remarks: string, editedData?: any) => Promise<void>;
+    onSuccessClose?: () => void;
 }
 
 type RevisionStep = "select-type" | "edit-form" | "add-remarks";
+
+const REVISION_ELIGIBLE_STATUS = "Approved by Sales Head";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -296,7 +309,7 @@ const STEPS = [
     { id: 3, name: "Items", key: "items" },
 ];
 
-export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }: Props) {
+export function RevisionDialog({ open, onClose, spf_number, status, onRequestRevision, onSuccessClose }: Props) {
     const [data, setData] = useState<SpfCreationData | null>(null);
     const [requestData, setRequestData] = useState<SpfRequestData | null>(null);
     const [loading, setLoading] = useState(false);
@@ -309,6 +322,15 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
     const [items, setItems] = useState<ItemRow[]>([]);
     const [formData, setFormData] = useState<any>({});
     const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+    const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+
+    // ─── Eligibility guard ──────────────────────────────────────────────────
+    // Business rule (spf_request.status):
+    //   status !== "Approved by Sales Head" -> Edit enabled / Request Revision disabled
+    //   status === "Approved by Sales Head" -> Edit disabled / Request Revision enabled
+    // The trigger button in the parent table already respects this, but we
+    // re-check here in case the dialog is opened with a stale/mismatched status.
+    const isRevisionEligible = status == null || status === REVISION_ELIGIBLE_STATUS;
 
     useEffect(() => {
         if (!open || !spf_number) {
@@ -318,22 +340,61 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
             return;
         }
 
+        if (!isRevisionEligible) {
+            setData(null);
+            setRequestData(null);
+            setError(
+                `This SPF cannot be revised right now. Current status is "${status}". ` +
+                `Only SPFs with status "${REVISION_ELIGIBLE_STATUS}" are eligible for a revision request.`
+            );
+            setLoading(false);
+            return;
+        }
+
         const fetchData = async () => {
             setLoading(true);
             setError(null);
             try {
+                                // Try to fetch creation data, but don't fail if it doesn't exist
+                let referenceid =
+                    typeof window !== "undefined"
+                        ? sessionStorage.getItem("tsa_referenceid") || ""
+                        : "";
                 const creationRes = await fetch(`/api/activity/tsa/spf/fetch-creation?spf_number=${encodeURIComponent(spf_number)}`);
-                if (!creationRes.ok) {
-                    if (creationRes.status === 404) {
-                        setError("No creation record found for this SPF.");
-                        return;
-                    }
-                    throw new Error("Failed to fetch creation data");
+                if (creationRes.ok) {
+                    const creationJson = await creationRes.json();
+                    setData(creationJson.data);
+                    referenceid = creationJson.data?.referenceid || '';
                 }
-                const creationJson = await creationRes.json();
-                setData(creationJson.data);
 
-                const requestRes = await fetch(`/api/activity/tsa/spf/fetch?spf_number=${encodeURIComponent(spf_number)}&referenceid=${creationJson.data?.referenceid || ''}`);
+                // If no referenceid from creation, fetch directly from spf_request to get it
+                if (!referenceid) {
+                    const directRes = await fetch(`/api/activity/tsa/spf/fetch-by-spf-number?spf_number=${encodeURIComponent(spf_number)}`);
+                    if (directRes.ok) {
+                        const directJson = await directRes.json();
+                        if (directJson.data) {
+                            referenceid = directJson.data.referenceid || '';
+                            // Set the request data directly
+                            setRequestData(directJson.data);
+                            setFormData(directJson.data);
+
+                            const descs = (directJson.data.item_description || "").split(",").map((s: string) => s.trim());
+                            const photos = (directJson.data.item_photo || "").split(",").map((s: string) => s.trim());
+                            const qtys = (directJson.data.item_qty || "").split(",").map((s: string) => s.trim());
+                            const maxLen = Math.max(descs.filter(Boolean).length, photos.filter(Boolean).length);
+                            setItems(maxLen > 0 ? Array.from({ length: maxLen }, (_, i) => ({
+                                item_description: descs[i] || "",
+                                item_photo: photos[i] || "",
+                                item_qty: qtys[i] || ""
+                            })) : []);
+                            setLoading(false);
+                            return;
+                        }
+                    }
+                }
+
+                // Fetch request data using referenceid
+                const requestRes = await fetch(`/api/activity/tsa/spf/fetch?spf_number=${encodeURIComponent(spf_number)}&referenceid=${referenceid}`);
                 if (requestRes.ok) {
                     const requestJson = await requestRes.json();
                     if (requestJson.activities && requestJson.activities.length > 0) {
@@ -351,6 +412,8 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
                             item_qty: qtys[i] || ""
                         })) : []);
                     }
+                } else {
+                    throw new Error("Failed to fetch request data");
                 }
             } catch (err: any) {
                 setError(err.message || "Failed to load data");
@@ -360,7 +423,7 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
         };
 
         fetchData();
-    }, [open, spf_number]);
+    }, [open, spf_number, isRevisionEligible, status]);
 
     useEffect(() => {
         if (!open) {
@@ -406,6 +469,13 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
 
     const handleSave = async () => {
         if (!spf_number || !selectedType) return;
+        if (!isRevisionEligible) {
+            setError(
+                `This SPF cannot be revised right now. Current status is "${status}". ` +
+                `Only SPFs with status "${REVISION_ELIGIBLE_STATUS}" are eligible for a revision request.`
+            );
+            return;
+        }
         setSaving(true);
         try {
             const editedData = {
@@ -416,6 +486,7 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
             };
             await onRequestRevision(spf_number, selectedType, remarks, editedData);
             onClose();
+            setShowSuccessDialog(true);
         } catch (err: any) {
             setError(err.message || "Failed to request revision");
         } finally {
@@ -659,6 +730,7 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
     };
 
     return (
+        <>
         <Dialog open={open} onOpenChange={onClose}>
             <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden rounded-none">
                 <div className="bg-amber-600 px-5 py-4">
@@ -680,14 +752,30 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
                             </div>
                         )}
 
-                        {error && !loading && (
+                        {!isRevisionEligible && !loading && (
+                            <div className="flex flex-col items-center justify-center text-center py-14 gap-3">
+                                <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center">
+                                    <Lock className="w-5 h-5 text-red-500" />
+                                </div>
+                                <p className="text-xs font-black uppercase tracking-widest text-gray-800">
+                                    Not Eligible for Revision
+                                </p>
+                                <p className="text-xs text-gray-500 max-w-sm">
+                                    Current status is <span className="font-bold text-gray-700">"{status}"</span>.
+                                    Revision requests are only available once an SPF's status is{" "}
+                                    <span className="font-bold text-gray-700">"{REVISION_ELIGIBLE_STATUS}"</span>.
+                                </p>
+                            </div>
+                        )}
+
+                        {error && !loading && isRevisionEligible && (
                             <div className="bg-red-50 border border-red-200 p-4 rounded-none">
                                 <p className="text-xs text-red-600">{error}</p>
                             </div>
                         )}
 
                         {/* STEP 1: Select Revision Typeas */}
-                        {step === "select-type" && !loading && !error && (
+                        {step === "select-type" && !loading && isRevisionEligible && !error && (
                             <div className="space-y-4">
                                 <div className="flex items-center gap-2 mb-4">
                                     <RefreshCw className="w-4 h-4 text-amber-600" />
@@ -729,7 +817,7 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
                         )}
 
                         {/* STEP 2: Edit Form */}
-                        {step === "edit-form" && !loading && !error && requestData && (
+                        {step === "edit-form" && !loading && isRevisionEligible && !error && requestData && (
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2">
@@ -793,7 +881,7 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
                         )}
 
                         {/* STEP 3: Add Remarks */}
-                        {step === "add-remarks" && !loading && !error && requestData && (
+                        {step === "add-remarks" && !loading && isRevisionEligible && !error && requestData && (
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2">
@@ -824,7 +912,7 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
                             </div>
                         )}
 
-                        {!loading && !error && !data && step !== "select-type" && (
+                        {!loading && isRevisionEligible && !error && !data && step !== "select-type" && (
                             <div className="text-center py-10 text-gray-400">
                                 <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
                                 <p className="text-xs">No creation data available</p>
@@ -843,7 +931,7 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
                         {step === "select-type" ? "Cancel" : step === "edit-form" && formStep > 1 ? "← Previous" : "Back"}
                     </Button>
 
-                    {step === "edit-form" && requestData && (
+                    {step === "edit-form" && isRevisionEligible && requestData && (
                         <Button
                             onClick={handleFormNext}
                             disabled={saving || uploadingIdx !== null}
@@ -853,7 +941,7 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
                         </Button>
                     )}
 
-                    {step === "add-remarks" && (
+                    {step === "add-remarks" && isRevisionEligible && (
                         <Button
                             onClick={handleSave}
                             disabled={saving || !remarks.trim()}
@@ -869,5 +957,32 @@ export function RevisionDialog({ open, onClose, spf_number, onRequestRevision }:
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
+        {/* Success Dialog */}
+        <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="text-center">Revision Requested</DialogTitle>
+                </DialogHeader>
+                <div className="text-center py-6">
+                    <RefreshCw className="w-12 h-12 mx-auto mb-4 text-amber-600" />
+                    <p className="text-sm text-gray-700">
+                        Revision is Being Processed by PD...
+                    </p>
+                </div>
+                <DialogFooter className="justify-center">
+                    <Button
+                        onClick={() => {
+                            setShowSuccessDialog(false);
+                            onSuccessClose?.();
+                        }}
+                        className="rounded-none h-9 text-xs uppercase font-black tracking-wider bg-gray-900 hover:bg-gray-800 text-white"
+                    >
+                        Close
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        </>
     );
 }
