@@ -64,7 +64,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     "l.roluna@disruptivesolutionsinc.com",
     "tsa.taskflowtest@ecoshiftcorp.com",
     "b.rodriguez@ecoshiftcorp.com",
-    "a.baldugo@disruptivesolutionsinc.com"
+    "a.baldugo@disruptivesolutionsinc.com",
+    "h.ambatali@disruptivesolutionsinc.com"
   ].includes(userEmail);
 
   if (isTimeLocked && user.Role !== "Manager" && !isBypassEmail) {
