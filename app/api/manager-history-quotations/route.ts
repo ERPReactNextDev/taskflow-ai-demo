@@ -6,6 +6,21 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE!
 );
 
+async function fetchAllRows<T = any>(query: any): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  let all: T[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return all;
+}
+
 async function getAgentIds(manager: string): Promise<string[]> {
   const { data: tsms } = await supabase.from("users").select("ReferenceID")
     .eq("Manager", manager).eq("Role", "Territory Sales Manager")
@@ -45,11 +60,10 @@ export async function GET(req: Request) {
       .gte("date_created", startDate);
     if (endDate) query = query.lte("date_created", endDate);
 
-    const { data, error } = await query;
-    if (error) throw error;
+    const data = await fetchAllRows(query);
 
     const uniqueQuotations = new Set<string>();
-    data?.forEach((row) => { if (row.quotation_number) uniqueQuotations.add(row.quotation_number); });
+    data.forEach((row) => { if (row.quotation_number) uniqueQuotations.add(row.quotation_number); });
 
     return NextResponse.json({ success: true, count: uniqueQuotations.size }, { status: 200 });
   } catch (err: any) {

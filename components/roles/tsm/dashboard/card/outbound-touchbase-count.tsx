@@ -25,7 +25,7 @@ interface OutboundTouchbaseCountCardProps {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
 }
 
 function currentMonthName(): string {
@@ -49,6 +49,11 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
   // Self-fetched team total target
   const [teamTarget,        setTeamTarget]        = useState<number>(0);
   const [loadingTeamTarget, setLoadingTeamTarget] = useState(false);
+
+  // Successful / Unsuccessful counts
+  const [successfulCount,   setSuccessfulCount]   = useState<number>(0);
+  const [unsuccessfulCount, setUnsuccessfulCount] = useState<number>(0);
+  const [loadingBreakdown,  setLoadingBreakdown]  = useState(false);
 
   const fetchTeamTarget = useCallback(async () => {
     if (!referenceid) return;
@@ -87,9 +92,44 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
     }
   }, [referenceid, dateRange]);
 
-  useEffect(() => { fetchTeamTarget(); }, [fetchTeamTarget]);
+  const fetchBreakdown = useCallback(async () => {
+    if (!referenceid) return;
+    setLoadingBreakdown(true);
+    try {
+      const from = dateRange?.from ? toDateStr(dateRange.from) : toDateStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+      const to   = dateRange?.to   ? toDateStr(dateRange.to)   : toDateStr(new Date());
 
-  const percentage = teamTarget > 0 ? Math.round((count / teamTarget) * 100) : 0;
+      // Use tsm-agent-outbound-history to get all history rows with call_status
+      const res = await fetch(`/api/tsm-agent-outbound-history?tsm=${encodeURIComponent(referenceid)}&from=${from}&to=${to}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (data.success) {
+        const history = data.history ?? [];
+        // Count Outbound - Touchbase rows only
+        let successful = 0;
+        let unsuccessful = 0;
+        for (const row of history) {
+          if (row.source === "Outbound - Touchbase") {
+            if (row.call_status === "Successful") successful++;
+            else unsuccessful++;
+          }
+        }
+        setSuccessfulCount(successful);
+        setUnsuccessfulCount(unsuccessful);
+      }
+    } catch (err) {
+      console.error("OutboundTouchbaseCountCard: failed to fetch breakdown", err);
+    } finally {
+      setLoadingBreakdown(false);
+    }
+  }, [referenceid, dateRange]);
+
+  useEffect(() => { fetchTeamTarget(); }, [fetchTeamTarget]);
+  useEffect(() => { fetchBreakdown(); }, [fetchBreakdown]);
+
+  const totalCalls = successfulCount + unsuccessfulCount;
+  const percentage = teamTarget > 0 ? Math.round((totalCalls / teamTarget) * 100) : 0;
 
   const handleSettings = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -118,10 +158,24 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
           </button>
         </div>
 
-        {/* Actual count */}
+        {/* Total count */}
         <div className="text-4xl font-extrabold text-gray-900">
-          {loading ? <Spinner className="w-8 h-8" /> : count}
+          {loading || loadingBreakdown ? <Spinner className="w-8 h-8" /> : totalCalls}
         </div>
+
+        {/* Breakdown: Successful / Unsuccessful */}
+        {!loading && !loadingBreakdown && totalCalls > 0 && (
+          <div className="flex flex-col gap-1.5 w-full">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-600">✓ Successful</span>
+              <span className="text-sm font-bold text-green-600">{successfulCount}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-600">✗ Unsuccessful</span>
+              <span className="text-sm font-bold text-red-500">{unsuccessfulCount}</span>
+            </div>
+          </div>
+        )}
 
         {/* Achievement pill */}
         <div className="flex items-center gap-2">

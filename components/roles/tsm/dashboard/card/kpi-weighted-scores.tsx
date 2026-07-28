@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { Spinner } from "@/components/ui/spinner";
-import { Info, X } from "lucide-react";
+import { Info, X, Settings } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -43,6 +43,8 @@ interface AgentKpiData {
   obCallsTarget: number;
   quotesCount: number;
   quotesTarget: number;
+  quotationAmountActual: number;
+  quotationAmountTarget: number;
   callsToQuotesCount: number;
   quoteToSOQuotationCount: number;
   quoteToSOSalesOrderCount: number;
@@ -172,6 +174,9 @@ function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
   const qPct       = Math.min(100, d.quotesTarget > 0    ? (d.quotesCount / d.quotesTarget) * 100          : 0);
   const qR         = standardRating(qPct);
 
+  const quotationAmtPct = Math.min(100, d.quotationAmountTarget > 0 ? (d.quotationAmountActual / d.quotationAmountTarget) * 100 : 0);
+  const quotationAmtR   = standardRating(quotationAmtPct);
+
   const c2qRaw     = d.obCallsCount > 0               ? (d.callsToQuotesCount / d.obCallsCount) * 100     : 0;
   const q2soPct    = d.quoteToSOQuotationCount > 0    ? (d.quoteToSOSalesOrderCount / d.quoteToSOQuotationCount) * 100 : 0;
   const s2siPct    = d.soToSISalesOrderCount > 0      ? (d.soToSIDeliveredCount / d.soToSISalesOrderCount) * 100       : 0;
@@ -198,12 +203,14 @@ function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
   const csrAchievePct = (rtAchievePct + qhtAchievePct + nqhtAchievePct) / 3;
 
   const rows: KpiRow[] = [
-    { label:"Sales Performance (SO/SI)",weight:0.5, achievementPct:salesPct, rating:salesR, weightedScore:0.5*salesR,
+    { label:"Sales Performance",weight:0.5, achievementPct:salesPct, rating:salesR, weightedScore:0.5*salesR,
       detail:`Actual: ${fmtPeso(d.totalActualSales)} / Target: ${fmtPeso(d.runningTarget)}` },
-    { label:"OB Calls",                 weight:0.1, achievementPct:obPct,   rating:obR,    weightedScore:0.1*obR,
+    { label:"OB Calls (Successful)",                 weight:0.1, achievementPct:obPct,   rating:obR,    weightedScore:0.1*obR,
       detail:`${d.obCallsCount} calls / Target: ${d.obCallsTarget > 0 ? d.obCallsTarget : "—"}` },
-    { label:"Quotes Generated",         weight:0.1, achievementPct:qPct,    rating:qR,     weightedScore:0.1*qR,
+    { label:"Quotes Generated (No. of Quotation)", weight:0.05, achievementPct:qPct, rating:qR, weightedScore:0.05*qR,
       detail:`${d.quotesCount} quotes / Target: ${d.quotesTarget > 0 ? d.quotesTarget : "—"}` },
+    { label:"Amount of Quotation",  weight:0.05, achievementPct:quotationAmtPct, rating:quotationAmtR, weightedScore:0.05*quotationAmtR,
+      detail:`₱${d.quotationAmountActual.toLocaleString(undefined,{maximumFractionDigits:2})} / Target: ₱${d.quotationAmountTarget > 0 ? d.quotationAmountTarget.toLocaleString() : "—"}` },
     { label:"Conversion Metrics",       weight:0.05,achievementPct:convAchieve,rating:convR,weightedScore:0.05*convR,
       detail:`Calls→Quote: ${fmt(c2qRaw,0)}% (tgt 20%) · Quote→SO: ${fmt(q2soPct,0)}% (tgt 30%) · SO→SI: ${fmt(s2siPct,0)}% (tgt 70%)` },
     { label:"Client Visits",            weight:0.1, achievementPct:cvPct,   rating:cvR,    weightedScore:0.1*cvR,
@@ -297,7 +304,7 @@ const DetailModal: React.FC<{ agent: AgentKpiData; onClose: () => void }> = ({ a
                       </span>
                     </div>
                   </div>
-                  {/* Rating + Weighted Score */}
+                  {/* Rating + Weighted Scoress */}
                   <div className="flex flex-col items-end shrink-0 gap-1">
                     <div className="text-right">
                       <span className={`text-lg font-extrabold leading-none ${ratingColor(row.rating)}`}>{row.rating}</span>
@@ -321,8 +328,9 @@ const DetailModal: React.FC<{ agent: AgentKpiData; onClose: () => void }> = ({ a
             {[
               { label: "Sales Actual",     value: fmtPeso(agent.totalActualSales) },
               { label: "Sales Target",     value: fmtPeso(agent.runningTarget) },
-              { label: "OB Calls",         value: `${agent.obCallsCount} / ${agent.obCallsTarget > 0 ? agent.obCallsTarget : "—"}` },
+              { label: "OB Calls (Successful)",         value: `${agent.obCallsCount} / ${agent.obCallsTarget > 0 ? agent.obCallsTarget : "—"}` },
               { label: "Quotes",           value: `${agent.quotesCount} / ${agent.quotesTarget > 0 ? agent.quotesTarget : "—"}` },
+              { label: "Quote Amount",     value: `${fmtPeso(agent.quotationAmountActual)} / ${agent.quotationAmountTarget > 0 ? fmtPeso(agent.quotationAmountTarget) : "—"}` },
               { label: "Calls→Quote",      value: `${agent.callsToQuotesCount}` },
               { label: "Quote→SO",         value: `${agent.quoteToSOSalesOrderCount} / ${agent.quoteToSOQuotationCount}` },
               { label: "SO→SI",            value: `${agent.soToSIDeliveredCount} / ${agent.soToSISalesOrderCount}` },
@@ -346,22 +354,27 @@ const DetailModal: React.FC<{ agent: AgentKpiData; onClose: () => void }> = ({ a
 
 // ── Compact summary card (6-col grid item) ────────────────────────────────────
 
-const AgentSummaryCard: React.FC<{ agent: AgentKpiData }> = ({ agent }) => {
+const AgentSummaryCard: React.FC<{ agent: AgentKpiData; onHide: () => void }> = ({ agent, onHide }) => {
   const [showDetail, setShowDetail] = useState(false);
   const { totalScore } = computeKpi(agent);
   const { label: statusLabel, color: statusColor } = scoreLabel(totalScore);
-  const color = barColor(totalScore);
+  const color   = barColor(totalScore);
   const fillPct = (totalScore / 5) * 100;
 
   return (
     <>
-      <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-3 flex flex-col gap-2 hover:shadow-md hover:border-gray-200 transition-all group">
-        {/* Name */}
-        <p className="text-[11px] uppercase font-bold text-gray-900 truncate leading-tight" title={agent.name}>
+      <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-3 flex flex-col gap-2 hover:shadow-md hover:border-gray-200 transition-all group relative">
+        {/* Hide button — top-right, visible on hover */}
+        <button
+          onClick={onHide}
+          title="Hide this agent"
+          className="absolute top-1.5 right-1.5 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-100 transition-all text-gray-400 hover:text-gray-600"
+        >
+          <X className="w-3 h-3" />
+        </button>
+        <p className="text-[11px] uppercase font-bold text-gray-900 truncate leading-tight pr-4" title={agent.name}>
           {agent.name}
         </p>
-
-        {/* Score */}
         <div className="flex items-end justify-between gap-1">
           <span className="text-2xl font-extrabold leading-none" style={{ color }}>
             {totalScore.toFixed(2)}
@@ -376,20 +389,12 @@ const AgentSummaryCard: React.FC<{ agent: AgentKpiData }> = ({ agent }) => {
             Info
           </button>
         </div>
-
-        {/* Progress bar */}
         <div className="w-full bg-gray-100 h-1 rounded-full">
-          <div
-            className="h-1 rounded-full transition-all duration-500"
-            style={{ width: `${Math.min(fillPct, 100)}%`, backgroundColor: color }}
-          />
+          <div className="h-1 rounded-full transition-all duration-500"
+            style={{ width: `${Math.min(fillPct, 100)}%`, backgroundColor: color }} />
         </div>
-
-        {/* Status label */}
         <p className={`text-[9px] font-bold truncate ${statusColor}`}>{statusLabel}</p>
       </div>
-
-      {/* Detail modal — portal-style rendering */}
       {showDetail && (
         <DetailModal agent={agent} onClose={() => setShowDetail(false)} />
       )}
@@ -399,40 +404,51 @@ const AgentSummaryCard: React.FC<{ agent: AgentKpiData }> = ({ agent }) => {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const TSM_HIDDEN_AGENTS_KEY = "tsm-kpi-hidden-agents";
+
+function loadTsmHiddenAgents(): Set<string> {
+  try {
+    const raw = localStorage.getItem(TSM_HIDDEN_AGENTS_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch { return new Set(); }
+}
+
+function saveTsmHiddenAgents(set: Set<string>) {
+  try { localStorage.setItem(TSM_HIDDEN_AGENTS_KEY, JSON.stringify([...set])); } catch {}
+}
+
 export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm, dateRange }) => {
-  const [loading, setLoading] = useState(false);
-  const [agents,  setAgents]  = useState<AgentKpiData[]>([]);
-  const [error,   setError]   = useState<string | null>(null);
-  const [hasFetched, setHasFetched] = useState(false);
+  const [loading,      setLoading]      = useState(false);
+  const [agents,       setAgents]       = useState<AgentKpiData[]>([]);
+  const [error,        setError]        = useState<string | null>(null);
+  const [hasFetched,   setHasFetched]   = useState(false);
+  const [hiddenAgents, setHiddenAgents] = useState<Set<string>>(new Set());
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Create a unique cache key based on tsm and date range
-  const getCacheKey = useCallback(() => {
-    const fromStr = dateRange?.from ? toDateStr(dateRange.from) : "default";
-    const toStr = dateRange?.to ? toDateStr(dateRange.to) : "default";
-    return `tsm-kpi-${tsm}-${fromStr}-${toStr}`;
-  }, [tsm, dateRange]);
+  useEffect(() => { setHiddenAgents(loadTsmHiddenAgents()); }, []);
 
-  // Load from localStorage on initial render
-  useEffect(() => {
-    const cacheKey = getCacheKey();
-    const cachedData = localStorage.getItem(cacheKey);
-    if (cachedData) {
-      try {
-        const parsed = JSON.parse(cachedData);
-        setAgents(parsed.agents);
-        setHasFetched(true);
-      } catch (e) {
-        console.error("Failed to parse cached data:", e);
-        localStorage.removeItem(cacheKey);
-      }
-    }
-  }, [getCacheKey]);
+  const hideAgent = (referenceid: string) => {
+    setHiddenAgents((prev) => {
+      const next = new Set(prev);
+      next.add(referenceid);
+      saveTsmHiddenAgents(next);
+      return next;
+    });
+  };
+
+  const toggleAgent = (referenceid: string) => {
+    setHiddenAgents((prev) => {
+      const next = new Set(prev);
+      if (next.has(referenceid)) next.delete(referenceid);
+      else next.add(referenceid);
+      saveTsmHiddenAgents(next);
+      return next;
+    });
+  };
 
   const fetchData = useCallback(async () => {
     if (!tsm) return;
-    const cacheKey = getCacheKey();
-    // Delete old cache
-    localStorage.removeItem(cacheKey);
     setLoading(true);
     setError(null);
     setHasFetched(true);
@@ -445,17 +461,14 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error ?? "Unknown error");
-      const newAgents = data.agents ?? [];
-      setAgents(newAgents);
-      // Save to localStorage
-      localStorage.setItem(cacheKey, JSON.stringify({ agents: newAgents }));
+      setAgents(data.agents ?? []);
     } catch (err: any) {
       console.error("TsmKpiWeightedScores fetch error:", err);
       setError(err.message ?? "Failed to load KPI data.");
     } finally {
       setLoading(false);
     }
-  }, [tsm, dateRange, getCacheKey]);
+  }, [tsm, dateRange]);
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border px-6 py-8">
@@ -465,6 +478,14 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
           KPI Weighted Scores — Team View (out of 5.0)
         </p>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+            title="Show/hide agents"
+            aria-label="Agent visibility settings"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
           <button
             onClick={fetchData}
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase rounded-md transition-colors"
@@ -480,6 +501,58 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
         </div>
       </div>
 
+      {/* Settings panel */}
+      {settingsOpen && agents.length > 0 && (
+        <div className="fixed inset-0 z-[200] flex justify-end">
+          <div className="absolute inset-0 bg-black/20" onClick={() => setSettingsOpen(false)} />
+          <div className="relative w-72 h-full bg-white shadow-2xl flex flex-col z-10">
+            <div className="flex items-center justify-between px-5 py-4 border-b bg-gray-50">
+              <div className="flex items-center gap-2">
+                <Settings className="w-4 h-4 text-gray-500" />
+                <span className="text-xs font-bold uppercase tracking-widest text-gray-700">Agent Visibility</span>
+              </div>
+              <button onClick={() => setSettingsOpen(false)} className="p-1 rounded hover:bg-gray-200 transition-colors">
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-3">
+                Toggle to show / hide each agent
+              </p>
+              {agents.map((agent) => {
+                const hidden = hiddenAgents.has(agent.referenceid);
+                return (
+                  <div key={agent.referenceid}
+                    className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                    <span className={`text-xs flex-1 pr-2 truncate ${hidden ? "text-gray-400 line-through" : "text-gray-700"}`}>
+                      {agent.name}
+                    </span>
+                    <button
+                      onClick={() => toggleAgent(agent.referenceid)}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-colors ${
+                        hidden
+                          ? "bg-gray-100 text-gray-400 hover:bg-blue-50 hover:text-blue-600"
+                          : "bg-green-50 text-green-600 hover:bg-red-50 hover:text-red-500"
+                      }`}
+                    >
+                      {hidden ? "Show" : "Hide"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-5 py-3 border-t">
+              <button
+                onClick={() => { setHiddenAgents(new Set()); saveTsmHiddenAgents(new Set()); }}
+                className="w-full text-xs text-gray-500 hover:text-gray-700 py-1.5 rounded border border-gray-200 hover:bg-gray-50 transition-colors"
+              >
+                Show all agents
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>
@@ -488,14 +561,13 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
       {/* Empty state if not fetched yet */}
       {!hasFetched && !error && (
         <p className="text-xs text-gray-400 text-center py-8">
-          Click "Fetch Data" to load KPI data.
+          Click "Generate Data" to load KPI data.
         </p>
       )}
 
-      {/* Table (blurred if loading) */}
+      {/* Grid */}
       {hasFetched && (
         <div className={`transition-all duration-300 relative ${loading ? "blur-sm opacity-50 pointer-events-none" : ""}`}>
-          {/* Loading overlay while fetching */}
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center z-10">
               <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -505,20 +577,35 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
             </div>
           )}
 
-          {/* Empty state if no agents */}
           {!loading && !error && agents.length === 0 && (
             <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-8 text-center text-xs text-gray-400">
               No active agents found under your team.
             </div>
           )}
 
-          {/* 6-column grid: 1-col mobile → 2-col sm → 3-col md → 6-col lg */}
           {agents.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {agents.map((agent) => (
-                <AgentSummaryCard key={agent.referenceid} agent={agent} />
-              ))}
+              {agents
+                .filter((a) => !hiddenAgents.has(a.referenceid))
+                .map((agent) => (
+                  <AgentSummaryCard
+                    key={agent.referenceid}
+                    agent={agent}
+                    onHide={() => hideAgent(agent.referenceid)}
+                  />
+                ))}
             </div>
+          )}
+          {hiddenAgents.size > 0 && agents.length > 0 && (
+            <p className="text-[10px] text-gray-400 mt-2 text-right">
+              {hiddenAgents.size} agent{hiddenAgents.size !== 1 ? "s" : ""} hidden —{" "}
+              <button
+                onClick={() => { setHiddenAgents(new Set()); saveTsmHiddenAgents(new Set()); }}
+                className="underline hover:text-gray-600"
+              >
+                show all
+              </button>
+            </p>
           )}
         </div>
       )}

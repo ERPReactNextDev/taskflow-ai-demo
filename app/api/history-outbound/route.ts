@@ -37,17 +37,25 @@ export async function GET(req: Request) {
 
     let q = supabase
       .from("history")
-      .select("*", { count: "exact" })
+      .select("call_status", { count: "exact" })
       .eq("referenceid", referenceid)
       .eq("source", "Outbound - Touchbase")
       .gte("date_created", startISO);
 
     if (endISO) q = q.lte("date_created", endISO);
 
-    const { error, count } = await q;
+    const { data, error, count } = await q;
     if (error) throw error;
 
-    return NextResponse.json({ success: true, count: count || 0 }, { status: 200 });
+    const successful   = (data ?? []).filter((r) => r.call_status === "Successful").length;
+    const unsuccessful = (count ?? 0) - successful;
+
+    return NextResponse.json({
+      success: true,
+      count: count || 0,
+      successful,
+      unsuccessful,
+    }, { status: 200 });
   } catch (err: any) {
     console.error("Error fetching outbound calls:", err);
     return NextResponse.json({ success: false, error: err.message || "Failed to fetch outbound calls." }, { status: 500 });

@@ -30,6 +30,8 @@ interface AgentRow {
   soToSIDelivered: number;
   quotationAmountTarget: number;
   quotationAmount: number;
+  quotesCount: number;
+  quotesTarget: number;
   siteVisits: number;
   siteVisitTarget: number;
   accountDevelopment: number;
@@ -37,6 +39,7 @@ interface AgentRow {
   dbCoverageCovered: number;
   dbCoverageTotal: number;
   timeSpentMs: number;
+  timeSpentBreakdown: Record<string, number>;
   avgResponseTime: number;
   avgNonQuotationHT: number;
   avgQuotationHT: number;
@@ -78,6 +81,93 @@ function dbCoverageBarColor(score: number): string {
   return "#ef4444";
 }
 
+// ── Time Spent Breakdown Dialog ───────────────────────────────────────────────
+
+interface TimeSpentDialogProps {
+  agentName: string;
+  totalMs: number;
+  breakdown: Record<string, number>;
+  onClose: () => void;
+}
+
+function TimeSpentDialog({ agentName, totalMs, breakdown, onClose }: TimeSpentDialogProps) {
+  const entries = Object.entries(breakdown)
+    .filter(([, ms]) => ms > 0)
+    .sort(([, a], [, b]) => b - a);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return typeof window !== "undefined"
+    ? require("react-dom").createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" aria-modal="true" role="dialog">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-900 text-white">
+              <div>
+                <p className="font-black text-sm tracking-tight">{agentName}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5 uppercase tracking-widest">Time Spent Breakdown</p>
+              </div>
+              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors ml-4" aria-label="Close">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* Body */}
+            <div className="px-5 py-4 space-y-3 max-h-[60vh] overflow-y-auto">
+              {entries.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">No time data available.</p>
+              ) : entries.map(([activity, ms]) => {
+                const pct = totalMs > 0 ? Math.round((ms / totalMs) * 100) : 0;
+                return (
+                  <div key={activity}>
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <span className="text-xs font-medium text-gray-700 flex-1 truncate">{activity}</span>
+                      <span className="text-xs font-mono text-gray-900 shrink-0">{fmtTimeMs(ms)}</span>
+                      <span className="text-[10px] text-gray-400 shrink-0 w-8 text-right">{pct}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 h-1.5 rounded-full">
+                      <div className="h-1.5 rounded-full bg-blue-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-widest text-gray-500">Total</span>
+              <span className="text-sm font-extrabold text-gray-900 font-mono">{fmtTimeMs(totalMs)}</span>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
+}
+
+function TimeSpentCell({ agentName, totalMs, breakdown }: { agentName: string; totalMs: number; breakdown: Record<string, number> }) {
+  const [open, setOpen] = useState(false);
+  if (totalMs <= 0) return <span className="text-gray-300">—</span>;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="font-mono text-blue-600 hover:text-blue-800 underline decoration-dotted cursor-pointer transition-colors"
+        title="Click to view breakdown"
+      >
+        {fmtTimeMs(totalMs)}
+      </button>
+      {open && <TimeSpentDialog agentName={agentName} totalMs={totalMs} breakdown={breakdown} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const ManagerAgentPerformanceDetail: React.FC<ManagerAgentPerformanceDetailProps> = ({
@@ -92,7 +182,7 @@ export const ManagerAgentPerformanceDetail: React.FC<ManagerAgentPerformanceDeta
   const getCacheKey = useCallback(() => {
     const fromStr = dateRange?.from ? toDateStr(dateRange.from) : "default";
     const toStr   = dateRange?.to   ? toDateStr(dateRange.to)   : "default";
-    return `manager-agent-performance-${manager}-${fromStr}-${toStr}`;
+    return `manager-agent-performance-${manager}-${fromStr}-${toStr}-v2`;
   }, [manager, dateRange]);
 
   useEffect(() => {
@@ -150,14 +240,23 @@ export const ManagerAgentPerformanceDetail: React.FC<ManagerAgentPerformanceDeta
       soToSIDelivered:          acc.soToSIDelivered + a.soToSIDelivered,
       quotationAmountTarget:    acc.quotationAmountTarget + a.quotationAmountTarget,
       quotationAmount:          acc.quotationAmount + a.quotationAmount,
+      quotesCount:              acc.quotesCount + (a.quotesCount ?? 0),
       siteVisits:               acc.siteVisits + a.siteVisits,
       siteVisitTarget:          acc.siteVisitTarget + a.siteVisitTarget,
       accountDevelopment:       acc.accountDevelopment + a.accountDevelopment,
       accountDevelopmentTarget: acc.accountDevelopmentTarget + a.accountDevelopmentTarget,
       timeSpentMs:              acc.timeSpentMs + a.timeSpentMs,
     }),
-    { plan:0, siActual:0, soActual:0, obCalls:0, obCallsTarget:0, callsToQuote:0, quoteToSOQuotation:0, quoteToSOSalesOrder:0, soToSISalesOrder:0, soToSIDelivered:0, quotationAmountTarget:0, quotationAmount:0, siteVisits:0, siteVisitTarget:0, accountDevelopment:0, accountDevelopmentTarget:0, timeSpentMs:0 }
+    { plan:0, siActual:0, soActual:0, obCalls:0, obCallsTarget:0, callsToQuote:0, quoteToSOQuotation:0, quoteToSOSalesOrder:0, soToSISalesOrder:0, soToSIDelivered:0, quotationAmountTarget:0, quotationAmount:0, quotesCount:0, siteVisits:0, siteVisitTarget:0, accountDevelopment:0, accountDevelopmentTarget:0, timeSpentMs:0 }
   );
+
+  // Aggregate breakdown for team total
+  const totalBreakdown = agents.reduce<Record<string, number>>((bd, a) => {
+    Object.entries(a.timeSpentBreakdown ?? {}).forEach(([k, v]) => {
+      bd[k] = (bd[k] ?? 0) + v;
+    });
+    return bd;
+  }, {});
 
   const thCls = "text-right py-2 px-1 font-bold text-gray-500 whitespace-nowrap";
   const tdCls = "text-right py-2.5 px-1 font-mono";
@@ -222,6 +321,7 @@ export const ManagerAgentPerformanceDetail: React.FC<ManagerAgentPerformanceDeta
                     <th className={thCls}>SO → SI</th>
                     <th className={thCls}>Quotation Target</th>
                     <th className={thCls}>Quotation Amount</th>
+                    <th className={thCls}>Quotes Qty</th>
                     <th className={thCls}>Site Visits</th>
                     <th className={thCls}>Account Dev</th>
                     <th className={thCls}>DB Coverage</th>
@@ -262,6 +362,11 @@ export const ManagerAgentPerformanceDetail: React.FC<ManagerAgentPerformanceDeta
                       </td>
                       <td className={tdCls}>{fmtPeso(agent.quotationAmountTarget)}</td>
                       <td className={tdCls}>{fmtPeso(agent.quotationAmount)}</td>
+                      <td className={tdCls}>
+                        {(agent.quotesCount ?? 0) > 0
+                          ? `${agent.quotesCount}${(agent.quotesTarget ?? 0) > 0 ? `/${agent.quotesTarget}` : ""}`
+                          : "—"}
+                      </td>
                       <td className={tdCls}>{agent.siteVisits}{agent.siteVisitTarget > 0 ? `/${agent.siteVisitTarget}` : ""}</td>
                       <td className={tdCls}>{agent.accountDevelopment}{agent.accountDevelopmentTarget > 0 ? `/${agent.accountDevelopmentTarget}` : ""}</td>
                       <td className={tdCls}>
@@ -269,7 +374,9 @@ export const ManagerAgentPerformanceDetail: React.FC<ManagerAgentPerformanceDeta
                           {agent.dbCoverageCovered}/{agent.dbCoverageTotal}
                         </span>
                       </td>
-                      <td className={tdCls}>{fmtTimeMs(agent.timeSpentMs)}</td>
+                      <td className={tdCls}>
+                        <TimeSpentCell agentName={agent.name} totalMs={agent.timeSpentMs} breakdown={agent.timeSpentBreakdown ?? {}} />
+                      </td>
                       <td className={tdCls}>{fmtHoursHMS(agent.avgResponseTime)}</td>
                       <td className={tdCls}>{fmtHoursHMS(agent.avgNonQuotationHT)}</td>
                       <td className={tdCls}>{fmtHoursHMS(agent.avgQuotationHT)}</td>
@@ -301,10 +408,13 @@ export const ManagerAgentPerformanceDetail: React.FC<ManagerAgentPerformanceDeta
                     </td>
                     <td className={tdCls}>{fmtPeso(totals.quotationAmountTarget)}</td>
                     <td className={tdCls}>{fmtPeso(totals.quotationAmount)}</td>
+                    <td className={tdCls}>{totals.quotesCount > 0 ? totals.quotesCount : "—"}</td>
                     <td className={tdCls}>{totals.siteVisits}{totals.siteVisitTarget > 0 ? `/${totals.siteVisitTarget}` : ""}</td>
                     <td className={tdCls}>{totals.accountDevelopment}{totals.accountDevelopmentTarget > 0 ? `/${totals.accountDevelopmentTarget}` : ""}</td>
                     <td className={tdCls}>—</td>
-                    <td className={tdCls}>{fmtTimeMs(totals.timeSpentMs)}</td>
+                    <td className={tdCls}>
+                      <TimeSpentCell agentName="Team Total" totalMs={totals.timeSpentMs} breakdown={totalBreakdown} />
+                    </td>
                     <td className={tdCls}>—</td>
                     <td className={tdCls}>—</td>
                     <td className={tdCls}>—</td>

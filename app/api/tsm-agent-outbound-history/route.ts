@@ -69,10 +69,10 @@ export async function GET(req: Request) {
     })();
     const endISO = to ? `${to}T23:59:59.999+08:00` : null;
 
-    // 3. Fetch all relevant history rows — history table only, by referenceid (same as tsm-history-outbound)
+    // 3. Fetch all relevant history rows — include delivery_date for SI filtering
     let q = supabase
       .from("history")
-      .select("referenceid, source, call_status, status, type_activity, actual_sales, quotation_amount, so_amount, start_date, end_date, date_created, activity_reference_number")
+      .select("referenceid, source, call_status, status, type_activity, actual_sales, quotation_amount, so_amount, start_date, end_date, date_created, delivery_date, activity_reference_number")
       .in("referenceid", agentIds)
       .gte("date_created", startISO);
     if (endISO) q = q.lte("date_created", endISO);

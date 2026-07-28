@@ -6,25 +6,32 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Settings } from "lucide-react";
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function toDateStr(d: Date): string {
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+}
+
 const MONTH_NAMES = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December",
 ];
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 interface ManagerOutboundTouchbaseCountCardProps {
-  /** Manager ReferenceID — used to self-fetch the team monthly OB target */
   referenceid?: string;
-  /** Actual OB call count for the period (passed from parent) */
+  /** Kept for backward compat but ignored — card self-fetches breakdown */
   count?: number;
   loading?: boolean;
   userId?: string;
-  /** Date range to derive which month(s) target to show */
   dateRange?: { from?: Date; to?: Date };
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbaseCountCardProps> = ({
   referenceid,
-  count = 0,
   loading = false,
   userId = "",
   dateRange,
@@ -34,24 +41,26 @@ export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbas
   const [teamTarget,        setTeamTarget]        = useState<number>(0);
   const [loadingTeamTarget, setLoadingTeamTarget] = useState(false);
 
+  const [successfulCount,   setSuccessfulCount]   = useState<number>(0);
+  const [unsuccessfulCount, setUnsuccessfulCount] = useState<number>(0);
+  const [loadingBreakdown,  setLoadingBreakdown]  = useState(false);
+
+  // ── Fetch team OB target ──────────────────────────────────────────────────
+
   const fetchTeamTarget = useCallback(async () => {
     if (!referenceid) return;
     setLoadingTeamTarget(true);
     try {
-      // Fetch all TSMs under this manager, then sum each TSM's ob-target for the month
       const refDate   = dateRange?.from ?? new Date();
       const monthName = MONTH_NAMES[refDate.getMonth()];
       const year      = refDate.getFullYear().toString();
 
-      // Get all TSMs under the manager
       const tsmRes = await fetch(`/api/manager-fetch-tsms?manager=${encodeURIComponent(referenceid)}`);
       if (!tsmRes.ok) throw new Error(`HTTP ${tsmRes.status}`);
       const tsmData = await tsmRes.json();
       const tsms: string[] = (tsmData.tsms ?? []).map((t: any) => t.referenceid as string);
-
       if (tsms.length === 0) { setTeamTarget(0); return; }
 
-      // For each TSM fetch their agents' ob targets and sum
       const results = await Promise.all(
         tsms.map((tsm) =>
           fetch(`/api/tsm-agent-ob-target?tsm=${encodeURIComponent(tsm)}&year=${year}`)
@@ -63,8 +72,7 @@ export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbas
       for (const data of results) {
         if (!data.success) continue;
         for (const agentMonths of Object.values(data.targets ?? {})) {
-          const val = (agentMonths as Record<string, number>)[monthName] ?? 0;
-          total += Number(val) || 0;
+          total += Number((agentMonths as Record<string, number>)[monthName] ?? 0) || 0;
         }
       }
       setTeamTarget(total);
@@ -75,9 +83,48 @@ export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbas
     }
   }, [referenceid, dateRange]);
 
-  useEffect(() => { fetchTeamTarget(); }, [fetchTeamTarget]);
+  // ── Fetch successful / unsuccessful breakdown ─────────────────────────────
 
-  const percentage = teamTarget > 0 ? Math.round((count / teamTarget) * 100) : 0;
+  const fetchBreakdown = useCallback(async () => {
+    if (!referenceid) return;
+    setLoadingBreakdown(true);
+    try {
+      const now  = new Date();
+      const from = dateRange?.from
+        ? toDateStr(dateRange.from)
+        : toDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
+      const to   = dateRange?.to ? toDateStr(dateRange.to) : toDateStr(now);
+
+      // manager-agent-outbound-history returns { history: [...], agents: [...] }
+      const res  = await fetch(
+        `/api/manager-agent-outbound-history?manager=${encodeURIComponent(referenceid)}&from=${from}&to=${to}`
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      const history: any[] = data.history ?? [];
+      let successful = 0;
+      let unsuccessful = 0;
+      for (const row of history) {
+        if (row.source === "Outbound - Touchbase") {
+          if (row.call_status === "Successful") successful++;
+          else unsuccessful++;
+        }
+      }
+      setSuccessfulCount(successful);
+      setUnsuccessfulCount(unsuccessful);
+    } catch (err) {
+      console.error("ManagerOutboundTouchbaseCountCard: failed to fetch breakdown", err);
+    } finally {
+      setLoadingBreakdown(false);
+    }
+  }, [referenceid, dateRange]);
+
+  useEffect(() => { fetchTeamTarget(); }, [fetchTeamTarget]);
+  useEffect(() => { fetchBreakdown();  }, [fetchBreakdown]);
+
+  const totalCalls       = successfulCount + unsuccessfulCount;
+  const percentage       = teamTarget > 0 ? Math.round((totalCalls / teamTarget) * 100) : 0;
   const currentMonthName = MONTH_NAMES[new Date().getMonth()];
 
   const handleSettings = (e: React.MouseEvent) => {
@@ -107,10 +154,24 @@ export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbas
           </button>
         </div>
 
-        {/* Actual count */}
+        {/* Total */}
         <div className="text-4xl font-extrabold text-gray-900">
-          {loading ? <Spinner className="w-8 h-8" /> : count}
+          {loading || loadingBreakdown ? <Spinner className="w-8 h-8" /> : totalCalls}
         </div>
+
+        {/* Successful / Unsuccessful breakdown */}
+        {!loading && !loadingBreakdown && totalCalls > 0 && (
+          <div className="flex flex-col gap-1.5 w-full">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-600">✓ Successful</span>
+              <span className="text-sm font-bold text-green-600">{successfulCount}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-600">✗ Unsuccessful</span>
+              <span className="text-sm font-bold text-red-500">{unsuccessfulCount}</span>
+            </div>
+          </div>
+        )}
 
         {/* Achievement pill */}
         <div className="flex items-center gap-2">
@@ -119,16 +180,12 @@ export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbas
               Loading target…
             </span>
           ) : teamTarget > 0 ? (
-            <span
-              className={[
-                "px-3 py-1 text-sm font-medium rounded-full",
-                percentage >= 100
-                  ? "bg-green-50 text-green-600"
-                  : percentage >= 70
-                    ? "bg-blue-50 text-blue-600"
-                    : "bg-amber-50 text-amber-600",
-              ].join(" ")}
-            >
+            <span className={[
+              "px-3 py-1 text-sm font-medium rounded-full",
+              percentage >= 100 ? "bg-green-50 text-green-600"
+                : percentage >= 70  ? "bg-blue-50 text-blue-600"
+                : "bg-amber-50 text-amber-600",
+            ].join(" ")}>
               {percentage}% of {teamTarget}
             </span>
           ) : (

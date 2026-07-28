@@ -241,7 +241,7 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
 export const ManagerSalesPipelineCard: React.FC<ManagerSalesPipelineCardProps> = ({
   manager,
   dateRange,
-  obCallsCount = 0,
+  obCallsCount: obCallsCountProp = 0,
   loadingObCalls = false,
   loadingObCallsTarget = false,
   quotesCount = 0,
@@ -267,7 +267,8 @@ export const ManagerSalesPipelineCard: React.FC<ManagerSalesPipelineCardProps> =
     router.push(`/roles/manager/sales-quotation-settings${id ? `?id=${encodeURIComponent(id)}` : ""}`);
   };
 
-  // ── Self-fetch team OB, quotes, and new account dev targets ──────────────
+  // ── Self-fetch team OB actual count (Successful) + targets ──────────────
+  const [selfObCallsCount, setSelfObCallsCount] = useState<number | null>(null);
   const [teamObTarget,         setTeamObTarget]         = useState<number | null>(null);
   const [teamQuotesTarget,     setTeamQuotesTarget]     = useState<number | null>(null);
   const [teamNewAccountTarget, setTeamNewAccountTarget] = useState<number | null>(null);
@@ -279,6 +280,30 @@ export const ManagerSalesPipelineCard: React.FC<ManagerSalesPipelineCardProps> =
                        "July","August","September","October","November","December"][refDate.getMonth()];
     const year      = refDate.getFullYear().toString();
     const params    = new URLSearchParams({ manager, year });
+
+    // ── Actual OB count — same API + same date defaults as the OB Calls card ──
+    try {
+      const now  = new Date();
+      const from = dateRange?.from
+        ? dateRange.from.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+        : new Date(now.getFullYear(), now.getMonth(), 1)
+            .toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+      const to   = dateRange?.to
+        ? dateRange.to.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+        : now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+
+      const res = await fetch(
+        `/api/manager-agent-outbound-history?manager=${encodeURIComponent(manager)}&from=${from}&to=${to}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const history: any[] = data.history ?? [];
+        const successful = history.filter(
+          (r) => r.source === "Outbound - Touchbase" && r.call_status === "Successful"
+        ).length;
+        setSelfObCallsCount(successful);
+      }
+    } catch { /* silent */ }
 
     try {
       const obRes = await fetch(`/api/manager-agent-ob-target-sum?${params.toString()}`);
@@ -324,6 +349,7 @@ export const ManagerSalesPipelineCard: React.FC<ManagerSalesPipelineCardProps> =
 
   useEffect(() => { fetchTeamTargets(); }, [fetchTeamTargets]);
 
+  const obCallsCount     = selfObCallsCount   ?? obCallsCountProp;
   const obCallsTarget    = teamObTarget         ?? 0;
   const quotesTarget     = teamQuotesTarget     ?? 0;
   const newAccountTarget = teamNewAccountTarget ?? propNewAccountTarget ?? 0;
@@ -412,7 +438,7 @@ export const ManagerSalesPipelineCard: React.FC<ManagerSalesPipelineCardProps> =
               <div className="text-3xl font-extrabold text-gray-900">
                 {loadingObCalls ? <Spinner className="w-6 h-6" /> : obCallsCount}
               </div>
-              <div className="text-xs font-medium text-gray-600">OB Calls</div>
+              <div className="text-xs font-medium text-gray-600">OB Calls (Successful)</div>
               <div className="text-xs text-gray-500">
                 Target: {loadingObCallsTarget ? "..." : obCallsTarget} · Achievement: {obCallsPercentage}% · Rating: {obCallsRating}
               </div>

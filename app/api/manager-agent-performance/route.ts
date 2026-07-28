@@ -239,69 +239,80 @@ async function calcTimeSpentForAgents(
   rangeEndDate: string,
   rangeStartTs: string,
   rangeEndTs: string
-): Promise<Record<string, number>> {
-  const result: Record<string, number> = {};
+): Promise<Record<string, { total: number; breakdown: Record<string, number> }>> {
+  const result: Record<string, { total: number; breakdown: Record<string, number> }> = {};
   try {
-    
-    // Fetch from history table (date-only date_created)
-    const historyQ = (() => {
-      let q = supabase.from("history")
+
+    const addMs = (ref: string, activity: string, ms: number) => {
+      if (!result[ref]) result[ref] = { total: 0, breakdown: {} };
+      result[ref].total += ms;
+      result[ref].breakdown[activity] = (result[ref].breakdown[activity] ?? 0) + ms;
+    };
+
+    // Fetch from history table — include type_activity for breakdown
+    const historyQ = fetchAllRows(
+      supabase.from("history")
+        .select("referenceid, start_date, end_date, type_activity")
+        .in("referenceid", agentIds)
+        .gte("date_created", rangeStartDate)
+        .lte("date_created", rangeEndDate)
+    );
+    const revisedQ = fetchAllRows(
+      supabase.from("revised_quotations")
         .select("referenceid, start_date, end_date")
         .in("referenceid", agentIds)
         .gte("date_created", rangeStartDate)
-        .lte("date_created", rangeEndDate);
-      return fetchAllRows(q);
-    })();
-
-    // Fetch from revised_quotations table (date-only date_created)
-    const revisedQ = (() => {
-      let q = supabase.from("revised_quotations")
-        .select("referenceid, start_date, end_date")
-        .in("referenceid", agentIds)
-        .gte("date_created", rangeStartDate)
-        .lte("date_created", rangeEndDate);
-      return fetchAllRows(q);
-    })();
-
-    // Fetch from meetings table (timestamp date_created)
-    const meetingsQ = (() => {
-      let q = supabase.from("meetings")
+        .lte("date_created", rangeEndDate)
+    );
+    const meetingsQ = fetchAllRows(
+      supabase.from("meetings")
         .select("referenceid, start_date, end_date")
         .in("referenceid", agentIds)
         .gte("date_created", rangeStartTs)
-        .lte("date_created", rangeEndTs);
-      return fetchAllRows(q);
-    })();
-
-    // Fetch from documentation table (timestamp date_created)
-    const docsQ = (() => {
-      let q = supabase.from("documentation")
+        .lte("date_created", rangeEndTs)
+    );
+    const docsQ = fetchAllRows(
+      supabase.from("documentation")
         .select("referenceid, start_date, end_date")
         .in("referenceid", agentIds)
         .gte("date_created", rangeStartTs)
-        .lte("date_created", rangeEndTs);
-      return fetchAllRows(q);
-    })();
+        .lte("date_created", rangeEndTs)
+    );
 
     const [historyData, revisedData, meetingsData, docsData] = await Promise.all([
       historyQ, revisedQ, meetingsQ, docsQ
     ]);
 
-    const allData = [...historyData, ...revisedData, ...meetingsData, ...docsData];
-
-    for (const row of allData) {
+    for (const row of historyData) {
       const ref = row.referenceid;
-      if (!ref) continue;
-      if (row.start_date && row.end_date) {
-        const s = new Date(row.start_date).getTime();
-        const e = new Date(row.end_date).getTime();
-        if (!isNaN(s) && !isNaN(e) && e > s) {
-          result[ref] = (result[ref] ?? 0) + (e - s);
-        }
-      }
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) addMs(ref, row.type_activity || "Other", e - s);
+    }
+    for (const row of revisedData) {
+      const ref = row.referenceid;
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) addMs(ref, "Revised Quotation", e - s);
+    }
+    for (const row of meetingsData) {
+      const ref = row.referenceid;
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) addMs(ref, "Client Meeting", e - s);
+    }
+    for (const row of docsData) {
+      const ref = row.referenceid;
+      if (!ref || !row.start_date || !row.end_date) continue;
+      const s = new Date(row.start_date).getTime();
+      const e = new Date(row.end_date).getTime();
+      if (!isNaN(s) && !isNaN(e) && e > s) addMs(ref, "Documentation", e - s);
     }
   } catch (err) {
-    console.error("tsm-agent-performance: time spent error", err);
+    console.error("manager-agent-performance: time spent error", err);
   }
   return result;
 }
@@ -324,39 +335,28 @@ async function calcDbCoverageForAgents(
 ): Promise<Record<string, DbCoverageResult>> {
   const result: Record<string, DbCoverageResult> = {};
   try {
-    console.log("[calcDbCoverageForAgents] Starting with agentIds:", agentIds, "monthStart:", monthStartDate, "monthEnd:", monthEndDate);
-    // Fetch all cluster accounts for these agents, excluding removed, approved for deletion, and subject for transfer
+    // Only accounts not excluded (matches companies page logic)
     const clusterAccounts = await sql`
       SELECT referenceid, company_name, account_reference_number, status, type_client
       FROM accounts
-      WHERE referenceid = ANY(${agentIds}) 
-        AND LOWER(status) NOT IN ('removed', 'approved for deletion', 'subject for transfer')
+      WHERE referenceid = ANY(${agentIds})
+        AND LOWER(TRIM(status)) NOT IN ('removed', 'approved for deletion', 'subject for transfer')
     `;
-    console.log("[calcDbCoverageForAgents] Found clusterAccounts:", clusterAccounts.length, clusterAccounts);
 
-    // Fetch activities from ALL 5 relevant tables for these agents (full month)
     const allActivities: any[] = [];
     const tables = ["history"];
-    
     for (const table of tables) {
       let query = supabase.from(table)
         .select("referenceid, company_name, account_reference_number, date_created")
         .in("referenceid", agentIds)
         .gte("date_created", monthStartDate);
-      
       const d = new Date(monthEndDate);
       d.setHours(23, 59, 59, 999);
       query = query.lte("date_created", d.toISOString());
-      
       const data = await fetchAllRows(query);
-      if (data) {
-        console.log("[calcDbCoverageForAgents] Table", table, "returned", data.length, "rows");
-        allActivities.push(...data);
-      }
+      if (data) allActivities.push(...data);
     }
-    console.log("[calcDbCoverageForAgents] Total allActivities:", allActivities.length);
 
-    // Group accounts per agent
     const agentAccounts: Record<string, any[]> = {};
     for (const acc of clusterAccounts) {
       const ref = acc.referenceid;
@@ -364,73 +364,51 @@ async function calcDbCoverageForAgents(
       agentAccounts[ref].push(acc);
     }
 
-    // Group touched account reference numbers/companies per agent
     const agentTouchedAccountRefs: Record<string, Set<string>> = {};
-    const agentTouchedCompanies: Record<string, Set<string>> = {};
+    const agentTouchedCompanies:   Record<string, Set<string>> = {};
 
     for (const act of allActivities) {
       const ref = act.referenceid;
       if (!ref) continue;
-
       const dateStr = act.date_created.toString().split("T")[0];
       const [y, m, day] = dateStr.split("-").map(Number);
       if (!y || !m || !day) continue;
-      const actDate = Date.UTC(y, m - 1, day);
-      const [monthStartY, monthStartM] = monthStartDate.split("-").map(Number);
-      const [monthEndY, monthEndM] = monthEndDate.split("-").map(Number);
-      const monthStart = Date.UTC(monthStartY, monthStartM - 1, 1);
-      const monthEnd = Date.UTC(monthEndY, monthEndM, 0, 23, 59, 59, 999);
+      const actDate    = Date.UTC(y, m - 1, day);
+      const [msY, msM] = monthStartDate.split("-").map(Number);
+      const [meY, meM] = monthEndDate.split("-").map(Number);
+      const monthStart = Date.UTC(msY, msM - 1, 1);
+      const monthEnd   = Date.UTC(meY, meM, 0, 23, 59, 59, 999);
       if (actDate < monthStart || actDate > monthEnd) continue;
-
       if (!agentTouchedAccountRefs[ref]) agentTouchedAccountRefs[ref] = new Set();
-      if (!agentTouchedCompanies[ref]) agentTouchedCompanies[ref] = new Set();
-
-      if (act.account_reference_number) {
-        agentTouchedAccountRefs[ref].add(act.account_reference_number.toString().trim());
-      }
+      if (!agentTouchedCompanies[ref])   agentTouchedCompanies[ref]   = new Set();
+      if (act.account_reference_number)
+        agentTouchedAccountRefs[ref].add(act.account_reference_number.toString().trim().toLowerCase());
       const companyName = act.company_name || act.customer_name || act.company;
-      if (companyName) {
-        agentTouchedCompanies[ref].add(normalizeCompany(companyName));
-      }
+      if (companyName) agentTouchedCompanies[ref].add(normalizeCompany(companyName));
     }
 
-    // Filter accounts and compute coverage - match database-coverage.tsx logic (no status === "active" extra check)
-    const excludedStatuses = new Set(["removed", "approved for deletion", "subject for transfer"]);
-    const allowedTypes = new Set(["top 50", "next 30", "balance 20", "tsa client", "csr client", "new client"]);
+    const EXCLUDED_STATUSES = new Set(["removed", "approved for deletion", "subject for transfer"]);
+    const allowedTypes      = new Set(["top 50", "next 30", "balance 20", "tsa client", "csr client", "new client"]);
 
     for (const ref of agentIds) {
       const accounts = agentAccounts[ref] || [];
       const filteredAccounts = accounts.filter((acc) => {
-        const status = (acc.status || "").toLowerCase();
-        const typeClient = (acc.type_client || "").toLowerCase();
-        return status && typeClient && !excludedStatuses.has(status) && allowedTypes.has(typeClient);
+        const status     = (acc.status     || "").toLowerCase().trim();
+        const typeClient = (acc.type_client || "").toLowerCase().trim();
+        if (!acc.status || !acc.type_client) return false;
+        if (EXCLUDED_STATUSES.has(status)) return false;
+        if (!allowedTypes.has(typeClient)) return false;
+        return true;
       });
-      console.log("[calcDbCoverageForAgents] Agent", ref, "filteredAccounts:", filteredAccounts.length, filteredAccounts);
-
-      const touchedAccountRefs = agentTouchedAccountRefs[ref] || new Set();
-      const touchedCompanies = agentTouchedCompanies[ref] || new Set();
-      console.log("[calcDbCoverageForAgents] Agent", ref, "touchedAccountRefs:", Array.from(touchedAccountRefs));
-      console.log("[calcDbCoverageForAgents] Agent", ref, "touchedCompanies:", Array.from(touchedCompanies));
-
-      const coveredCount = filteredAccounts.filter((acc) => {
-        // Check if account_reference_number matches
-        if (acc.account_reference_number && touchedAccountRefs.has(acc.account_reference_number.toString().trim())) {
-          console.log("[calcDbCoverageForAgents] Matched account by ref:", acc.company_name, acc.account_reference_number);
-          return true;
-        }
-        // If no account_reference_number match, check company_name
-        if (acc.company_name && touchedCompanies.has(normalizeCompany(acc.company_name))) {
-          console.log("[calcDbCoverageForAgents] Matched account by name:", acc.company_name);
-          return true;
-        }
-        return false;
-      }).length;
-
+      const touchedCompanies = agentTouchedCompanies[ref] || new Set<string>();
+      // Match by normalized company name only
+      const coveredCount = filteredAccounts.filter((acc) =>
+        acc.company_name ? touchedCompanies.has(normalizeCompany(acc.company_name)) : false
+      ).length;
       result[ref] = { coveredCount, totalCount: filteredAccounts.length };
-      console.log("[calcDbCoverageForAgents] Agent", ref, "result:", result[ref]);
     }
   } catch (err) {
-    console.error("tsm-agent-performance: db coverage error", err);
+    console.error("manager-agent-performance: db coverage error", err);
     for (const ref of agentIds) {
       result[ref] = { coveredCount: 0, totalCount: 0 };
     }
@@ -495,8 +473,13 @@ export async function GET(req: Request) {
     const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
 
     // SI (uses delivery_date, date-only) / SO (uses date_created with +08:00 timezone)
-    const siStart = from ? from : `${mYear}-01-01`;
-    const siEnd   = to   ? to : null;
+    // SI always uses full month boundaries — never filtered by exact date range
+    const siRefDate   = from ? new Date(`${from}T00:00:00+08:00`) : now;
+    const siYear      = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
+    const siMonth     = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(5, 7);
+    const siMonthDays = new Date(Number(siYear), Number(siMonth), 0).getDate();
+    const siStart     = `${siYear}-${siMonth}-01`;
+    const siEnd       = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}`;
 
     // SO uses full +08:00 timestamp bounds â€” same as tsm-history-so and tsm-agent-so
     const soStartISO = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
@@ -518,19 +501,21 @@ export async function GET(req: Request) {
     const svStart = rangeStartTs;
     const svEnd   = rangeEndTs;
 
-    // Quota year
-    const quotaYear = from ? new Date(`${from}T00:00:00+08:00`).getFullYear().toString() : currentYear;
+    // Quota month/year — derived from SI ref date (same month as SI query uses)
+    const quotaMonthDate = siRefDate;
+    const quotaMonth     = quotaMonthDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
+    const quotaMonthYear = siYear;
 
     // â”€â”€ 3. Parallel Supabase queries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    // SI (actual sales) - based on delivery_date
+    // SI (actual sales) - always full month boundaries
     const siQ = (() => {
       let q = supabase.from("history")
         .select("referenceid, actual_sales")
         .in("referenceid", agentIds)
         .eq("type_activity", "Delivered / Closed Transaction")
-        .gte("delivery_date", siStart);
-      if (siEnd) q = q.lte("delivery_date", siEnd);
+        .gte("delivery_date", siStart)
+        .lte("delivery_date", siEnd);
       return fetchAllRows(q);
     })();
 
@@ -545,12 +530,13 @@ export async function GET(req: Request) {
       return fetchAllRows(q);
     })();
 
-    // OB calls
+    // OB calls — Successful only
     const obQ = fetchAllRows(
       supabase.from("history")
         .select("referenceid")
         .in("referenceid", agentIds)
         .eq("source", "Outbound - Touchbase")
+        .eq("call_status", "Successful")
         .gte("date_created", rangeStartDate)
         .lte("date_created", rangeEndDate)
     );
@@ -586,23 +572,21 @@ export async function GET(req: Request) {
         .lte("created_at", naEnd)
     );
 
-    // Sales quota (annual plan)
+    // Sales quota (monthly, not annual)
     const quotaQ = fetchAllRows(
       supabase
         .from("sales_quota")
         .select("referenceid, amount")
         .in("referenceid", agentIds)
-        .eq("year", quotaYear)
+        .eq("year", quotaMonthYear)
+        .eq("month", quotaMonth)
     );
 
-    // Quotation amount target (from sales_quotation table, current month of the range)
-    const quotaMonthDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
-    const quotaMonth = quotaMonthDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
-    const quotaMonthYear = quotaMonthDate.toLocaleDateString("en-CA", { year: "numeric", timeZone: "Asia/Manila" }).split("-")[0];
+    // Quotation amount target (from sales_quotation table, same month as quota)
     const quotationTargetQ = fetchAllRows(
       supabase
         .from("sales_quotation")
-        .select("referenceid, quotation_amount_target")
+        .select("referenceid, quotation_amount_target, quote_target")
         .in("referenceid", agentIds)
         .eq("month", quotaMonth)
         .eq("year", quotaMonthYear)
@@ -678,10 +662,12 @@ export async function GET(req: Request) {
     const soMap:    Record<string, number> = {};
     const obMap:    Record<string, number> = {};
     const qaMap:    Record<string, number> = {};
+    const qaCountMap: Record<string, number> = {};
     const svMap:    Record<string, number> = {};
     const naMap:    Record<string, number> = {};
     const quotaMap: Record<string, number> = {};
     const quotationTargetMap:  Record<string, number> = {};
+    const quoteTargetMap:      Record<string, number> = {};
     const siteVisitTargetMap:  Record<string, number> = {};
     const accountDevTargetMap: Record<string, number> = {};
     const obTargetMap:         Record<string, number> = {};
@@ -689,11 +675,17 @@ export async function GET(req: Request) {
     for (const r of siData)    siMap[r.referenceid]    = (siMap[r.referenceid]    ?? 0) + (Number(r.actual_sales)     || 0);
     for (const r of soData)    soMap[r.referenceid]    = (soMap[r.referenceid]    ?? 0) + (Number(r.so_amount)        || 0);
     for (const r of obData)    obMap[r.referenceid]    = (obMap[r.referenceid]    ?? 0) + 1;
-    for (const r of qaData)    qaMap[r.referenceid]    = (qaMap[r.referenceid]    ?? 0) + (Number(r.quotation_amount) || 0);
+    for (const r of qaData) {
+      qaMap[r.referenceid]      = (qaMap[r.referenceid]      ?? 0) + (Number(r.quotation_amount) || 0);
+      qaCountMap[r.referenceid] = (qaCountMap[r.referenceid] ?? 0) + 1;
+    }
     for (const r of svData)    { if (r.Status === "Login") svMap[r.ReferenceID] = (svMap[r.ReferenceID] ?? 0) + 1; }
     for (const r of naData)    naMap[r.referenceid]    = (naMap[r.referenceid]    ?? 0) + 1;
-    for (const r of quotaData) quotaMap[r.referenceid] = (quotaMap[r.referenceid] ?? 0) + (Number(r.amount) || 0);
-    for (const r of quotationTargetData)  quotationTargetMap[r.referenceid]  = (quotationTargetMap[r.referenceid]  ?? 0) + (Number(r.quotation_amount_target) || 0);
+    for (const r of quotaData) quotaMap[r.referenceid] = Number(r.amount) || 0;
+    for (const r of quotationTargetData) {
+      quotationTargetMap[r.referenceid] = (quotationTargetMap[r.referenceid] ?? 0) + (Number(r.quotation_amount_target) || 0);
+      quoteTargetMap[r.referenceid]     = (quoteTargetMap[r.referenceid]     ?? 0) + (Number(r.quote_target)            || 0);
+    }
     for (const r of siteVisitTargetData)  siteVisitTargetMap[r.referenceid]  = (siteVisitTargetMap[r.referenceid]  ?? 0) + (Number(r.target) || 0);
     for (const r of accountDevTargetData) accountDevTargetMap[r.referenceid] = (accountDevTargetMap[r.referenceid] ?? 0) + (Number(r.target) || 0);
     for (const r of obTargetData)         obTargetMap[r.referenceid]         = (obTargetMap[r.referenceid]         ?? 0) + (Number(r.ob_target) || 0);
@@ -767,13 +759,16 @@ export async function GET(req: Request) {
         soToSIDelivered:      soToSISiMap[referenceid]      ?? 0,
         quotationAmountTarget: quotationTargetMap[referenceid] ?? 0,
         quotationAmount:      qaMap[referenceid]        ?? 0,
+        quotesCount:          qaCountMap[referenceid]   ?? 0,
+        quotesTarget:         quoteTargetMap[referenceid] ?? 0,
         siteVisits:           svMap[referenceid]        ?? 0,
         siteVisitTarget:      siteVisitTargetMap[referenceid]  ?? 0,
         accountDevelopment:   naMap[referenceid]        ?? 0,
         accountDevelopmentTarget: accountDevTargetMap[referenceid] ?? 0,
         dbCoverageCovered:    dbCov.coveredCount,
         dbCoverageTotal:      dbCov.totalCount,
-        timeSpentMs:          timeSpentMap[referenceid] ?? 0,
+        timeSpentMs:          timeSpentMap[referenceid]?.total      ?? 0,
+        timeSpentBreakdown:   timeSpentMap[referenceid]?.breakdown  ?? {},
         avgResponseTime:      csr.avgResponseTime,
         avgNonQuotationHT:    csr.avgNonQuotationHT,
         avgQuotationHT:       csr.avgQuotationHT,

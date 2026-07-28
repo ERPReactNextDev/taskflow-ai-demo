@@ -132,29 +132,76 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   // "v2" to avoid conflicts with the old key schema
   const getChatUnreadKey = useCallback((uid: string) => `chat-unread-v2:${uid}`, []);
 
-  const normalizeSPFNumber = useCallback((value: unknown) => {
-    if (typeof value !== "string") return "";
+  // ── Clear stale notification storage to free up quota ───────────────────────
+  const clearNotificationStorage = useCallback((uid: string) => {
+    try {
+      // Remove all notification-related keys for this user
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (
+          key.startsWith("spf-notif-") ||
+          key.startsWith("chat-unread-") ||
+          key.startsWith("tsm-kpi-") ||
+          key.startsWith("tsm-agent-performance-") ||
+          key.startsWith("manager-kpi-") ||
+          key.startsWith("manager-agent-performance-") ||
+          key.startsWith("tsa-kpi-")
+        )) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+      console.warn(`clearNotificationStorage: removed ${keysToRemove.length} stale keys for uid=${uid}`);
+    } catch {}
+  }, []);
+
+  const normalizeSPFNumber = useCallback((value: unknown) => {    if (typeof value !== "string") return "";
     return value.trim().replace(/\s+/g, "").toUpperCase();
   }, []);
 
   const persistReadMap = useCallback((uid: string, map: Map<string, string>) => {
     const payload = Object.fromEntries(map.entries());
-    localStorage.setItem(getStorageKey(uid), JSON.stringify(payload));
+    try {
+      localStorage.setItem(getStorageKey(uid), JSON.stringify(payload));
+    } catch (e) {
+      console.warn("persistReadMap: localStorage quota exceeded, clearing stale notification keys");
+      clearNotificationStorage(uid);
+      try { localStorage.setItem(getStorageKey(uid), JSON.stringify(payload)); } catch {}
+    }
   }, [getStorageKey]);
 
   const persistKnownSignatureMap = useCallback((uid: string, map: Map<string, string>) => {
     const payload = Object.fromEntries(map.entries());
-    localStorage.setItem(getKnownSignatureKey(uid), JSON.stringify(payload));
+    try {
+      localStorage.setItem(getKnownSignatureKey(uid), JSON.stringify(payload));
+    } catch (e) {
+      console.warn("persistKnownSignatureMap: localStorage quota exceeded, clearing stale notification keys");
+      clearNotificationStorage(uid);
+      try { localStorage.setItem(getKnownSignatureKey(uid), JSON.stringify(payload)); } catch {}
+    }
   }, [getKnownSignatureKey]);
 
   const persistUnreadCountMap = useCallback((uid: string, map: Map<string, number>) => {
     const payload = Object.fromEntries(map.entries());
-    localStorage.setItem(getUnreadCountKey(uid), JSON.stringify(payload));
+    try {
+      localStorage.setItem(getUnreadCountKey(uid), JSON.stringify(payload));
+    } catch (e) {
+      console.warn("persistUnreadCountMap: localStorage quota exceeded, clearing stale notification keys");
+      clearNotificationStorage(uid);
+      try { localStorage.setItem(getUnreadCountKey(uid), JSON.stringify(payload)); } catch {}
+    }
   }, [getUnreadCountKey]);
 
   const persistLastSeenCreationMap = useCallback((uid: string, map: Map<string, string>) => {
     const payload = Object.fromEntries(map.entries());
-    localStorage.setItem(getLastSeenCreationKey(uid), JSON.stringify(payload));
+    try {
+      localStorage.setItem(getLastSeenCreationKey(uid), JSON.stringify(payload));
+    } catch (e) {
+      console.warn("persistLastSeenCreationMap: localStorage quota exceeded, clearing stale notification keys");
+      clearNotificationStorage(uid);
+      try { localStorage.setItem(getLastSeenCreationKey(uid), JSON.stringify(payload)); } catch {}
+    }
   }, [getLastSeenCreationKey]);
 
   // ── Persist chat unread map to localStorage ──────────────────────────────────

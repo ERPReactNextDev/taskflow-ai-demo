@@ -54,7 +54,7 @@ export const ManagerRunningTargetCard: React.FC<ManagerRunningTargetCardProps> =
         <div className="text-4xl font-extrabold text-gray-900">
           {loading ? <Spinner className="w-8 h-8" /> : formatAmount(total)}
         </div>
-        <div className="text-sm text-gray-500">YTD goal</div>
+        <div className="text-sm text-gray-500">MTD goal</div>
       </CardContent>
     </Card>
   );

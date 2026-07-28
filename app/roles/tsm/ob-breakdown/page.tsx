@@ -412,18 +412,16 @@ function ObBreakdownContent() {
     if (!tsm) return;
     setLoadingOutbound(true);
 
-    const from = outboundDateRange.from.toISOString().split("T")[0];
-    const to   = outboundDateRange.to.toISOString().split("T")[0];
+    const from = outboundDateRange.from.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const to   = outboundDateRange.to.toLocaleDateString("en-CA",   { timeZone: "Asia/Manila" });
 
-    Promise.all([
-      fetch(`/api/all-agent-history?referenceid=${encodeURIComponent(tsm)}&from=${from}&to=${to}`)
-        .then((r) => r.ok ? r.json() : { activities: [] }),
-      fetch(`/api/fetch-all-user?id=${encodeURIComponent(tsm)}`)
-        .then((r) => r.ok ? r.json() : []),
-    ])
-      .then(([historyData, agentsData]) => {
-        setOutboundHistory(historyData.activities ?? []);
-        setOutboundAgents(Array.isArray(agentsData) ? agentsData : []);
+    // Use tsm-agent-outbound-history — same API the OutboundCard (Outbound History tab) uses,
+    // so both tabs see identical data.
+    fetch(`/api/tsm-agent-outbound-history?tsm=${encodeURIComponent(tsm)}&from=${from}&to=${to}`)
+      .then((r) => r.ok ? r.json() : { history: [], agents: [] })
+      .then((data) => {
+        setOutboundHistory(data.history ?? []);
+        setOutboundAgents(data.agents  ?? []);
       })
       .catch(() => {})
       .finally(() => setLoadingOutbound(false));
@@ -569,7 +567,8 @@ function ObBreakdownContent() {
           {activeTab === "outbound_history" && (
             <div className="p-4">
               <OutboundCard
-                tsm={tsm}
+                history={outboundHistory}
+                agents={outboundAgents}
                 dateRange={outboundDateRange}
               />
             </div>

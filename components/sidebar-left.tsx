@@ -72,8 +72,8 @@ const data = {
     { name: "National Call Ranking", url: "/roles/tsa/national-call-ranking", icon: Phone },
     //{ name: "Agent List", url: "/roles/tsm/agent", icon: Users },
     //{ name: "Team List", url: "/roles/manager/agent", icon: Users },
-    { name: "Sales Performance", url: "/roles/admin/sales-performance", icon: BarChart2 },
-    { name: "Employee List", url: "/roles/admin/employee-list", icon: Users },
+    //{ name: "Sales Performance", url: "/roles/admin/sales-performance", icon: BarChart2 },
+    //{ name: "Employee List", url: "/roles/admin/employee-list", icon: Users },
   ],
   workspaces: [
     {

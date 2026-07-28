@@ -65,7 +65,8 @@ export async function GET(req: Request) {
     })();
     const obQuery = (() => {
       const q = supabase.from("history").select("id", { count: "exact", head: true })
-        .eq("referenceid", referenceid).eq("source", "Outbound - Touchbase").gte("date_created", monthStart);
+        .eq("referenceid", referenceid).eq("source", "Outbound - Touchbase")
+        .eq("call_status", "Successful").gte("date_created", monthStart);
       return q;
     })();
     const quotationsQuery = (() => {

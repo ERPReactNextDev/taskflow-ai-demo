@@ -197,7 +197,7 @@ function DashboardContent() {
       let toStr: string;
 
       if (dateCreatedFilterRange?.from && dateCreatedFilterRange?.to) {
-        // Use the selected range exactly
+        // Use the selected range exactly for SO
         fromStr = toDateStr(dateCreatedFilterRange.from);
         toStr   = toDateStr(dateCreatedFilterRange.to);
       } else {
@@ -209,6 +209,7 @@ function DashboardContent() {
         toStr   = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
       }
 
+      // SI follows the selected date range (same as SO)
       const [siRes, soRes] = await Promise.all([
         fetch(`/api/tsm-history-si?tsm=${encodeURIComponent(referenceid)}&from=${fromStr}&to=${toStr}`),
         fetch(`/api/tsm-history-so?tsm=${encodeURIComponent(referenceid)}&from=${fromStr}&to=${toStr}`),
@@ -247,8 +248,9 @@ function DashboardContent() {
       ]);
       const countData  = await countRes.json();
       const targetData = await targetRes.json();
-      setOutboundCallsCount(Number(countData.count)    || 0);
-      setOutboundCallsTarget(Number(targetData.target) || 0);
+      // Only Successful calls count toward OB target
+      setOutboundCallsCount(Number(countData.successful) || 0);
+      setOutboundCallsTarget(Number(targetData.target)   || 0);
     } catch { /* silent */ } finally {
       setLoadingOutboundCalls(false);
       setLoadingOutboundCallsTarget(false);
@@ -400,6 +402,7 @@ function DashboardContent() {
                 total={totalActualSales}
                 loading={loadingHistory}
                 userId={queryUserId}
+                dateRange={dateCreatedFilterRange}
               />
               <RunningSoCard
                 referenceid={userDetails.referenceid}
@@ -409,6 +412,7 @@ function DashboardContent() {
                 totalSPF={totalSoSPF}
                 loading={loadingHistory}
                 userId={queryUserId}
+                dateRange={dateCreatedFilterRange}
               />
               <OutboundTouchbaseCountCard
                 referenceid={userDetails.referenceid}

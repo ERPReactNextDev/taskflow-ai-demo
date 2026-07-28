@@ -41,7 +41,7 @@ export async function GET(req: Request) {
 
     const agentIds = await getAgentIds(manager);
     if (agentIds.length === 0) {
-      return NextResponse.json({ success: true, count: 0 }, { status: 200 });
+      return NextResponse.json({ success: true, count: 0, successful: 0, unsuccessful: 0 }, { status: 200 });
     }
 
     const now        = new Date();
@@ -51,16 +51,24 @@ export async function GET(req: Request) {
 
     let q = supabase
       .from("history")
-      .select("id", { count: "exact", head: true })
+      .select("call_status", { count: "exact" })
       .in("referenceid", agentIds)
       .eq("source", "Outbound - Touchbase")
       .gte("date_created", startISO);
     if (endISO) q = q.lte("date_created", endISO);
 
-    const { count, error } = await q;
+    const { data, count, error } = await q;
     if (error) throw error;
 
-    return NextResponse.json({ success: true, count: count || 0 }, { status: 200 });
+    const successful   = (data ?? []).filter((r) => r.call_status === "Successful").length;
+    const unsuccessful = (count ?? 0) - successful;
+
+    return NextResponse.json({
+      success: true,
+      count: count || 0,
+      successful,
+      unsuccessful,
+    }, { status: 200 });
   } catch (err: any) {
     console.error("manager-history-outbound GET error:", err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

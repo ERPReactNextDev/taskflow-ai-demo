@@ -6,12 +6,19 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE!
 );
 
-// GET /api/admin-sales-quota?year=2026
-// Returns the sum of ALL sales_quota rows for active TSAs across the entire system.
+const MONTH_NAMES = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+// GET /api/admin-sales-quota?year=2026&month=July
+// Returns the sum of sales_quota rows for active TSAs for the given month (MTD target).
 export async function GET(req: Request) {
   try {
-    const url  = new URL(req.url);
-    const year = url.searchParams.get("year") ?? new Date().getFullYear().toString();
+    const url   = new URL(req.url);
+    const now   = new Date();
+    const year  = url.searchParams.get("year")  ?? now.getFullYear().toString();
+    const month = url.searchParams.get("month") ?? MONTH_NAMES[now.getMonth()];
 
     // Get all active TSA ReferenceIDs system-wide
     const { data: agents, error: agentError } = await supabase
@@ -31,7 +38,8 @@ export async function GET(req: Request) {
       .from("sales_quota")
       .select("amount")
       .in("referenceid", agentIds)
-      .eq("year", year);
+      .eq("year", year)
+      .eq("month", month);
 
     if (quotaError) throw quotaError;
 

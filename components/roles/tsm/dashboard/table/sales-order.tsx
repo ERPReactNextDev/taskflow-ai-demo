@@ -72,6 +72,7 @@ interface HistoryItem {
   start_date: string;
   end_date: string;
   date_created: string;
+  delivery_date?: string;
 }
 
 interface Agent {
@@ -213,6 +214,26 @@ export function SalesOrderTableCard({
 
     const map = new Map<string, AgentStats>();
 
+    // Helper: check delivery_date is within the filter range (same as tsm-history-si)
+    const toMidnight = (val: any): Date => {
+      const d = val instanceof Date ? val : new Date(val);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    };
+    const rangeStart = dateCreatedFilterRange?.from ? toMidnight(dateCreatedFilterRange.from) : null;
+    const rangeEnd   = dateCreatedFilterRange?.to   ? toMidnight(dateCreatedFilterRange.to)   : null;
+    if (rangeEnd) rangeEnd.setHours(23, 59, 59, 999);
+
+    const isDeliveredInRange = (item: HistoryItem): boolean => {
+      // Use delivery_date if available (matches tsm-history-si), otherwise fall back to date_created
+      const dateStr = item.delivery_date || item.date_created;
+      if (!dateStr) return true; // no date to filter on — include it
+      if (!rangeStart && !rangeEnd) return true;
+      const d = new Date(dateStr);
+      if (rangeStart && d < rangeStart) return false;
+      if (rangeEnd   && d > rangeEnd)   return false;
+      return true;
+    };
+
     history.forEach((item) => {
       const agentID = item.referenceid?.toLowerCase();
       if (!agentID) return;
@@ -224,14 +245,14 @@ export function SalesOrderTableCard({
         stat.totalSODoneCount++;
         stat.totalSOAmount += getField(item, soAmountField);
       }
-      if (item.type_activity === deliveredTypeActivity) {
+      if (item.type_activity === deliveredTypeActivity && isDeliveredInRange(item)) {
         stat.totalDeliveredCount++;
         stat.totalSalesInvoice += getField(item, deliveredAmountField);
       }
     });
 
     return Array.from(map.values());
-  }, [history, soStatus, soAmountField, deliveredTypeActivity, deliveredAmountField]);
+  }, [history, soStatus, soAmountField, deliveredTypeActivity, deliveredAmountField, dateCreatedFilterRange]);
 
   /* ── Known agents for panel ── */
   const knownAgents = useMemo(

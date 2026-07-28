@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { Spinner } from "@/components/ui/spinner";
-import { Info, X, ChevronDown } from "lucide-react";
+import { Info, X, Settings, ChevronDown } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -40,6 +40,7 @@ interface AgentKpiData {
   runningTarget: number; totalActualSales: number;
   obCallsCount: number; obCallsTarget: number;
   quotesCount: number; quotesTarget: number;
+  quotationAmountActual: number; quotationAmountTarget: number;
   callsToQuotesCount: number;
   quoteToSOQuotationCount: number; quoteToSOSalesOrderCount: number;
   soToSISalesOrderCount: number; soToSIDeliveredCount: number;
@@ -84,6 +85,9 @@ function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
   const salesPct  = Math.min(100, d.runningTarget>0  ? (d.totalActualSales/d.runningTarget)*100 : 0);
   const obPct     = Math.min(100, d.obCallsTarget>0  ? (d.obCallsCount/d.obCallsTarget)*100     : 0);
   const qPct      = Math.min(100, d.quotesTarget>0   ? (d.quotesCount/d.quotesTarget)*100        : 0);
+  const qR        = standardRating(qPct);
+  const quotationAmtPct = Math.min(100, d.quotationAmountTarget>0 ? (d.quotationAmountActual/d.quotationAmountTarget)*100 : 0);
+  const quotationAmtR   = standardRating(quotationAmtPct);
   const c2qRaw    = d.obCallsCount>0 ? (d.callsToQuotesCount/d.obCallsCount)*100 : 0;
   const q2soPct   = d.quoteToSOQuotationCount>0  ? (d.quoteToSOSalesOrderCount/d.quoteToSOQuotationCount)*100  : 0;
   const s2siPct   = d.soToSISalesOrderCount>0    ? (d.soToSIDeliveredCount/d.soToSISalesOrderCount)*100        : 0;
@@ -96,13 +100,14 @@ function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
   const nqhtR=nonQuotationHTRating(d.avgNonQuotationHT); const nqhtA=d.avgNonQuotationHT>0?Math.min((24/d.avgNonQuotationHT)*100,100):0;
   const csrR=Math.round((rtR+qhtR+nqhtR)/3); const csrA=(rtA+qhtA+nqhtA)/3;
   const rows: KpiRow[] = [
-    { label:"Sales Performance (SO/SI)", weight:0.5,  achievementPct:salesPct,         rating:standardRating(salesPct), weightedScore:0.5*standardRating(salesPct),  detail:`Actual: ${fmtPeso(d.totalActualSales)} / Target: ${fmtPeso(d.runningTarget)}` },
-    { label:"OB Calls",                  weight:0.1,  achievementPct:obPct,             rating:standardRating(obPct),    weightedScore:0.1*standardRating(obPct),     detail:`${d.obCallsCount} / Target: ${d.obCallsTarget>0?d.obCallsTarget:"—"}` },
-    { label:"Quotes Generated",          weight:0.1,  achievementPct:qPct,              rating:standardRating(qPct),     weightedScore:0.1*standardRating(qPct),      detail:`${d.quotesCount} / Target: ${d.quotesTarget>0?d.quotesTarget:"—"}` },
-    { label:"Conversion Metrics",        weight:0.05, achievementPct:convA,             rating:convR,                    weightedScore:0.05*convR,                    detail:`Calls→Quote: ${fmt(c2qRaw,0)}% · Quote→SO: ${fmt(q2soPct,0)}% · SO→SI: ${fmt(s2siPct,0)}%` },
-    { label:"Client Visits",             weight:0.1,  achievementPct:cvPct,             rating:standardRating(cvPct),    weightedScore:0.1*standardRating(cvPct),     detail:`${d.clientVisitsCount} / Target: ${d.clientVisitsTarget}` },
-    { label:"CSR Metrics",               weight:0.05, achievementPct:csrA,              rating:csrR,                     weightedScore:0.05*csrR,                     detail:`Resp. Time: ${fmtHours(d.avgResponseTime)} · Quotation HT: ${fmtHours(d.avgQuotationHT)} · Non Quotation HT: ${fmtHours(d.avgNonQuotationHT)}` },
-    { label:"New Account Development",   weight:0.1,  achievementPct:naPct,             rating:standardRating(naPct),    weightedScore:0.1*standardRating(naPct),     detail:`Accounts ${d.newAccountCount} / Target: ${d.newAccountTarget}` },
+    { label:"Sales Performance",          weight:0.5,  achievementPct:salesPct,       rating:standardRating(salesPct), weightedScore:0.5*standardRating(salesPct),  detail:`Actual: ${fmtPeso(d.totalActualSales)} / Target: ${fmtPeso(d.runningTarget)}` },
+    { label:"OB Calls (Successful)",                           weight:0.1,  achievementPct:obPct,           rating:standardRating(obPct),    weightedScore:0.1*standardRating(obPct),     detail:`${d.obCallsCount} / Target: ${d.obCallsTarget>0?d.obCallsTarget:"—"}` },
+    { label:"Quotes Generated (No. of Quotation)",weight:0.05, achievementPct:qPct,            rating:qR,                       weightedScore:0.05*qR,                       detail:`${d.quotesCount} quotes / Target: ${d.quotesTarget>0?d.quotesTarget:"—"}` },
+    { label:"Amount of Quotation",                weight:0.05, achievementPct:quotationAmtPct, rating:quotationAmtR,            weightedScore:0.05*quotationAmtR,            detail:`₱${d.quotationAmountActual.toLocaleString(undefined,{maximumFractionDigits:2})} / Target: ₱${d.quotationAmountTarget>0?d.quotationAmountTarget.toLocaleString():"—"}` },
+    { label:"Conversion Metrics",                 weight:0.05, achievementPct:convA,           rating:convR,                    weightedScore:0.05*convR,                    detail:`Calls→Quote: ${fmt(c2qRaw,0)}% (tgt 20%) · Quote→SO: ${fmt(q2soPct,0)}% (tgt 30%) · SO→SI: ${fmt(s2siPct,0)}% (tgt 70%)` },
+    { label:"Client Visits",                      weight:0.1,  achievementPct:cvPct,           rating:standardRating(cvPct),    weightedScore:0.1*standardRating(cvPct),     detail:`${d.clientVisitsCount} / Target: ${d.clientVisitsTarget}` },
+    { label:"CSR Metrics",                        weight:0.05, achievementPct:csrA,            rating:csrR,                     weightedScore:0.05*csrR,                     detail:`Resp. Time: ${fmtHours(d.avgResponseTime)} · Quotation HT: ${fmtHours(d.avgQuotationHT)} · Non Quotation HT: ${fmtHours(d.avgNonQuotationHT)}` },
+    { label:"New Account Development",            weight:0.1,  achievementPct:naPct,           rating:standardRating(naPct),    weightedScore:0.1*standardRating(naPct),     detail:`Accounts ${d.newAccountCount} / Target: ${d.newAccountTarget}` },
   ];
   return { rows, totalScore: rows.reduce((s,r)=>s+r.weightedScore,0) };
 }
@@ -179,8 +184,9 @@ const DetailModal: React.FC<{ agent: AgentKpiData; onClose: () => void }> = ({ a
             {[
               { label:"Sales Actual",  value:fmtPeso(agent.totalActualSales) },
               { label:"Sales Target",  value:fmtPeso(agent.runningTarget) },
-              { label:"OB Calls",      value:`${agent.obCallsCount} / ${agent.obCallsTarget>0?agent.obCallsTarget:"—"}` },
+              { label:"OB Calls (Successful)",      value:`${agent.obCallsCount} / ${agent.obCallsTarget>0?agent.obCallsTarget:"—"}` },
               { label:"Quotes",        value:`${agent.quotesCount} / ${agent.quotesTarget>0?agent.quotesTarget:"—"}` },
+              { label:"Quote Amount",  value:`${fmtPeso(agent.quotationAmountActual)} / ${agent.quotationAmountTarget>0?fmtPeso(agent.quotationAmountTarget):"—"}` },
               { label:"Calls→Quote",   value:`${agent.callsToQuotesCount}` },
               { label:"Quote→SO",      value:`${agent.quoteToSOSalesOrderCount} / ${agent.quoteToSOQuotationCount}` },
               { label:"SO→SI",         value:`${agent.soToSIDeliveredCount} / ${agent.soToSISalesOrderCount}` },
@@ -202,7 +208,7 @@ const DetailModal: React.FC<{ agent: AgentKpiData; onClose: () => void }> = ({ a
   );
 };
 
-// ── Agent summary card ────────────────────────────────────────────────────────
+// ── Main export ───────────────────────────────────────────────────────────────
 
 const AgentSummaryCard: React.FC<{ agent: AgentKpiData }> = ({ agent }) => {
   const [showDetail, setShowDetail] = useState(false);

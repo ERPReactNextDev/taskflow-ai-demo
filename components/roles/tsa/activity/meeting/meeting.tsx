@@ -269,16 +269,97 @@ function EditMeetingDialog({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+// ─── Meeting Card ─────────────────────────────────────────────────────────────
+
+function MeetingCard({
+  meeting,
+  onDelete,
+  onEdit,
+}: {
+  meeting: MeetingItem;
+  onDelete: (id: number) => void;
+  onEdit: (meeting: MeetingItem) => void;
+}) {
+  return (
+    <Card className="border border-slate-200 shadow-sm hover:shadow-md transition-shadow rounded-lg">
+      <CardHeader className="flex flex-row items-start justify-between pb-2 pt-4 px-4">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-50 border border-indigo-100 shrink-0">
+            <CalendarClock size={14} className="text-indigo-500" />
+          </span>
+          <CardTitle className="text-xs font-bold text-slate-800 uppercase tracking-wide truncate">
+            {meeting.type_activity}
+          </CardTitle>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          {/* Edit button */}
+          <button
+            onClick={() => onEdit(meeting)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition-all"
+            title="Edit meeting"
+          >
+            <Pencil size={13} />
+          </button>
+
+          {/* Delete button */}
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <button
+                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all"
+                title="Delete meeting"
+              >
+                <Trash2 size={13} />
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Meeting?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. The meeting will be permanently deleted.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-red-600 hover:bg-red-700"
+                  onClick={() => onDelete(meeting.id)}
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </CardHeader>
+
+      <CardContent className="text-[11px] space-y-1.5 px-4 pb-4 text-slate-600">
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold text-slate-500 w-10 shrink-0">Start</span>
+          <span>{formatDateTime(meeting.start_date)}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold text-slate-500 w-10 shrink-0">End</span>
+          <span>{formatDateTime(meeting.end_date)}</span>
+        </div>
+        {meeting.remarks && (
+          <div className="flex items-start gap-1.5 pt-0.5">
+            <span className="font-semibold text-slate-500 w-10 shrink-0 pt-px">Note</span>
+            <span className="capitalize text-slate-500 leading-relaxed">{meeting.remarks}</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function Meeting({ referenceid, tsm, manager }: MeetingProps) {
   const [meetings, setMeetings] = useState<MeetingItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [viewAllOpen, setViewAllOpen] = useState(false);
-
-  // Edit dialog state
   const [editTarget, setEditTarget] = useState<MeetingItem | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     async function fetchMeetings() {
       setLoading(true);
@@ -288,136 +369,27 @@ export function Meeting({ referenceid, tsm, manager }: MeetingProps) {
           .select("*")
           .eq("referenceid", referenceid)
           .order("date_created", { ascending: false });
-
         if (error) throw error;
         setMeetings(data || []);
       } catch {
-        sileo.error({
-          title: "Failed",
-          description: "Failed to load meetings.",
-          duration: 4000,
-          position: "top-right",
-          fill: "black",
-          styles: { title: "text-white!", description: "text-white" },
-        });
+        sileo.error({ title: "Failed", description: "Failed to load meetings.", duration: 4000, position: "top-right", fill: "black", styles: { title: "text-white!", description: "text-white" } });
       } finally {
         setLoading(false);
       }
     }
-
     fetchMeetings();
   }, [referenceid]);
 
-  // ─── Meeting Card ─────────────────────────────────────────────────────────────
-
-  function MeetingCard({
-    meeting,
-    onDelete,
-    onEdit,
-  }: {
-    meeting: MeetingItem;
-    onDelete: (id: number) => void;
-    onEdit: (meeting: MeetingItem) => void;
-  }) {
-    return (
-      <Card className="border border-slate-200 shadow-sm hover:shadow-md transition-shadow rounded-lg">
-        <CardHeader className="flex flex-row items-start justify-between pb-2 pt-4 px-4">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-50 border border-indigo-100 shrink-0">
-              <CalendarClock size={14} className="text-indigo-500" />
-            </span>
-            <CardTitle className="text-xs font-bold text-slate-800 uppercase tracking-wide truncate">
-              {meeting.type_activity}
-            </CardTitle>
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0 ml-2">
-            {/* Edit button */}
-            <button
-              onClick={() => onEdit(meeting)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition-all"
-              title="Edit meeting"
-            >
-              <Pencil size={13} />
-            </button>
-
-            {/* Delete button */}
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <button
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all"
-                  title="Delete meeting"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Meeting?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. The meeting will be permanently deleted.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    className="bg-red-600 hover:bg-red-700"
-                    onClick={() => onDelete(meeting.id)}
-                  >
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </CardHeader>
-
-        <CardContent className="text-[11px] space-y-1.5 px-4 pb-4 text-slate-600">
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-slate-500 w-10 shrink-0">Start</span>
-            <span>{formatDateTime(meeting.start_date)}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-slate-500 w-10 shrink-0">End</span>
-            <span>{formatDateTime(meeting.end_date)}</span>
-          </div>
-          {meeting.remarks && (
-            <div className="flex items-start gap-1.5 pt-0.5">
-              <span className="font-semibold text-slate-500 w-10 shrink-0 pt-px">Note</span>
-              <span className="capitalize text-slate-500 leading-relaxed">{meeting.remarks}</span>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleDelete = async (id: number) => {
     try {
       const { error } = await supabase.from("meetings").delete().eq("id", id);
       if (error) throw error;
       setMeetings((prev) => prev.filter((m) => m.id !== id));
-      sileo.success({
-        title: "Deleted",
-        description: "Meeting deleted successfully!",
-        duration: 3000,
-        position: "top-right",
-        fill: "black",
-        styles: { title: "text-white!", description: "text-white" },
-      });
+      sileo.success({ title: "Deleted", description: "Meeting deleted successfully!", duration: 3000, position: "top-right", fill: "black", styles: { title: "text-white!", description: "text-white" } });
     } catch {
-      sileo.error({
-        title: "Failed",
-        description: "Failed to delete meeting, try again.",
-        duration: 4000,
-        position: "top-right",
-        fill: "black",
-        styles: { title: "text-white!", description: "text-white" },
-      });
+      sileo.error({ title: "Failed", description: "Failed to delete meeting, try again.", duration: 4000, position: "top-right", fill: "black", styles: { title: "text-white!", description: "text-white" } });
     }
   };
-
   const handleEdit = (meeting: MeetingItem) => {
     setEditTarget(meeting);
     setEditOpen(true);

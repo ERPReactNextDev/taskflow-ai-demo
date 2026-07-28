@@ -54,8 +54,9 @@ export async function GET(req: Request) {
     }
 
     const agentIds  = agents.map((a) => a.ReferenceID);
-    const yearStart = `${year}-01-01T00:00:00Z`;
-    const yearEnd   = `${year}-12-31T23:59:59Z`;
+    // Use Manila +08:00 bounds — consistent with tsm-agent-outbound-history
+    const yearStart = `${year}-01-01T00:00:00+08:00`;
+    const yearEnd   = `${year}-12-31T23:59:59.999+08:00`;
 
     // 2. Fetch all Outbound - Touchbase records for those agents for the year
     const query = supabase
@@ -69,11 +70,15 @@ export async function GET(req: Request) {
     const obRows = await fetchAllRows(query);
 
     // 3. Build obMap: { [referenceid]: { [month]: count } }
+    //    Use Manila timezone for month bucketing so months align with Outbound History tab.
     const obMap: Record<string, Record<string, number>> = {};
 
     for (const row of obRows ?? []) {
       const ref   = row.referenceid;
-      const month = MONTHS[new Date(row.date_created).getMonth()];
+      const month = new Date(row.date_created).toLocaleDateString("en-US", {
+        month: "long",
+        timeZone: "Asia/Manila",
+      });
 
       if (!obMap[ref])        obMap[ref] = {};
       if (!obMap[ref][month]) obMap[ref][month] = 0;

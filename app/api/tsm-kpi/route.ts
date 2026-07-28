@@ -1,4 +1,5 @@
-﻿﻿import { NextResponse } from "next/server";
+﻿﻿// Monthly quota & SI logic (updated 2026-07-23)
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { MongoClient, Db } from "mongodb";
 
@@ -263,25 +264,26 @@ export async function GET(req: Request) {
 
     // ── Date scoping ──────────────────────────────────────────────────────────
     const now         = new Date();
-    const year        = now.getFullYear().toString();
+    
+    // Derive today and current month in Manila time
+    const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const [mYear, mMonth] = manilaToday.split("-");
+    const manilaMonthStart = `${mYear}-${mMonth}-01`;
+    const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
+    const manilaMonthEnd = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
+    
+    const year = mYear;
+    
     // Targets (OB, Quote, Site Visit) always use current month, date range only affects actuals
     const monthSlices = [
       {
-        year: now.getFullYear().toString(),
+        year: mYear,
         month: monthLabel(now),
-        daysInMonth: getDaysInMonth(now.getFullYear(), now.getMonth()),
-        coveredDays: getDaysInMonth(now.getFullYear(), now.getMonth()),
+        daysInMonth: monthDays,
+        coveredDays: monthDays,
       },
     ];
-    const targetMonths = [monthLabel(now)];
-    const targetYears = [now.getFullYear().toString()];
     const shouldProrateMonthlyTargets = false; // Targets are always full monthly values — never prorate
-
-    // Derive today's date string in Manila time (YYYY-MM-DD)
-    const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }); // e.g. "2026-07-08"
-    const [manilaYear, manilaMonthNum] = manilaToday.split("-");
-    const monthStartDate = `${manilaYear}-${manilaMonthNum}-01`;
-    const todayDate      = manilaToday;
 
     // New Account Dev scoped to the selected month (or current month in Manila time)
     const naRefDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
@@ -291,21 +293,26 @@ export async function GET(req: Request) {
     const naFrom = from ?? `${naYear}-${naMonth}-01`;
     const naTo   = to   ?? `${naYear}-${naMonth}-${String(naDaysInMonth).padStart(2, "0")}`;
 
-    // SI / SO use the full date range (YTD when no filter)
-    const siStart = from ? `${from}T00:00:00+08:00` : `${now.getFullYear()}-01-01T00:00:00+08:00`;
-    const siEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
+    // SI always uses full month boundaries derived from the 'from' date (or current month if not provided).
+    // SI total is never filtered by the selected date range — always the full month.
+    const siRefDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
+    const siYear    = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
+    const siMonth   = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(5, 7);
+    const siMonthDays = new Date(Number(siYear), Number(siMonth), 0).getDate();
+    const siStart   = `${siYear}-${siMonth}-01T00:00:00+08:00`;
+    const siEnd     = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}T23:59:59.999+08:00`;
 
     // OB Calls / Quotes / Pipeline: selected range, else current month
-    const obStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
-    const obEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
-    const quotesStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
-    const quotesEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
-    const pipelineStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
-    const pipelineEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
+    const obStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
+    const obEnd   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
+    const quotesStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
+    const quotesEnd   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
+    const pipelineStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
+    const pipelineEnd   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
 
     // Client Visits (tasklog): use +08:00 timezone like fetch-tasklog-supabase
-    const clientVisitsStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
-    const clientVisitsEnd   = to ? `${to}T23:59:59+08:00` : `${todayDate}T23:59:59+08:00`;
+    const clientVisitsStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
+    const clientVisitsEnd   = to ? `${to}T23:59:59+08:00` : `${manilaMonthEnd}T23:59:59+08:00`;
 
     // ── Fetch agents ──────────────────────────────────────────────────────────
     const agents = await getAgents(tsm);
@@ -317,14 +324,16 @@ export async function GET(req: Request) {
 
     // ── Parallel data fetches ─────────────────────────────────────────────────
 
-    // 1. Sales quotas per agent for the year
+    // 1. Sales quotas per agent for the current month (derived from SI query month)
+    const quotaMonth = siRefDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
     const quotasQuery = supabase
       .from("sales_quota")
-      .select("referenceid, month, amount")
+      .select("referenceid, amount")
       .in("referenceid", agentIds)
-      .eq("year", year);
+      .eq("year", siYear)
+      .eq("month", quotaMonth);
 
-    // 2. SI (actual sales) — YTD or selected range, matches TSA annual quota target
+    // 2. SI (actual sales) — always full month boundaries based on selected date
     const siQuery = supabase
       .from("history")
       .select("referenceid, actual_sales")
@@ -333,12 +342,13 @@ export async function GET(req: Request) {
       .gte("date_created", siStart)
       .lte("date_created", siEnd);
 
-    // 3. OB calls — scoped to the selected date range (or current month if no range)
+    // 3. OB calls — Successful only, scoped to the selected date range (or current month if no range)
     const obQuery = supabase
       .from("history")
       .select("referenceid")
       .in("referenceid", agentIds)
       .eq("source", "Outbound - Touchbase")
+      .eq("call_status", "Successful")
       .gte("date_created", obStart)
       .lte("date_created", obEnd);
 
@@ -360,26 +370,22 @@ export async function GET(req: Request) {
     //    (or current month if no range — matches kpi-monthly-actuals)
     const quotesQuery = supabase
       .from("history")
-      .select("referenceid, quotation_number")
+      .select("referenceid, quotation_number, quotation_amount")
       .in("referenceid", agentIds)
       .eq("type_activity", "Quotation Preparation")
       .eq("status", "Quote-Done")
       .gte("date_created", quotesStart)
       .lte("date_created", quotesEnd);
 
-    // 6. Quote targets per agent — fetch all months in the target range (like obTargetPromise)
-    // Secondary order by id DESC is a deterministic tie-breaker: if there are duplicate rows
-    // for the same referenceid+month+year with equal (or null) date_created, ordering by
-    // date_created alone is not enough — Postgres can return them in any order, which is
-    // exactly why "120" vs "4" was flip-flopping between identical requests.
+    // 6. Quote targets per agent (count target + amount target)
     const quoteTargetQuery = supabase
       .from("sales_quotation")
-      .select("id, referenceid, quote_target, month, year")
+      .select("id, referenceid, quote_target, quotation_amount_target, month, year")
       .in("referenceid", agentIds)
-      .eq("month", monthLabel(now))         // always current calendar month
-      .eq("year", now.getFullYear().toString())
+      .eq("month", quotaMonth)
+      .eq("year", siYear)
       .order("date_created", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: false }); // ✅ FIX: deterministic tie-breaker — this is the real fix
+      .order("id", { ascending: false });
 
     // 7. Pipeline activities — same scope as OB/quotes
     const pipelineQuery = supabase
@@ -459,10 +465,10 @@ export async function GET(req: Request) {
 
     // ── Build per-agent KPI data ──────────────────────────────────────────────
 
-    // Sales quota map: { referenceid → total for selected period }
+    // Sales quota map: { referenceid → monthly quota }
     const quotaMap: Record<string, number> = {};
     for (const row of quotasData ?? []) {
-      quotaMap[row.referenceid] = (quotaMap[row.referenceid] ?? 0) + (Number(row.amount) || 0);
+      quotaMap[row.referenceid] = Number(row.amount) || 0;
     }
 
     // SI actual map: { referenceid → total }
@@ -494,19 +500,22 @@ export async function GET(req: Request) {
       });
     }
 
-    // Quotes map: { referenceid → unique quotation numbers }
+    // Quotes map: { referenceid → unique quotation numbers } + quotation amount
     const quotesSetMap: Record<string, Set<string>> = {};
+    const quotationAmountMap: Record<string, number> = {};
     for (const row of quotesData ?? []) {
       if (!quotesSetMap[row.referenceid]) quotesSetMap[row.referenceid] = new Set();
       if (row.quotation_number) quotesSetMap[row.referenceid].add(row.quotation_number);
+      quotationAmountMap[row.referenceid] = (quotationAmountMap[row.referenceid] ?? 0) + (Number(row.quotation_amount) || 0);
     }
 
-    // Quote target map: { referenceid → rows } — first row per agent+month wins (latest due to ORDER BY date_created DESC, id DESC)
+    // Quote target map: { referenceid → rows } — first row per agent+month wins
     const quoteTargetMap: Record<string, Array<{ month: string; year: string; targetValue: number }>> = {};
-    const quoteTargetSeen = new Set<string>(); // deduplicate: referenceid+month+year
+    const quotationAmountTargetMap: Record<string, number> = {};
+    const quoteTargetSeen = new Set<string>();
     for (const row of quoteTargetData ?? []) {
       const key = `${row.referenceid}|${row.month}|${row.year}`;
-      if (quoteTargetSeen.has(key)) continue; // skip older duplicates
+      if (quoteTargetSeen.has(key)) continue;
       quoteTargetSeen.add(key);
       if (!quoteTargetMap[row.referenceid]) quoteTargetMap[row.referenceid] = [];
       quoteTargetMap[row.referenceid].push({
@@ -514,6 +523,10 @@ export async function GET(req: Request) {
         year: row.year,
         targetValue: Number(row.quote_target) || 0,
       });
+      // Store quotation amount target (take first/latest row per agent)
+      if (!quotationAmountTargetMap[row.referenceid]) {
+        quotationAmountTargetMap[row.referenceid] = Number(row.quotation_amount_target) || 0;
+      }
     }
 
     // Pipeline groups: { referenceid → Map<activity_ref → { hasOB, hasQuote, hasSO, hasSI }> }
@@ -565,19 +578,16 @@ export async function GET(req: Request) {
 
     // DEBUG: log target rows for diagnosis (safe to remove once verified in prod)
     console.log(
-      "[tsm-kpi] from=%s to=%s targetMonths=%s targetYears=%s obTargetData=%s quoteTargetData=%s",
-      from, to, JSON.stringify(targetMonths), JSON.stringify(targetYears),
+      "[tsm-kpi] from=%s to=%s siStart=%s siEnd=%s obTargetData=%s quoteTargetData=%s",
+      from, to, siStart, siEnd,
       JSON.stringify(obTargetData?.map(r => ({ ref: r.referenceid, ob: r.ob_target, m: r.month, y: r.year }))),
       JSON.stringify(quoteTargetData?.map(r => ({ ref: r.referenceid, qt: r.quote_target, m: r.month, y: r.year })))
     );
 
     // ── Calculate CSR metrics for each agent ──────────────────
-    // Derive today and current month in Manila time for CSR metrics using existing manilaToday
-    const [mYear, mMonth] = manilaToday.split("-");
-    const manilaMonthStart = `${mYear}-${mMonth}-01`;
-    const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
-    const csrFromDate = from || manilaMonthStart;
-    const csrToDate = to || manilaMonthEnd;
+    // CSR metrics use the full month from SI date (same as SI query)
+    const csrFromDate = `${siYear}-${siMonth}-01`;
+    const csrToDate   = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}`;
 
     const csrMetricsMap = await calcCsrForAgents(agentIds, csrFromDate, csrToDate, tsm);
 
@@ -615,9 +625,11 @@ export async function GET(req: Request) {
         quotesTarget:             calculateRangedTarget(
                                    quoteTargetMap[referenceid] ?? [],
                                    monthSlices,
-                                   0,   // 0 = no target set; avoids misleading hardcoded fallback
+                                   0,
                                    shouldProrateMonthlyTargets
                                  ),
+        quotationAmountActual:    quotationAmountMap[referenceid]      ?? 0,
+        quotationAmountTarget:    quotationAmountTargetMap[referenceid] ?? 0,
         callsToQuotesCount:       c2qCount,
         quoteToSOQuotationCount:  q2soQuotation,
         quoteToSOSalesOrderCount: q2soSalesOrder,

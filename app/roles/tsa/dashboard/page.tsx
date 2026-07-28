@@ -369,7 +369,7 @@ function DashboardContent() {
       if (dateCreatedFilterRange?.from) quotationParams.append("from", toDateStr(dateCreatedFilterRange.from));
 
       const [quotaRes, quotationRes] = await Promise.all([
-        fetch(`/api/sales-quota?referenceid=${encodeURIComponent(referenceid)}`),
+        fetch(`/api/sales-quota?referenceid=${encodeURIComponent(referenceid)}${dateCreatedFilterRange?.from ? `&month=${new Date(dateCreatedFilterRange.from).toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" })}` : ""}`),
         fetch(`/api/sales-quotation?${quotationParams.toString()}`),
       ]);
 
@@ -438,7 +438,8 @@ function DashboardContent() {
       const res = await fetch(url.toString());
       if (!res.ok) throw new Error("Failed to fetch outbound calls");
       const data = await res.json();
-      setOutboundCallsCount(Number(data.count) || 0);
+      // Only Successful calls count toward OB target
+      setOutboundCallsCount(Number(data.successful) || 0);
     } catch (err) {
       console.error("Error fetching outbound calls:", err);
     } finally {
@@ -759,13 +760,19 @@ function DashboardContent() {
       if (fromStr) siParams.append("from", fromStr);
       if (toStr)   siParams.append("to", toStr);
 
-      // SO is always current month — independent of the date filter
-      const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-      const [mYear, mMonth] = manilaToday.split("-");
-      const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
-      const monthStart = `${mYear}-${mMonth}-01`;
-      const monthEnd   = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
-      const soParams = new URLSearchParams({ referenceid, from: monthStart, to: monthEnd });
+      // SO follows the selected date range (or current month if no filter)
+      const soFrom = fromStr ?? (() => {
+        const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+        const [mYear, mMonth] = manilaToday.split("-");
+        return `${mYear}-${mMonth}-01`;
+      })();
+      const soTo = toStr ?? (() => {
+        const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+        const [mYear, mMonth] = manilaToday.split("-");
+        const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
+        return `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
+      })();
+      const soParams = new URLSearchParams({ referenceid, from: soFrom, to: soTo });
 
       const [siRes, soRes] = await Promise.all([
         fetch(`/api/history?${siParams}`),
@@ -1054,6 +1061,7 @@ function DashboardContent() {
                 totalRegular={totalSoRegular}
                 totalSPF={totalSoSPF}
                 loading={loadingHistory}
+                dateRange={dateCreatedFilterRange}
               />
               <OutboundTouchbaseCountCard
                 referenceid={userDetails.referenceid}

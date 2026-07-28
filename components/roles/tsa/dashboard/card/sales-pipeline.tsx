@@ -469,7 +469,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
               <div className="text-3xl font-extrabold text-gray-900">
                 {loadingObCalls ? <Spinner className="w-6 h-6" /> : obCallsCount}
               </div>
-              <div className="text-xs font-medium text-gray-600">OB Calls</div>
+              <div className="text-xs font-medium text-gray-600">OB Calls (Successful)</div>
               <div className="text-xs text-gray-500">
                 Target: {loadingObCallsTarget ? "..." : obCallsTarget} · Achievement: {obCallsPercentage}% · Rating: {obCallsRating}
               </div>
