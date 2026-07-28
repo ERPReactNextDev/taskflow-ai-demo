@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { User } from "lucide-react";
@@ -56,6 +56,58 @@ function toDateStr(d: Date): string {
 function fmtPeso(n: number): string {
   if (!n) return "—";
   return `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// ── Forecast helpers ──────────────────────────────────────────────────────────
+
+function getManilaDateInfo(ref?: Date): { daysInMonth: number; daysElapsed: number } {
+  const now    = ref ?? new Date();
+  const manila = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
+  const y = manila.getFullYear(), mo = manila.getMonth(), d = manila.getDate();
+  return { daysInMonth: new Date(y, mo + 1, 0).getDate(), daysElapsed: d };
+}
+
+function fmtCompact(n: number): string {
+  const abs = Math.abs(n), sign = n < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}₱${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000)     return `${sign}₱${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}₱${abs.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+}
+
+function fmtPct(n: number, dec = 1): string { return `${n.toFixed(dec)}%`; }
+
+type ForecastStatus = "hit" | "risk" | "miss";
+
+function forecastStatus(projPct: number): ForecastStatus {
+  if (projPct >= 100) return "hit";
+  if (projPct >= 80)  return "risk";
+  return "miss";
+}
+
+function hitProb(projPct: number): number {
+  if (projPct >= 100) return 95;
+  if (projPct >= 90)  return 70;
+  if (projPct >= 80)  return 40;
+  if (projPct >= 70)  return 20;
+  return 5;
+}
+
+const STATUS_CFG: Record<ForecastStatus, { label: string; cls: string; bg: string }> = {
+  hit:  { label: "✅ WILL HIT",  cls: "text-green-700", bg: "bg-green-50 border-green-200 text-green-700" },
+  risk: { label: "⚠️ AT RISK",  cls: "text-amber-700", bg: "bg-amber-50 border-amber-200 text-amber-700" },
+  miss: { label: "❌ WILL MISS", cls: "text-red-700",   bg: "bg-red-50 border-red-200 text-red-700"     },
+};
+
+function ProbBar({ prob, status }: { prob: number; status: ForecastStatus }) {
+  const barCls = status === "hit" ? "bg-green-500" : status === "risk" ? "bg-amber-400" : "bg-red-500";
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      <span className={`text-[10px] font-bold tabular-nums ${STATUS_CFG[status].cls}`}>{prob}%</span>
+      <div className="w-16 bg-gray-100 h-1 rounded-full">
+        <div className={`h-1 rounded-full ${barCls}`} style={{ width: `${prob}%` }} />
+      </div>
+    </div>
+  );
 }
 
 function fmtTimeMs(ms: number): string {
@@ -230,6 +282,7 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
+  const [showForecast, setShowForecast] = useState(false);
 
   // Create a unique cache key based on tsm and date range
   const getCacheKey = useCallback(() => {
@@ -309,6 +362,48 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
   );
   const totalSiPct = totals.plan > 0 ? Math.round((totals.siActual / totals.plan) * 100) : 0;
 
+  // ── Forecast date info — ALWAYS based on today's Manila date, not the filter range ──
+  const { daysInMonth, daysElapsed } = useMemo(() => {
+    // Compute days elapsed from the 1st of the current month to today (Manila time)
+    const now    = new Date();
+    const manila = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
+    const y      = manila.getFullYear();
+    const mo     = manila.getMonth();
+    const firstOfMonth = new Date(y, mo, 1);
+    const todayManila  = new Date(y, mo, manila.getDate());
+    const elapsed = Math.floor((todayManila.getTime() - firstOfMonth.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const daysInMonth  = new Date(y, mo + 1, 0).getDate();
+    return { daysInMonth, daysElapsed: Math.min(elapsed, daysInMonth) };
+  }, []); // no dependencies — recomputes on each render from live Date
+  const remainingDays = daysInMonth - daysElapsed;
+  const hasDateData   = daysElapsed > 0;
+
+  const agentForecast = useMemo(() => (agent: AgentRow) => {
+    if (!hasDateData || !agent.plan) return null;
+    const runRate      = agent.siActual / daysElapsed;
+    const projectedSI  = agent.siActual + runRate * remainingDays;
+    const projPct      = (projectedSI / agent.plan) * 100;
+    const status       = forecastStatus(projPct);
+    const prob         = hitProb(projPct);
+    const remGap       = Math.max(0, agent.plan - agent.siActual);
+    const catchUp      = remGap > 0 && remainingDays > 0 ? remGap / remainingDays : 0;
+    const paceGap      = catchUp - runRate;
+    return { runRate, projectedSI, projPct, status, prob, remGap, catchUp, paceGap };
+  }, [daysElapsed, remainingDays, hasDateData]);
+
+  const teamForecast = useMemo(() => {
+    if (!hasDateData || totals.plan <= 0) return null;
+    const runRate     = totals.siActual / daysElapsed;
+    const projSI      = totals.siActual + runRate * remainingDays;
+    const projPct     = (projSI / totals.plan) * 100;
+    const status      = forecastStatus(projPct);
+    const prob        = hitProb(projPct);
+    const remGap      = Math.max(0, totals.plan - totals.siActual);
+    const catchUp     = remGap > 0 && remainingDays > 0 ? remGap / remainingDays : 0;
+    const paceGap     = catchUp - runRate;
+    return { runRate, projSI, projPct, status, prob, remGap, catchUp, paceGap };
+  }, [totals, daysElapsed, remainingDays, hasDateData]);
+
   const thCls = "text-right py-2 px-1 font-bold text-gray-500 whitespace-nowrap";
   const tdCls = "text-right py-2.5 px-1 font-mono";
 
@@ -320,6 +415,17 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
             Agent Performance Detail — Team View
           </p>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowForecast((v) => !v)}
+              className={[
+                "px-3 py-1.5 text-xs font-bold uppercase rounded-md transition-colors border",
+                showForecast
+                  ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
+                  : "bg-white hover:bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400",
+              ].join(" ")}
+            >
+              {showForecast ? "Hide Forecast" : "Show Forecast (Beta Test)"}
+            </button>
             <button
               onClick={fetchData}
               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase rounded-md transition-colors"
@@ -377,8 +483,14 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-2 px-1 font-medium text-gray-500 whitespace-nowrap sticky left-0 bg-white z-10 min-w-[140px]">Agent</th>
                     <th className={thCls}>Plan</th>
-                    <th className={thCls}>SI Actual</th>
-                    <th className={thCls}>SO Actual</th>
+                    <th className={`${thCls} text-green-600`}>SI Actual</th>
+                    {showForecast && <th className={thCls} style={{ background: "#eef2ff" }}>Run Rate/Day</th>}
+                    {showForecast && <th className={thCls} style={{ background: "#eef2ff" }}>Projected EOM SI</th>}
+                    {showForecast && <th className={`${thCls} text-center`} style={{ background: "#eef2ff" }}>Proj. Att%</th>}
+                    {showForecast && <th className={`${thCls} text-center`} style={{ background: "#eef2ff" }}>Forecast</th>}                    {showForecast && <th className={`${thCls} text-center`} style={{ background: "#eef2ff" }}>Hit Prob</th>}
+                    {showForecast && <th className={thCls} style={{ background: "#eef2ff" }}>Rem. Gap</th>}
+                    {showForecast && <th className={thCls} style={{ background: "#eef2ff" }}>Catch-Up/Day</th>}
+                    {showForecast && <th className={thCls} style={{ background: "#eef2ff" }}>Pace Gap</th>}
                     <th className={thCls}>OB Calls</th>
                     <th className={thCls}>Calls → Quote</th>
                     <th className={thCls}>Quote → SO</th>
@@ -408,6 +520,47 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                       </td>
                       <td className={tdCls}>{fmtPeso(agent.plan)}</td>
                       <td className={`${tdCls} text-green-600`}>{fmtPeso(agent.siActual)}</td>
+                      {/* ── Forecast cells ── */}
+                      {showForecast && (() => {
+                        const fc = agentForecast(agent);
+                        const fcBg = "bg-indigo-50/20";
+                        if (!fc) return (
+                          <>
+                            {Array.from({ length: 8 }).map((_, i) => (
+                              <td key={i} className={`${tdCls} ${fcBg} text-gray-300`}>N/A</td>
+                            ))}
+                          </>
+                        );
+                        const cfg = STATUS_CFG[fc.status];
+                        return (
+                          <>
+                            <td className={`${tdCls} ${fcBg}`}>{fmtCompact(fc.runRate)}/d</td>
+                            <td className={`${tdCls} ${fcBg} font-bold`}>{fmtPeso(fc.projectedSI)}</td>
+                            <td className={`text-center py-2.5 px-1 ${fcBg}`}>
+                              <span className={`text-xs font-bold tabular-nums ${fc.projPct >= 100 ? "text-green-600" : fc.projPct >= 80 ? "text-amber-600" : "text-red-500"}`}>
+                                {fmtPct(fc.projPct)}
+                              </span>
+                            </td>
+                            <td className={`text-center py-2.5 px-1 ${fcBg}`}>
+                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${cfg.bg}`}>
+                                {cfg.label}
+                              </span>
+                            </td>
+                            <td className={`text-center py-2.5 px-1 ${fcBg}`}>
+                              <ProbBar prob={fc.prob} status={fc.status} />
+                            </td>
+                            <td className={`${tdCls} ${fcBg} ${fc.remGap <= 0 ? "text-green-600" : "text-red-500"}`}>
+                              {fc.remGap <= 0 ? "—" : fmtCompact(fc.remGap)}
+                            </td>
+                            <td className={`${tdCls} ${fcBg} ${fc.catchUp <= 0 ? "text-green-600" : fc.status === "risk" ? "text-amber-600" : "text-red-500"} font-bold`}>
+                              {fc.catchUp <= 0 ? "₱0 ✅" : fmtCompact(fc.catchUp) + "/d"}
+                            </td>
+                            <td className={`${tdCls} ${fcBg} ${fc.paceGap <= 0 ? "text-green-600" : "text-red-500"}`}>
+                              {fc.paceGap <= 0 ? "✅ OK" : `+${fmtCompact(fc.paceGap)}/d`}
+                            </td>
+                          </>
+                        );
+                      })()}
                       <td className={tdCls}>{fmtPeso(agent.soActual)}</td>
                       <td className={tdCls}>{agent.obCalls}{agent.obCallsTarget > 0 ? `/${agent.obCallsTarget}` : ""}</td>
                       <td className={tdCls}>
@@ -456,6 +609,42 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                     <td className="py-2.5 px-1 text-xs font-black uppercase tracking-widest text-gray-600">Team Total</td>
                     <td className={tdCls}>{fmtPeso(totals.plan)}</td>
                     <td className={`${tdCls} text-green-700`}>{fmtPeso(totals.siActual)}</td>
+                    {/* ── Team forecast cells ── */}
+                    {showForecast && (() => {
+                      const fcBg = "bg-indigo-50/20";
+                      if (!teamForecast) return Array.from({ length: 8 }).map((_, i) => (
+                        <td key={i} className={`${tdCls} ${fcBg} text-gray-300`}>N/A</td>
+                      ));
+                      const cfg = STATUS_CFG[teamForecast.status];
+                      return (
+                        <>
+                          <td className={`${tdCls} ${fcBg}`}>{fmtCompact(teamForecast.runRate)}/d</td>
+                          <td className={`${tdCls} ${fcBg} font-bold`}>{fmtPeso(teamForecast.projSI)}</td>
+                          <td className={`text-center py-2.5 px-1 ${fcBg}`}>
+                            <span className={`text-xs font-bold tabular-nums ${teamForecast.projPct >= 100 ? "text-green-700" : teamForecast.projPct >= 80 ? "text-amber-700" : "text-red-600"}`}>
+                              {fmtPct(teamForecast.projPct)}
+                            </span>
+                          </td>
+                          <td className={`text-center py-2.5 px-1 ${fcBg}`}>
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${cfg.bg}`}>
+                              {cfg.label}
+                            </span>
+                          </td>
+                          <td className={`text-center py-2.5 px-1 ${fcBg}`}>
+                            <ProbBar prob={teamForecast.prob} status={teamForecast.status} />
+                          </td>
+                          <td className={`${tdCls} ${fcBg} ${teamForecast.remGap <= 0 ? "text-green-700" : "text-red-600"}`}>
+                            {teamForecast.remGap <= 0 ? "—" : fmtCompact(teamForecast.remGap)}
+                          </td>
+                          <td className={`${tdCls} ${fcBg} font-bold ${teamForecast.catchUp <= 0 ? "text-green-700" : "text-red-600"}`}>
+                            {teamForecast.catchUp <= 0 ? "₱0 ✅" : fmtCompact(teamForecast.catchUp) + "/d"}
+                          </td>
+                          <td className={`${tdCls} ${fcBg} ${teamForecast.paceGap <= 0 ? "text-green-700" : "text-red-600"}`}>
+                            {teamForecast.paceGap <= 0 ? "✅ OK" : `+${fmtCompact(teamForecast.paceGap)}/d`}
+                          </td>
+                        </>
+                      );
+                    })()}
                     <td className={tdCls}>{fmtPeso(totals.soActual)}</td>
                     <td className={tdCls}>{totals.obCalls}{totals.obCallsTarget > 0 ? `/${totals.obCallsTarget}` : ""}</td>
                     <td className={tdCls}>
