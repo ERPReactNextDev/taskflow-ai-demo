@@ -52,7 +52,7 @@ export async function GET(req: Request) {
 
     let q = supabase
       .from("history")
-      .select("actual_sales")
+      .select("actual_sales, activity_reference_number")
       .eq("referenceid", referenceId)
       .eq("type_activity", "Delivered / Closed Transaction")
       .gte("delivery_date", startDateStr);
@@ -60,7 +60,32 @@ export async function GET(req: Request) {
     if (endDateStr) q = q.lte("delivery_date", endDateStr);
 
     const data = await fetchAllRows(q);
-    const total = data?.reduce((sum, item) => sum + (Number(item.actual_sales) || 0), 0) || 0;
+    
+    // Prevent duplicate counting by tracking unique activity_reference_number
+    const seenActivityRefs = new Set<string>();
+    let skippedDuplicates = 0;
+    let processedRows = 0;
+    
+    const total = data?.reduce((sum, item) => {
+      const activityRef = item.activity_reference_number;
+      
+      // Skip if we've already counted this activity (only if ref exists)
+      if (activityRef && seenActivityRefs.has(activityRef)) {
+        console.log(`[history] Skipping duplicate activity_ref: ${activityRef}, amount: ${item.actual_sales}`);
+        skippedDuplicates++;
+        return sum;
+      }
+      
+      // Mark this activity as seen (only if ref exists)
+      if (activityRef) {
+        seenActivityRefs.add(activityRef);
+      }
+      
+      processedRows++;
+      return sum + (Number(item.actual_sales) || 0);
+    }, 0) || 0;
+    
+    console.log(`[history] referenceid: ${referenceId}, Total rows: ${data?.length}, Processed: ${processedRows}, Skipped duplicates: ${skippedDuplicates}, Final total: ${total}`);
 
     return NextResponse.json({ success: true, total }, { status: 200 });
   } catch (Xchire_error: any) {

@@ -278,7 +278,7 @@ export async function GET(req: Request) {
       naCountData, naTargetData, siteVisitTargetData, clientVisitsData,
     ] = await Promise.all([
       fetchAllRows(supabase.from("sales_quota").select("referenceid, amount").in("referenceid", agentIds).eq("year", year).eq("month", monthLabel(now))),
-      fetchAllRows(supabase.from("history").select("referenceid, actual_sales").in("referenceid", agentIds).eq("type_activity", "Delivered / Closed Transaction").gte("date_created", siStart).lte("date_created", siEnd)),
+      fetchAllRows(supabase.from("history").select("referenceid, actual_sales, activity_reference_number").in("referenceid", agentIds).eq("type_activity", "Delivered / Closed Transaction").gte("delivery_date", siStart.split('T')[0]).lte("delivery_date", siEnd.split('T')[0])),
       fetchAllRows(supabase.from("history").select("referenceid").in("referenceid", agentIds).eq("source", "Outbound - Touchbase").eq("call_status", "Successful").gte("date_created", obStart).lte("date_created", obEnd)),
       fetchAllRows(supabase.from("sales_ob").select("id, referenceid, ob_target, month, year").in("referenceid", agentIds).eq("month", monthLabel(now)).eq("year", now.getFullYear().toString()).order("date_created", { ascending: false, nullsFirst: false }).order("id", { ascending: false })),
       fetchAllRows(supabase.from("history").select("referenceid, quotation_number, quotation_amount").in("referenceid", agentIds).eq("type_activity", "Quotation Preparation").eq("status", "Quote-Done").gte("date_created", quotesStart).lte("date_created", quotesEnd)),
@@ -294,8 +294,22 @@ export async function GET(req: Request) {
     const quotaMap: Record<string, number> = {};
     for (const r of quotasData) quotaMap[r.referenceid] = Number(r.amount) || 0;
 
+    // SI map with deduplication by activity_reference_number
     const siMap: Record<string, number> = {};
-    for (const r of siData) siMap[r.referenceid] = (siMap[r.referenceid] ?? 0) + (Number(r.actual_sales) || 0);
+    const siSeenRefs = new Map<string, Set<string>>();
+    for (const r of siData) {
+      const activityRef = r.activity_reference_number;
+      if (!siSeenRefs.has(r.referenceid)) {
+        siSeenRefs.set(r.referenceid, new Set());
+      }
+      if (activityRef && siSeenRefs.get(r.referenceid)!.has(activityRef)) {
+        continue; // Skip duplicate
+      }
+      if (activityRef) {
+        siSeenRefs.get(r.referenceid)!.add(activityRef);
+      }
+      siMap[r.referenceid] = (siMap[r.referenceid] ?? 0) + (Number(r.actual_sales) || 0);
+    }
 
     const obMap: Record<string, number> = {};
     for (const r of obData) obMap[r.referenceid] = (obMap[r.referenceid] ?? 0) + 1;

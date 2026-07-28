@@ -334,13 +334,14 @@ export async function GET(req: Request) {
       .eq("month", quotaMonth);
 
     // 2. SI (actual sales) — always full month boundaries based on selected date
+    // Use delivery_date (not date_created) to match the agent dashboard behavior
     const siQuery = supabase
       .from("history")
-      .select("referenceid, actual_sales")
+      .select("referenceid, actual_sales, activity_reference_number")
       .in("referenceid", agentIds)
       .eq("type_activity", "Delivered / Closed Transaction")
-      .gte("date_created", siStart)
-      .lte("date_created", siEnd);
+      .gte("delivery_date", siStart.split('T')[0])  // Convert to YYYY-MM-DD format
+      .lte("delivery_date", siEnd.split('T')[0]);
 
     // 3. OB calls — Successful only, scoped to the selected date range (or current month if no range)
     const obQuery = supabase
@@ -472,10 +473,41 @@ export async function GET(req: Request) {
     }
 
     // SI actual map: { referenceid → total }
+    // Use activity_reference_number to prevent duplicate counting
     const siMap: Record<string, number> = {};
+    const siSeenRefs = new Map<string, Set<string>>(); // referenceid → Set<activity_ref>
+    
+    let skippedDuplicates = 0;
+    let processedRows = 0;
+    
     for (const row of siData ?? []) {
+      const activityRef = row.activity_reference_number;
+      
+      // Initialize set for this agent if not exists
+      if (!siSeenRefs.has(row.referenceid)) {
+        siSeenRefs.set(row.referenceid, new Set());
+      }
+      
+      // Skip if we've already counted this activity for this agent
+      // Only dedupe if activity_reference_number exists
+      if (activityRef && siSeenRefs.get(row.referenceid)!.has(activityRef)) {
+        console.log(`[tsm-kpi] Skipping duplicate activity_ref: ${activityRef} for agent: ${row.referenceid}, amount: ${row.actual_sales}`);
+        skippedDuplicates++;
+        continue;
+      }
+      
+      // Mark this activity as seen for this agent (only if ref exists)
+      if (activityRef) {
+        siSeenRefs.get(row.referenceid)!.add(activityRef);
+      }
+      
+      // Add the sales amount
       siMap[row.referenceid] = (siMap[row.referenceid] ?? 0) + (Number(row.actual_sales) || 0);
+      processedRows++;
     }
+    
+    console.log(`[tsm-kpi] SI data: Total rows: ${siData?.length}, Processed: ${processedRows}, Skipped duplicates: ${skippedDuplicates}`);
+    console.log(`[tsm-kpi] SI totals by agent:`, siMap);
 
     // OB calls map: { referenceid → count }
     const obMap: Record<string, number> = {};

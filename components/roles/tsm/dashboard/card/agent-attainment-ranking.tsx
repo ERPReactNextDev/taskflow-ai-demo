@@ -8,7 +8,8 @@ import { X } from "lucide-react";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface AgentAttainmentRankingProps {
-  tsm: string;
+  tsm?: string;
+  manager?: string;
   dateRange?: { from?: Date; to?: Date };
 }
 
@@ -192,7 +193,9 @@ function AgentCard({ agent, onHide }: { agent: AgentCardData; onHide: () => void
 
 const HIDDEN_KEY = "tsm-attainment-hidden-agents";
 
-export const AgentAttainmentRanking: React.FC<AgentAttainmentRankingProps> = ({ tsm, dateRange }) => {
+export const AgentAttainmentRanking: React.FC<AgentAttainmentRankingProps> = ({ tsm, manager, dateRange }) => {
+  const id = manager ?? tsm ?? "";
+  const isManager = !!manager;
   const [agents,     setAgents]     = useState<AgentRaw[]>([]);
   const [loading,    setLoading]    = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
