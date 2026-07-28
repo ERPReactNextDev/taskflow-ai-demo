@@ -1227,14 +1227,24 @@ export default function TaskListEditDialog({
       const deliveryFeeNum = parseFloat(deliveryFeeState) || 0;
       const restockingFeeNum = parseFloat(restockingFeeState) || 0;
       const totalPriceWithDelivery = subtotal + deliveryFeeNum + restockingFeeNum;
-      // Calculate EWT deduction if applicable
-      const whtAmount = whtTypeState !== "none"
-        ? (vatTypeState === "vat_inc"
-          ? totalPriceWithDelivery / 1.12
-          : totalPriceWithDelivery
-        ) * (whtTypeState === "wht_1" ? 0.01 : 0.02)
-        : 0;
-      const totalQuotationAmount = Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
+      
+      let netOfVatSave, whtAmount, totalQuotationAmount;
+      
+      if (vatTypeState === "zero_rated") {
+        // Zero-rated: no VAT deduction, no WHT deduction
+        netOfVatSave = totalPriceWithDelivery;
+        whtAmount = 0;
+        totalQuotationAmount = Math.round(totalPriceWithDelivery * 100) / 100;
+      } else {
+        // vat_inc / vat_exe: normal behavior
+        netOfVatSave = totalPriceWithDelivery / 1.12;
+        whtAmount = whtTypeState !== "none"
+          ? parseFloat((netOfVatSave * (whtTypeState === "wht_1" ? 0.01 : 0.02)).toFixed(2))
+          : 0;
+        totalQuotationAmount = vatTypeState === "vat_exe"
+          ? Math.round((netOfVatSave - whtAmount) * 100) / 100
+          : Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
+      }
 
       const bodyData: Completed & {
         vat_type?: "vat_inc" | "vat_exe" | "zero_rated";
@@ -1409,15 +1419,25 @@ export default function TaskListEditDialog({
     
     const displayDate = activeItemAny.date_updated ?? activeItemAny.date_created ?? activeItemAny.start_date ?? new Date();
     
-    const whtBase = vatTypeState === "vat_inc"
-      ? totalPriceWithDelivery / 1.12
-      : totalPriceWithDelivery;
+    let netOfVat, whtBase, whtAmount, netAmountToCollect;
     
-    const whtAmount = whtTypeState !== "none"
-      ? Math.round((whtBase * (whtTypeState === "wht_1" ? 0.01 : 0.02)) * 100) / 100
-      : 0;
-      
-    const netAmountToCollect = Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
+    if (vatTypeState === "zero_rated") {
+      // Zero-rated: no VAT deduction, no WHT deduction
+      netOfVat = totalPriceWithDelivery;
+      whtBase = totalPriceWithDelivery;
+      whtAmount = 0;
+      netAmountToCollect = Math.round(totalPriceWithDelivery * 100) / 100;
+    } else {
+      // vat_inc / vat_exe: normal behavior
+      netOfVat = totalPriceWithDelivery / 1.12;
+      whtBase = netOfVat;
+      whtAmount = whtTypeState !== "none"
+        ? Math.round((whtBase * (whtTypeState === "wht_1" ? 0.01 : 0.02)) * 100) / 100
+        : 0;
+      netAmountToCollect = vatTypeState === "vat_exe"
+        ? Math.round((netOfVat - whtAmount) * 100) / 100
+        : Math.round((totalPriceWithDelivery - whtAmount) * 100) / 100;
+    }
 
     return {
       referenceNo: activeItemAny.quotation_number ?? "DRAFT-XXXX",
@@ -2536,7 +2556,7 @@ ${payload.whtType && payload.whtType !== "none"
 
           <tr class="${summaryDiscounts && _totalDiscount > 0 ? '' : 'border-b border-gray-100'}">
             <td class="sum-lbl">
-              ${summaryDiscounts ? `Net Sales ${payload.vatTypeLabel === "VAT Inc" ? "(VAT Inc)" : "(Non-VAT)"}` : `Net Sales ${payload.vatTypeLabel === "VAT Inc" ? "(VAT Inc)" : "(Non-VAT)"}`}
+              ${summaryDiscounts ? `Net Sales ${payload.vatTypeLabel === "VAT Inc" ? "(VAT Inc)" : ""}` : `Net Sales ${payload.vatTypeLabel === "VAT Inc" ? "(VAT Inc)" : ""}`}
             </td>
             <td class="sum-val">₱${peso(_netSales)}</td>
           </tr>
@@ -2675,104 +2695,29 @@ ${payload.whtType && payload.whtType !== "none"
       );
       currentY += logisticsBlock.h;
 
+      // Load QR code for Disruptive Solutions payment
+      let qrCodeBase64 = "";
+      try {
+        const qrRes = await fetch("/qr/qr-code.jpg");
+        if (qrRes.ok) {
+          const blob = await qrRes.blob();
+          qrCodeBase64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        }
+      } catch { /* silent — QR is optional */ }
+
       const termsAndSigBlock = await renderBlock(
-        `<div class="content-area" style="padding-top:0;">
-            <div class="terms-grid">
-                <div class="terms-label">Payment:</div>
-                <div class="terms-val">
-                    <!-- REMOVED OLD COD TERMS / REPLACED WITH NEW TERMS -->
-                    <p>• 15% Downpayment</p>
-                    <p>• 10% Retention</p>
-                    <p>• Progress Billing</p>
-
-                    <p><strong>BANK DETAILS</strong></p>
-                    <p><b>Payee to: </b><strong>${isEcoshift ? "ECOSHIFT CORPORATION" : "DISRUPTIVE SOLUTIONS INC."}</strong></p>
-                    <div class="bank-grid" style="display:flex;gap:20px;">
-                        <div>
-                            <strong>BANK: METROBANK</strong><br/>
-                            Account Name: ${isEcoshift ? "ECOSHIFT CORPORATION" : "DISRUPTIVE SOLUTIONS INC."}<br/>
-                            Account Number: ${isEcoshift ? "243-7-243805100" : "243-7-24354164-2"}
-                        </div>
-                        <div>
-                            <strong>BANK: BDO</strong><br/>
-                            Account Name: ${isEcoshift ? "ECOSHIFT CORPORATION" : "DISRUPTIVE SOLUTIONS INC."}<br/>
-                            Account Number: ${isEcoshift ? "0021-8801-7271" : "0021-8801-9258"}
-                        </div>
-                    </div>
-                </div>
-
-                <div class="terms-label">DELIVERY:</div>
-                <div class="terms-val terms-highlight">
-                    <p>Delivery/Pick up is subject to confirmation.</p>
-                </div>
-
-                <div class="terms-label">Validity:</div>
-                <div class="terms-val">
-                    <p class="text-red-strong"><u>Thirty (30) calendar days from the date of this offer.</u></p>
-                </div>
-
-                <div class="terms-label">CANCELLATION:</div>
-                <div class="terms-val terms-highlight">
-                    <p>1. Above quoted items are non-cancellable.</p>
-                    <p>2. Downpayment for items not in stock/indent and order/special items are non-refundable.</p>
-                    <p>5. Cancellation for Special Projects (SPF) are not allowed and will be subject to a 100% charge.</p>
-                </div>
-            </div>
-
-            <div class="sig-hierarchy">
-                <p class="sig-message">Thank you for allowing us to service your requirements. We hope that the above offer merits your acceptance. Unless otherwise indicated, you are deemed to have accepted the Terms and Conditions of this Quotation.</p>
-                
-                <div class="sig-grid">
-                    <div class="sig-side-internal">
-                        <div style="position:relative;min-height:85px;">
-                            <p class="sig-italic">${isEcoshift ? "Ecoshift Corporation" : "Disruptive Solutions Inc"}</p>
-                            ${payload.agentSignature ? `<img src="${payload.agentSignature}" style="position:absolute;top:28px;left:0;width:110px;height:auto;object-fit:contain;"/>` : ""}
-                            <p class="sig-name" style="margin-top:${payload.agentSignature ? "46px" : "8px"};">${payload.salesRepresentative}</p>
-                            <div class="sig-line" style="width:220px;margin-top:2px;"></div>
-                            <p class="sig-sub-label">Sales Representative</p>
-                            <p class="sig-detail">Mobile: ${payload.agentContactNumber || "N/A"}</p>
-                            <p class="sig-detail">Email: ${payload.agentEmailAddress || "N/A"}</p>
-                        </div>
-
-                        <div style="position:relative;min-height:85px;">
-                            <p class="sig-approved-label">Approved By:</p>
-                            ${payload.TsmSignature ? `<img src="${payload.TsmSignature}" style="position:absolute;top:22px;left:0;width:110px;height:auto;object-fit:contain;"/>` : ""}
-                            <p class="sig-name" style="margin-top:${payload.TsmSignature ? "46px" : "8px"};">${payload.salestsmname}</p>
-                            <div class="sig-line" style="width:220px;margin-top:2px;"></div>
-                            <p class="sig-sub-label">Sales Manager</p>
-                            <p class="sig-detail">Mobile: ${payload.TsmContactNumber || "N/A"}</p>
-                            <p class="sig-detail">Email: ${payload.TsmEmailAddress || "N/A"}</p>
-                        </div>
-
-                        <div style="position:relative;min-height:75px;">
-                            <p class="sig-approved-label">Noted By:</p>
-                            ${payload.ManagerSignature ? `<img src="${payload.ManagerSignature}" style="position:absolute;top:22px;left:0;width:110px;height:auto;object-fit:contain;"/>` : ""}
-                            <p class="sig-name" style="margin-top:${payload.ManagerSignature ? "46px" : "8px"};">${payload.salesmanagername}</p>
-                            <div class="sig-line" style="width:220px;margin-top:2px;"></div>
-                            <p class="sig-sub-label">Sales-B2B</p>
-                        </div>
-                    </div>
-
-                    <div class="sig-side-client">
-                        <div style="text-align:center;">
-                            <p class="sig-client-name" style="font-size:10px;font-weight:900;text-transform:uppercase;margin-top:55px;margin-bottom:4px;">${payload.attention || "&nbsp;"}</p>
-                            <div class="sig-line" style="width:220px;"></div>
-                            <p class="sig-client-label">Company Authorized Representative</p>
-                            <p class="sig-client-sub">(Please Sign Over Printed Name)</p>
-                        </div>
-                        <div style="text-align:center;">
-                            <div class="sig-line" style="margin-top:55px;width:220px;"></div>
-                            <p class="sig-client-label">Payment Release Date</p>
-                        </div>
-                        <div style="text-align:center;">
-                            <div class="sig-line" style="margin-top:55px;width:220px;"></div>
-                            <p class="sig-client-label">Position in the Company</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>`,
-);
+        `<div class="content-area" style="padding-top:0;"><div class="terms-grid"><div class="terms-label">Payment:</div><div class="terms-val"><p><strong style="color:red;">For Cash on Delivery</strong></p><p><strong>NOTE: Orders below 10,000 pesos can be paid in cash at the time of delivery.</strong></p><p>For special items, Seventy Percent (70%) down payment, 30% upon delivery.</p><p><strong>BANK DETAILS</strong></p><div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><p><b>Payee to: </b><strong>${isEcoshift ? "ECOSHIFT CORPORATION" : "DISRUPTIVE SOLUTIONS INC."}</strong></p><div class="bank-grid" style="display:flex;gap:20px;"><div><strong>BANK: METROBANK</strong><br/>Account Name: ${isEcoshift ? "ECOSHIFT CORPORATION" : "DISRUPTIVE SOLUTIONS INC."}<br/>Account Number: ${isEcoshift ? "243-7-243805100" : "243-7-24354164-2"}</div><div><strong>BANK: BDO</strong><br/>Account Name: ${isEcoshift ? "ECOSHIFT CORPORATION" : "DISRUPTIVE SOLUTIONS INC."}<br/>Account Number: ${isEcoshift ? "0021-8801-7271" : "0021-8801-9258"}</div></div></div>${!isEcoshift ? `<div style="flex-shrink:0;margin-left:16px;margin-top:-60;text-align:center;"><img src="${qrCodeBase64}" style="width:150px;height:150px;object-fit:contain;" /></div>` : ""}</div></div><div class="terms-label">DELIVERY:</div><div class="terms-val terms-highlight"><p>Delivery/Pick up is subject to confirmation.</p></div><div class="terms-label">Validity:</div><div class="terms-val"><p class="text-red-strong"><u>Thirty (30) calendar days from the date of this offer.</u></p></div><div class="terms-label">CANCELLATION:</div><div class="terms-val terms-highlight">
+         <p>1. Above quoted items are non-cancellable.</p>
+                            <p>2. If the customer cancels the order under any circumstances, the client shall be responsible for 100% cost incurred by Disruptive, including freight and delivery charges.</p>
+                            <p>3. Downpayment for items not in stock/indent and order/special items are non-refundable and will be forfeited if the order is canceled.</p>
+                            <p>4. COD transaction payments should be ready upon delivery. If the payment is not ready within seven (7) days from the date of order, the transaction is automatically canceled.</p>
+                            <p>5. Cancellation for Special Projects (SPF) are not allowed and will be subject to a 100% charge.</p>
+        </div></div><div class="sig-hierarchy"><p class="sig-message">Thank you for allowing us to service your requirements. We hope that the above offer merits your acceptance. Unless otherwise indicated, you are deemed to have accepted the Terms and Conditions of this Quotation.</p><div class="sig-grid"><div class="sig-side-internal"><div style="position:relative;min-height:85px;"><p class="sig-italic">${isEcoshift ? "Ecoshift Corporation" : "Disruptive Solutions Inc"}</p>${payload.agentSignature ? `<img src="${payload.agentSignature}" style="position:absolute;top:28px;left:0;width:110px;height:auto;object-fit:contain;"/>` : ""}<p class="sig-name" style="margin-top:${payload.agentSignature ? "46px" : "8px"};">${payload.salesRepresentative}</p><div class="sig-line" style="width:220px;margin-top:2px;"></div><p class="sig-sub-label">Sales Representative</p><p class="sig-detail">Mobile: ${payload.agentContactNumber || "N/A"}</p><p class="sig-detail">Email: ${payload.agentEmailAddress || "N/A"}</p></div><div style="position:relative;min-height:85px;"><p class="sig-approved-label">Approved By:</p>${payload.TsmSignature ? `<img src="${payload.TsmSignature}" style="position:absolute;top:22px;left:0;width:110px;height:auto;object-fit:contain;"/>` : ""}<p class="sig-name" style="margin-top:${payload.TsmSignature ? "46px" : "8px"};">${payload.salestsmname}</p><div class="sig-line" style="width:220px;margin-top:2px;"></div><p class="sig-sub-label">Sales Manager</p><p class="sig-detail">Mobile: ${payload.TsmContactNumber || "N/A"}</p><p class="sig-detail">Email: ${payload.TsmEmailAddress || "N/A"}</p></div><div style="position:relative;min-height:75px;"><p class="sig-approved-label">Noted By:</p>${payload.ManagerSignature ? `<img src="${payload.ManagerSignature}" style="position:absolute;top:22px;left:0;width:110px;height:auto;object-fit:contain;"/>` : ""}<p class="sig-name" style="margin-top:${payload.ManagerSignature ? "46px" : "8px"};">${payload.salesmanagername}</p><div class="sig-line" style="width:220px;margin-top:2px;"></div><p class="sig-sub-label">Sales-B2B</p></div></div><div class="sig-side-client"><div style="text-align:center;"><p class="sig-client-name" style="font-size:10px;font-weight:900;text-transform:uppercase;margin-top:55px;margin-bottom:4px;">${payload.attention || "&nbsp;"}</p><div class="sig-line" style="width:220px;"></div><p class="sig-client-label">Company Authorized Representative</p><p class="sig-client-sub">(Please Sign Over Printed Name)</p></div><div style="text-align:center;"><div class="sig-line" style="margin-top:55px;width:220px;"></div><p class="sig-client-label">Payment Release Date</p></div><div style="text-align:center;"><div class="sig-line" style="margin-top:55px;width:220px;"></div><p class="sig-client-label">Position in the Company</p></div></div></div></div></div>`,
+      );
       if (currentY + termsAndSigBlock.h > pdfHeight - BOTTOM_MARGIN) {
         finalizeCurrentPage();
         pdf.addPage([612, 936]);
@@ -3249,13 +3194,19 @@ ${payload.whtType && payload.whtType !== "none"
     const deliveryFeeNum = parseFloat(deliveryFeeState) || 0;
     const restockingFeeNum = parseFloat(restockingFeeState) || 0;
     const totalWithFees = subtotal + deliveryFeeNum + restockingFeeNum;
+    
+    if (vatTypeState === "zero_rated") {
+      // Zero-rated: no VAT deduction, no WHT deduction
+      return Math.round(totalWithFees * 100) / 100;
+    }
+    
+    // vat_inc / vat_exe: normal behavior
+    const netOfVat = totalWithFees / 1.12;
     const whtAmount = whtTypeState !== "none"
-      ? (vatTypeState === "vat_inc"
-        ? totalWithFees / 1.12
-        : totalWithFees
-      ) * (whtTypeState === "wht_1" ? 0.01 : 0.02)
+      ? netOfVat * (whtTypeState === "wht_1" ? 0.01 : 0.02)
       : 0;
-    return Math.round((totalWithFees - whtAmount) * 100) / 100;
+    const base = vatTypeState === "vat_exe" ? netOfVat : totalWithFees;
+    return Math.round((base - whtAmount) * 100) / 100;
   }, [subtotal, deliveryFeeState, restockingFeeState, whtTypeState, vatTypeState]);
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -6897,7 +6848,7 @@ ${payload.whtType && payload.whtType !== "none"
                   {/* Mini Invoice Preview */}
                   <div className="space-y-1 text-[10px]">
                     <div className="flex justify-between py-0.5">
-                      <span className="text-gray-500">Net Sales (Non-VAT):</span>
+                      <span className="text-gray-500">Net Sales:</span>
                       <span className="font-mono font-medium">₱100,000.00</span>
                     </div>
                     <div className="flex justify-between py-0.5">

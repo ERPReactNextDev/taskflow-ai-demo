@@ -26,62 +26,78 @@ export async function GET(req: Request) {
 
     // Running SI/SO use the range start (or year start if no range)
     const yearStart  = from ? `${from}T00:00:00Z` : `${currentYear}-01-01T00:00:00Z`;
-    // Pipeline / monthly metrics use the range start (or current month start if no range)
-    const monthStart = from ? `${from}T00:00:00Z` : `${currentYear}-${currentMonth}-01T00:00:00Z`;
+    // Pipeline / monthly metrics always use current month start — not affected by date filter
+    const monthStart = `${currentYear}-${currentMonth}-01T00:00:00Z`;
     const rangeEnd   = to   ? `${to}T23:59:59Z`   : null;
 
     // ── All queries run in parallel — no internal API calls ──────────────────
     // ── Build date-aware queries ──────────────────────────────────────────────
+    // Helper to fetch all rows (pagination)
+    async function fetchAllRows<T = any>(query: any): Promise<T[]> {
+      const PAGE_SIZE = 1000;
+      let allData: T[] = [];
+      let offset = 0;
+
+      while (true) {
+        const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allData = allData.concat(data);
+        if (data.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+
+      return allData;
+    }
+
+    // SI (actual sales) - based on delivery_date
     const siQuery = (() => {
       let q = supabase.from("history").select("actual_sales")
-        .eq("referenceid", referenceid).eq("type_activity", "Delivered / Closed Transaction").gte("date_created", yearStart);
-      if (rangeEnd) q = q.lte("date_created", rangeEnd);
-      return q;
+        .eq("referenceid", referenceid).eq("type_activity", "Delivered / Closed Transaction").gte("delivery_date", yearStart);
+      if (rangeEnd) q = q.lte("delivery_date", rangeEnd);
+      return fetchAllRows(q);
     })();
     const soQuery = (() => {
       let q = supabase.from("history").select("so_amount")
         .eq("referenceid", referenceid).eq("status", "SO-Done").gte("date_created", yearStart);
       if (rangeEnd) q = q.lte("date_created", rangeEnd);
-      return q;
+      return fetchAllRows(q);
     })();
     const obQuery = (() => {
-      let q = supabase.from("history").select("id", { count: "exact", head: true })
+      const q = supabase.from("history").select("id", { count: "exact", head: true })
         .eq("referenceid", referenceid).eq("source", "Outbound - Touchbase").gte("date_created", monthStart);
-      if (rangeEnd) q = q.lte("date_created", rangeEnd);
       return q;
     })();
     const quotationsQuery = (() => {
-      let q = supabase.from("history").select("quotation_number", { count: "exact" })
+      // Count ALL quotation preparations (not just approved ones).
+      // "Quotes Generated" = any quotation created this month, regardless of approval status.
+      const q = supabase.from("history").select("quotation_number", { count: "exact" })
         .eq("referenceid", referenceid).eq("type_activity", "Quotation Preparation")
-        .or("tsm_approved_status.eq.Approved By Sales Head,tsm_approved_status.eq.Approved")
         .gte("date_created", monthStart);
-      if (rangeEnd) q = q.lte("date_created", rangeEnd);
       return q;
     })();
     const pipelineQuery = (() => {
-      let q = supabase.from("history").select("activity_reference_number, source, type_activity")
+      const q = supabase.from("history").select("activity_reference_number, source, type_activity")
         .eq("referenceid", referenceid).gte("date_created", monthStart);
-      if (rangeEnd) q = q.lte("date_created", rangeEnd);
       return q;
     })();
 
     // ── Client visits via Supabase tasklog ────────────────────────────────────
     const clientVisitsQuery = (() => {
-      let q = supabase
+      const q = supabase
         .from("tasklog")
         .select("id", { count: "exact", head: true })
         .eq("ReferenceID", referenceid)
         .eq("Status", "Login")
         .gte("date_created", monthStart);
-      if (rangeEnd) q = q.lte("date_created", rangeEnd);
       return q;
     })();
 
     const [
       userRes,
       quotaRes,
-      siRes,
-      soRes,
+      siData,
+      soData,
       outboundRes,
       quotationsRes,
       pipelineRes,
@@ -120,14 +136,12 @@ export async function GET(req: Request) {
     );
 
     // ── Running SI ────────────────────────────────────────────────────────────
-    if (siRes.error) throw siRes.error;
-    const runningSI = (siRes.data ?? []).reduce(
+    const runningSI = (siData ?? []).reduce(
       (sum, r) => sum + (Number(r.actual_sales) || 0), 0
     );
 
     // ── Running SO ────────────────────────────────────────────────────────────
-    if (soRes.error) throw soRes.error;
-    const runningSO = (soRes.data ?? []).reduce(
+    const runningSO = (soData ?? []).reduce(
       (sum, r) => sum + (Number(r.so_amount) || 0), 0
     );
 
@@ -210,6 +224,11 @@ export async function GET(req: Request) {
         quotationsCount,
         clientVisits: clientVisitsRes.count ?? 0,
         status,
+        // Conversion pipeline counts (used by KpiWeightedScores & SalesPipelineCard)
+        quoteToSOQuotationCount,
+        quoteToSOSalesOrderCount,
+        soToSISalesOrderCount,
+        soToSIDeliveredCount,
       },
       { status: 200 }
     );

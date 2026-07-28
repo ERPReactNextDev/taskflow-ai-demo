@@ -173,9 +173,14 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by, first
             if (!res.ok) throw new Error("Failed to fetch SPF records");
             const data = await res.json();
             const sorted = (data.activities || []).sort((a: SPFRecord, b: SPFRecord) => {
-                const dateA = new Date(a.date_updated || a.created_at || String(a.id)).getTime();
-                const dateB = new Date(b.date_updated || b.created_at || String(b.id)).getTime();
-                return dateB - dateA;
+                const getTime = (r: SPFRecord) => {
+                    const d = r.date_updated && r.date_updated !== r.created_at
+                        ? r.date_updated
+                        : r.created_at;
+                    const t = d ? new Date(d).getTime() : 0;
+                    return isNaN(t) ? 0 : t;
+                };
+                return getTime(b) - getTime(a);
             });
             setAllActivities(sorted);
         } catch (err: any) {
@@ -247,7 +252,24 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by, first
                 body: JSON.stringify({ ...data, referenceid, tsm, manager }),
             });
             if (!res.ok) throw new Error("Failed to update SPF");
-            closeDialog(); fetchActivities();
+            closeDialog();
+            // Optimistically move the edited record to the top while refetch loads
+            const now = new Date().toISOString();
+            setAllActivities((prev) => {
+                const updated = prev.map((r) =>
+                    r.id === data.id ? { ...r, ...data, date_updated: now } : r
+                );
+                return updated.sort((a, b) => {
+                    const getTime = (r: SPFRecord) => {
+                        const d = r.date_updated && r.date_updated !== r.created_at
+                            ? r.date_updated : r.created_at;
+                        const t = d ? new Date(d).getTime() : 0;
+                        return isNaN(t) ? 0 : t;
+                    };
+                    return getTime(b) - getTime(a);
+                });
+            });
+            fetchActivities();
         } catch (err: any) { alert(err.message || "Failed to update SPF"); }
     };
 

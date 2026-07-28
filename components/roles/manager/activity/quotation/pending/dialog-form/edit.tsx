@@ -246,8 +246,8 @@ export default function TaskListEditDialog({
             const discountPct = discountPercents[i] ?? 0;
             const isDiscounted = discountPct > 0;
             const unitDiscountAmount = isDiscounted ? (unitPrice * discountPct) / 100 : 0;
-            const discountedAmount = unitPrice - unitDiscountAmount;
-            const totalAmount = discountedAmount * qty;
+            const discountedAmount = unitPrice - unitDiscountAmount; // Net unit price
+            const totalAmount = discountedAmount * qty; // Total after discount
             return {
                 itemNo: i + 1,
                 qty,
@@ -265,21 +265,28 @@ export default function TaskListEditDialog({
 
         const deliveryFeeNum = parseFloat(revision.delivery_fee) || 0;
         const restockingFeeNum = parseFloat(revision.restocking_fee) || 0;
-        const quotationAmt = parseFloat(String(revision.quotation_amount)) || 0;
         const whtType = revision.quotation_vatable ?? "none";
         const vatType = revision.vat_type ?? "zero_rated";
         const whtLabel = whtType === "wht_1" ? "EWT 1% (Goods)" : whtType === "wht_2" ? "EWT 2% (Services)" : "None";
 
-        const whtRate = whtType === "wht_1" ? 0.01 : whtType === "wht_2" ? 0.02 : 0;
-        const vatMultiplier = vatType === "vat_inc" ? 1.12 : 1;
-        const denominator = 1 - (whtRate / vatMultiplier);
-        const totalPriceWithDelivery = whtType !== "none" && denominator > 0
-            ? quotationAmt / denominator
-            : quotationAmt;
-
-        const whtBase = vatType === "vat_inc" ? totalPriceWithDelivery / 1.12 : totalPriceWithDelivery;
-        const whtAmount = whtType !== "none" ? totalPriceWithDelivery * (whtRate / vatMultiplier) : 0;
-        const netAmountToCollect = totalPriceWithDelivery - whtAmount;
+        // Calculate totals properly based on items
+        const netSales = parseFloat(items.reduce((acc, item) => acc + (item.totalAmount || 0), 0).toFixed(2));
+        const totalInvoiceAmount = parseFloat((netSales + deliveryFeeNum + restockingFeeNum).toFixed(2));
+        
+        let vatAmount, netOfVat, whtAmount, netAmountToCollect;
+        if (vatType === "zero_rated") {
+            vatAmount = 0;
+            netOfVat = totalInvoiceAmount;
+            whtAmount = 0;
+            netAmountToCollect = totalInvoiceAmount;
+        } else {
+            vatAmount = parseFloat((totalInvoiceAmount * (12 / 112)).toFixed(2));
+            netOfVat = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
+            whtAmount = whtType !== "none" ? parseFloat((netOfVat * (whtType === "wht_1" ? 0.01 : 0.02)).toFixed(2)) : 0;
+            netAmountToCollect = vatType === "vat_exe"
+                ? parseFloat((netOfVat - whtAmount).toFixed(2))
+                : parseFloat((totalInvoiceAmount - whtAmount).toFixed(2));
+        }
 
         return {
             referenceNo: revision.quotation_number || revision.version || "DRAFT-XXXX",
@@ -292,15 +299,15 @@ export default function TaskListEditDialog({
             subject: revision.quotation_subject || "For Quotation",
             items,
             vatTypeLabel: vatType === "vat_inc" ? "VAT Inc" : vatType === "vat_exe" ? "VAT Exe" : "Zero-Rated",
-            totalPrice: totalPriceWithDelivery,
+            totalPrice: totalInvoiceAmount,
             deliveryFee: revision.delivery_fee ?? "",
             vatType,
             restockingFee: restockingFeeNum,
             whtType,
             whtLabel,
-            whtBase,
-            whtAmount,
-            netAmountToCollect,
+            whtBase: netOfVat,
+            whtAmount: Number(whtAmount),
+            netAmountToCollect: Number(netAmountToCollect),
             salesRepresentative: salesRepresentativeName,
             salesemail,
             salescontact: contact ?? "",
@@ -418,12 +425,11 @@ export default function TaskListEditDialog({
             const unitPrice = parseFloat(p.product_amount ?? "0") || 0;
             const isDiscounted = checkedRows[index] ?? false;
             const rowDiscount = isDiscounted ? (p.discount ?? (vatTypeState === "vat_exe" ? 12 : 0)) : 0;
-            // NET UNIT PRICE = Unit Price - (Unit Price × Discount Percentage)
-            const discountedAmount = isDiscounted && rowDiscount > 0
-                ? unitPrice - (unitPrice * rowDiscount) / 100
-                : unitPrice;
-            // TOTAL AMOUNT = Net Unit Price × Quantity
-            const totalAmount = discountedAmount * qty;
+            const unitDiscountAmount = isDiscounted && rowDiscount > 0
+                ? (unitPrice * rowDiscount) / 100
+                : 0;
+            const discountedAmount = unitPrice - unitDiscountAmount; // Net unit price
+            const totalAmount = discountedAmount * qty; // Total after discount
 
             return {
                 itemNo: index + 1,
@@ -454,7 +460,25 @@ export default function TaskListEditDialog({
 
         const deliveryFeeNum = parseFloat(deliveryFeeState) || 0;
         const restockingFeeNum = parseFloat(restockingFeeState) || 0;
-        const totalPriceWithDelivery = (quotationAmount || 0) + deliveryFeeNum + restockingFeeNum;
+
+        // Calculate totals properly based on items
+        const netSales = parseFloat(items.reduce((acc, item) => acc + (item.totalAmount || 0), 0).toFixed(2));
+        const totalInvoiceAmount = parseFloat((netSales + deliveryFeeNum + restockingFeeNum).toFixed(2));
+        
+        let vatAmount, netOfVat, whtAmount, netAmountToCollect;
+        if (vatTypeState === "zero_rated") {
+            vatAmount = 0;
+            netOfVat = totalInvoiceAmount;
+            whtAmount = 0;
+            netAmountToCollect = totalInvoiceAmount;
+        } else {
+            vatAmount = parseFloat((totalInvoiceAmount * (12 / 112)).toFixed(2));
+            netOfVat = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
+            whtAmount = whtTypeState !== "none" ? parseFloat((netOfVat * (whtTypeState === "wht_1" ? 0.01 : 0.02)).toFixed(2)) : 0;
+            netAmountToCollect = vatTypeState === "vat_exe"
+                ? parseFloat((netOfVat - whtAmount).toFixed(2))
+                : parseFloat((totalInvoiceAmount - whtAmount).toFixed(2));
+        }
 
         return {
             referenceNo: quotationNumber ?? "DRAFT-XXXX",
@@ -467,12 +491,12 @@ export default function TaskListEditDialog({
             subject: quotationSubjectState || "For Quotation",
             items,
             vatTypeLabel:
-                vatType === "vat_inc"
+                vatTypeState === "vat_inc"
                     ? "VAT Inc"
-                    : vatType === "vat_exe"
+                    : vatTypeState === "vat_exe"
                         ? "VAT Exe"
                         : "Zero-Rated",
-            totalPrice: totalPriceWithDelivery,
+            totalPrice: totalInvoiceAmount,
             deliveryFee: deliveryFeeState ?? "",
             vatType: vatTypeState ?? null,
             restockingFee: parseFloat(restockingFeeState) || 0,
@@ -480,19 +504,9 @@ export default function TaskListEditDialog({
             whtLabel:
                 whtTypeState === "wht_1" ? "EWT 1% (Goods)" :
                     whtTypeState === "wht_2" ? "EWT 2% (Services)" : "None",
-            whtBase: vatTypeState === "vat_inc"
-                ? totalPriceWithDelivery / 1.12
-                : totalPriceWithDelivery,
-            whtAmount:
-                whtTypeState !== "none"
-                    ? (totalPriceWithDelivery / 1.12) * (whtTypeState === "wht_1" ? 0.01 : 0.02)
-                    : 0,
-            netAmountToCollect:
-                totalPriceWithDelivery - (
-                    whtTypeState !== "none"
-                        ? (totalPriceWithDelivery / 1.12) * (whtTypeState === "wht_1" ? 0.01 : 0.02)
-                        : 0
-                ),
+            whtBase: netOfVat,
+            whtAmount: Number(whtAmount),
+            netAmountToCollect: Number(netAmountToCollect),
             salesRepresentative: salesRepresentativeName,
             salesemail,
             salescontact: contact ?? "",

@@ -35,9 +35,10 @@ interface ApprovalHistoryProps {
   dateCreatedFilterRange?: DateRange;
   setDateCreatedFilterRangeAction?: React.Dispatch<React.SetStateAction<any>>;
   onRefresh?: () => void;
+  ownerNames?: Record<string, string>;
 }
 
-export function ApprovalHistory({ history, dateCreatedFilterRange, onRefresh }: ApprovalHistoryProps) {
+export function ApprovalHistory({ history, dateCreatedFilterRange, onRefresh, ownerNames }: ApprovalHistoryProps) {
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<HistoryItem | null>(null);
   const [remarks, setRemarks] = useState("");
@@ -144,6 +145,7 @@ export function ApprovalHistory({ history, dateCreatedFilterRange, onRefresh }: 
           <TableRow>
             <TableHead className="text-xs font-bold uppercase">Actions</TableHead>
             <TableHead className="text-xs font-bold uppercase">Company</TableHead>
+            <TableHead className="text-xs font-bold uppercase">Agent</TableHead>
             <TableHead className="text-xs font-bold uppercase">Contact</TableHead>
             <TableHead className="text-xs font-bold uppercase">Call Type</TableHead>
             <TableHead className="text-xs font-bold uppercase">Status</TableHead>
@@ -167,6 +169,16 @@ export function ApprovalHistory({ history, dateCreatedFilterRange, onRefresh }: 
               <TableCell className="text-xs">
                 {item.company_name || "N/A"}<br />
                 {item.activity_reference_number}
+              </TableCell>
+              <TableCell className="text-xs">
+                <div className="flex flex-col">
+                  <span className="font-medium text-gray-800">
+                    {ownerNames?.[item.referenceid] || item.referenceid || "—"}
+                  </span>
+                  {ownerNames?.[item.referenceid] && (
+                    <span className="text-[10px] text-gray-400 font-mono">{item.referenceid}</span>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="text-xs">
                 <div className="flex flex-col">

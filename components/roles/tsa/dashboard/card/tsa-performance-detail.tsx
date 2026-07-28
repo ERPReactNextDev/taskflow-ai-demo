@@ -22,6 +22,7 @@ interface PerformanceData {
 
 interface TsaPerformanceDetailProps {
   referenceid: string;
+  dateRange?: { from?: Date; to?: Date };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -107,6 +108,7 @@ const Avatar: React.FC<{ name: string }> = ({ name }) => {
 
 export const TsaPerformanceDetail: React.FC<TsaPerformanceDetailProps> = ({
   referenceid,
+  dateRange,
 }) => {
   const [data, setData] = useState<PerformanceData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -116,9 +118,11 @@ export const TsaPerformanceDetail: React.FC<TsaPerformanceDetailProps> = ({
     if (!referenceid) return;
     setLoading(true);
     setError(null);
-    fetch(
-      `/api/dashboard-tsa-performance?referenceid=${encodeURIComponent(referenceid)}`
-    )
+    const url = new URL("/api/dashboard-tsa-performance", window.location.origin);
+    url.searchParams.append("referenceid", referenceid);
+    if (dateRange?.from) url.searchParams.append("from", dateRange.from.toISOString().slice(0, 10));
+    if (dateRange?.to)   url.searchParams.append("to",   dateRange.to.toISOString().slice(0, 10));
+    fetch(url.toString())
       .then(async (res) => {
         if (!res.ok) throw new Error("Failed to fetch performance data");
         return res.json();
@@ -126,7 +130,7 @@ export const TsaPerformanceDetail: React.FC<TsaPerformanceDetailProps> = ({
       .then((d) => setData(d))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [referenceid]);
+  }, [referenceid, dateRange]);
 
   useEffect(() => {
     fetchData();

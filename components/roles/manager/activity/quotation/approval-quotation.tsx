@@ -105,6 +105,7 @@ export const ApprovalQuotation: React.FC<CompletedProps> = ({
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
+    const [searchInput, setSearchInput] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [tsmFilter, setTsmFilter] = useState("all");
     const [editItem, setEditItem] = useState<Completed | null>(null);
@@ -122,11 +123,7 @@ export const ApprovalQuotation: React.FC<CompletedProps> = ({
     const [loadingMore, setLoadingMore] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
 
-    // Statistics state
-    const [tsmStats, setTsmStats] = useState<any[]>([]);
-    const [agentStats, setAgentStats] = useState<any[]>([]);
-    const [tsmOptions, setTsmOptions] = useState<any[]>([]);
-    const [agentOptions, setAgentOptions] = useState<any[]>([]);
+    // Statistics state - computed client-side from activities
     const [statsLoading, setStatsLoading] = useState(false);
 
     const toLocalYMD = (value: Date) => {
@@ -210,9 +207,10 @@ export const ApprovalQuotation: React.FC<CompletedProps> = ({
 
     // Search handler - only fetches when search button is clicked
     const handleSearch = useCallback(() => {
+        setSearchTerm(searchInput);
         setCurrentPage(1);
         fetchActivities(1, false);
-    }, [fetchActivities]);
+    }, [searchInput, fetchActivities]);
 
     // Load more handler
     const handleLoadMore = useCallback(() => {
@@ -222,48 +220,52 @@ export const ApprovalQuotation: React.FC<CompletedProps> = ({
         }
     }, [currentPage, hasMore, loadingMore, fetchActivities]);
 
-    // Reset page when search or filter changes
+    // Reset page when filter changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, selectedTSM, selectedAgent]);
-
-    // Fetch statistics from separate API
-    const fetchStatistics = useCallback(async () => {
-        if (!referenceid) return;
-
-        setStatsLoading(true);
-        try {
-            const from = dateCreatedFilterRange?.from
-                ? toLocalYMD(new Date(dateCreatedFilterRange.from))
-                : null;
-            const to = dateCreatedFilterRange?.to
-                ? toLocalYMD(new Date(dateCreatedFilterRange.to))
-                : null;
-
-            const url = new URL("/api/activity/manager/quotation/approval/stats", window.location.origin);
-            url.searchParams.append("referenceid", referenceid);
-            if (from) url.searchParams.append("from", from);
-            if (to) url.searchParams.append("to", to);
-
-            const res = await fetch(url.toString());
-            if (!res.ok) throw new Error("Failed to fetch statistics");
-            const data = await res.json();
-
-            setTsmStats(data.tsmStats || []);
-            setAgentStats(data.agentStats || []);
-            setTsmOptions(data.tsmOptions || []);
-            setAgentOptions(data.agentOptions || []);
-        } catch (err: any) {
-            console.error("Failed to fetch statistics:", err);
-        } finally {
-            setStatsLoading(false);
-        }
-    }, [referenceid, dateCreatedFilterRange]);
+    }, [selectedTSM, selectedAgent]);
 
     useEffect(() => {
         fetchActivities(1, false);
-        fetchStatistics();
-    }, [fetchActivities, fetchStatistics]);
+    }, [fetchActivities]);
+
+    // TSM stats computed client-side from loaded activities
+    const tsmStats = useMemo(() => {
+        const statsMap = new Map<string, TSMStat>();
+        activities.forEach((item) => {
+            const tsmId = item.tsm || "unknown";
+            const tsmName = item.tsm_name || "Unknown TSM";
+            const status = String(item.tsm_approved_status ?? "").trim().toLowerCase();
+            if (!statsMap.has(tsmId)) {
+                statsMap.set(tsmId, { tsmId, tsmName, approved: 0, total: 0 });
+            }
+            const stat = statsMap.get(tsmId)!;
+            stat.total += 1;
+            if (status === "approved by sales head" || status === "approved") {
+                stat.approved += 1;
+            }
+        });
+        return Array.from(statsMap.values()).sort((a, b) => b.total - a.total);
+    }, [activities]);
+
+    // Agent stats computed client-side from loaded activities
+    const agentStats = useMemo(() => {
+        const statsMap = new Map<string, AgentStat>();
+        activities.forEach((item) => {
+            const agentId = item.referenceid || "unknown";
+            const agentName = item.agent_name || "Unknown Agent";
+            if (!statsMap.has(agentId)) {
+                statsMap.set(agentId, { agentId, agentName, total: 0 });
+            }
+            statsMap.get(agentId)!.total += 1;
+        });
+        return Array.from(statsMap.values()).sort((a, b) => b.total - a.total);
+    }, [activities]);
+
+    // TSM options for the filter dropdown
+    const tsmOptions = useMemo(() =>
+        tsmStats.map((t) => ({ value: t.tsmId, label: t.tsmName })),
+    [tsmStats]);
 
     // Client-side sorting and filtering removed - now handled server-side
     // Activities are already sorted by date_created DESC from the API
@@ -323,8 +325,8 @@ export const ApprovalQuotation: React.FC<CompletedProps> = ({
                     <div className="flex-1 flex items-center gap-2">
                         <Input
                             placeholder="Search quotations..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                     handleSearch();

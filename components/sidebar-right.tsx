@@ -418,10 +418,11 @@ export function SidebarRight({
         />
       </div>
 
-      {/* ── Floating breach dialogs (role-based) ── */}
+      {/* ── Floating breach dialogs (role-based) ── 
       {isTSA && <BreachesDialog />}
       {isTSM && <BreachesTSMDialog />}
-      {isManager && <BreachesManagerDialog />}
+      {isManager && <BreachesManagerDialog />}*/}
+      
     </>
   );
 }

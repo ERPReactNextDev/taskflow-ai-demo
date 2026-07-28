@@ -113,11 +113,23 @@ export const Preview: React.FC<PreviewProps> = ({
     const tradeDiscount = parseFloat((grossTotal - netSales).toFixed(2));
     const totalInvoiceAmount = parseFloat((netSales + (Number(payload.deliveryFee) || 0) + (Number(payload.restockingFee) || 0)).toFixed(2));
 
-    // Round components to 2 decimal places to ensure summary adds up exactly
-    const vatAmount = parseFloat((totalInvoiceAmount * (12 / 112)).toFixed(2));
-    const netOfVat = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
-    const whtAmount = payload.whtType !== "none" ? parseFloat((netOfVat * (payload.whtType === "wht_1" ? 0.01 : 0.02)).toFixed(2)) : 0;
-    const finalAmountDue = totalInvoiceAmount - whtAmount;
+    let vatAmount, netOfVat, whtAmount, finalAmountDue;
+    
+    if (payload.vatType === "zero_rated") {
+      // Zero-rated: no VAT, no WHT
+      vatAmount = 0;
+      netOfVat = totalInvoiceAmount;
+      whtAmount = 0;
+      finalAmountDue = totalInvoiceAmount;
+    } else {
+      // vat_inc / vat_exe: normal behavior
+      vatAmount = parseFloat((totalInvoiceAmount * (12 / 112)).toFixed(2));
+      netOfVat = parseFloat((totalInvoiceAmount / 1.12).toFixed(2));
+      whtAmount = payload.whtType !== "none" ? parseFloat((netOfVat * (payload.whtType === "wht_1" ? 0.01 : 0.02)).toFixed(2)) : 0;
+      finalAmountDue = payload.vatType === "vat_exe"
+        ? parseFloat((netOfVat - whtAmount).toFixed(2))
+        : parseFloat((totalInvoiceAmount - whtAmount).toFixed(2));
+    }
 
     // ── QR Code Security ──────────────────────────────────────────────────────
     const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
@@ -129,6 +141,16 @@ export const Preview: React.FC<PreviewProps> = ({
         setToast({ show: true, message, type });
         setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
     };
+
+    // ── Signature image error states (fallback to "No signature available") ──
+    const [agentSigError, setAgentSigError] = React.useState(false);
+    const [tsmSigError, setTsmSigError] = React.useState(false);
+    const [managerSigError, setManagerSigError] = React.useState(false);
+
+    // Reset error states when signature URLs change
+    React.useEffect(() => { setAgentSigError(false); }, [payload.agentSignature]);
+    React.useEffect(() => { setTsmSigError(false); }, [payload.TsmSignature]);
+    React.useEffect(() => { setManagerSigError(false); }, [payload.ManagerSignature]);
 
     // ── SO Preparation Helper ──────────────────────────────────────────────────
     const [soHelperOpen, setSoHelperOpen] = React.useState(false);
@@ -648,7 +670,7 @@ export const Preview: React.FC<PreviewProps> = ({
                                             {/* Row 3: Net Sales */}
                                             <tr className="border-b border-gray-100">
                                                 <td className="px-3 py-1.5 text-right font-bold uppercase border-r-2 border-black w-[55%] text-[9px] text-gray-500">
-                                                    Net Sales {payload.vatType === "vat_inc" ? "(VAT Inclusive)" : "(Non-VAT)"}
+                                                    Net Sales {payload.vatType === "vat_inc" ? "(VAT Inclusive)" : ""}
                                                 </td>
                                                 <td className="px-3 py-1.5 text-right font-black text-gray-900">
                                                     ₱{netSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -843,7 +865,7 @@ export const Preview: React.FC<PreviewProps> = ({
 
                         <div className="col-span-2 font-black uppercase">Validity:</div>
                         <div className="col-span-10 pl-4 border-l border-gray-100">
-                            <p className="text-red-600 font-black underline">Thirty (30) calendar days from the date of this offer.</p>
+                            <p className="text-red-600 font-black underline">Thirty(30) calendar days from the date of this offer</p>
                             <p>In the event of changes in prevailing market conditions, duties, taxes, and all other importation charges, quoted prices are subject to change.</p>
                         </div>
 
@@ -870,12 +892,15 @@ export const Preview: React.FC<PreviewProps> = ({
                         <div className="space-y-10">
                             <div>
                                 <p className="italic text-[10px] font-black mb-10">{isEcoshift ? 'Ecoshift Corporation' : 'Disruptive Solutions Inc'}</p>
-                                {payload.agentSignature ? (
+                                {payload.agentSignature && !agentSigError ? (
                                     <div className="relative inline-block">
                                         <img
                                             src={payload.agentSignature}
                                             alt="Agent Signature"
-                                            className="w-40 h-20 object-contain flex align-items center justify-center mb-2 border-none"
+                                            crossOrigin="anonymous"
+                                            referrerPolicy="no-referrer"
+                                            className="w-40 h-20 object-contain mb-2 border-none"
+                                            onError={() => setAgentSigError(true)}
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                             <span className="text-[10px] font-black text-[#121212] opacity-[0.03] rotate-[-15deg] uppercase tracking-[0.5em]">
@@ -895,12 +920,15 @@ export const Preview: React.FC<PreviewProps> = ({
 
                             <div>
                                 <p className="text-[10px] font-black uppercase text-gray-400 mb-10">Approved By:</p>
-                                {payload.TsmSignature ? (
+                                {payload.TsmSignature && !tsmSigError ? (
                                     <div className="relative inline-block">
                                         <img
                                             src={payload.TsmSignature}
-                                            alt="Agent Signature"
-                                            className="w-40 h-20 object-contain flex align-items center justify-center mb-2 border-none"
+                                            alt="TSM Signature"
+                                            crossOrigin="anonymous"
+                                            referrerPolicy="no-referrer"
+                                            className="w-40 h-20 object-contain mb-2 border-none"
+                                            onError={() => setTsmSigError(true)}
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                             <span className="text-[10px] font-black text-[#121212] opacity-[0.03] rotate-[-15deg] uppercase tracking-[0.5em]">
@@ -920,12 +948,15 @@ export const Preview: React.FC<PreviewProps> = ({
 
                             <div>
                                 <p className="text-[10px] font-black uppercase text-gray-400 mb-10">Noted By:</p>
-                                {payload.ManagerSignature ? (
+                                {payload.ManagerSignature && !managerSigError ? (
                                     <div className="relative inline-block">
                                         <img
                                             src={payload.ManagerSignature}
-                                            alt="Agent Signature"
-                                            className="w-40 h-20 object-contain flex align-items center justify-center mb-2 border-none"
+                                            alt="Manager Signature"
+                                            crossOrigin="anonymous"
+                                            referrerPolicy="no-referrer"
+                                            className="w-40 h-20 object-contain mb-2 border-none"
+                                            onError={() => setManagerSigError(true)}
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                             <span className="text-[10px] font-black text-[#121212] opacity-[0.03] rotate-[-15deg] uppercase tracking-[0.5em]">

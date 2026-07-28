@@ -18,7 +18,8 @@ import { sileo } from "sileo";
 import { type DateRange } from "react-day-picker";
 
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
-import { AlertCircleIcon, ExternalLink } from "lucide-react";
+import { AlertCircleIcon, AlertTriangle, ExternalLink, X } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { UnifiedNotificationBellLazy } from "@/components/unified-notification-bell-lazy";
 
 import { Scheduled } from "@/components/roles/tsm/activity/quotation/pending/pending-quotation";
@@ -43,24 +44,27 @@ interface UserDetails {
 }
 
 interface Account {
-    id: string;
-    referenceid: string;
-    tsm: string;
-    company_name: string;
-    contact_person: string;
-    contact_number: string;
-    email_address: string;
-    address: string;
-    delivery_address: string;
-    region: string;
-    type_client: string;
-    date_created: string;
-    industry: string;
-    status?: string;
-    transfer_to: string;
-    date_transferred: string;
-    date_removed: string;
-    remarks: string;
+  id: string;
+  referenceid: string;
+  tsm: string;
+  company_name: string;
+  contact_person: string;
+  contact_number: string;
+  email_address: string;
+  address: string;
+  delivery_address: string;
+  region: string;
+  type_client: string;
+  date_created: string;
+  date_updated?: string;
+  tsm_approve_date?: string;
+  industry: string;
+  status?: string;
+  transfer_to: string;
+  date_transferred: string;
+  date_removed: string;
+  remarks: string;
+  tsm_remarks?: string;
 }
 
 interface SPFRequest {
@@ -121,6 +125,23 @@ function DashboardContent() {
     // Approval History State
     const [approvalHistory, setApprovalHistory] = useState<HistoryItem[]>([]);
     const [loadingApprovalHistory, setLoadingApprovalHistory] = useState(false);
+
+    // For Approval of TSM Accounts
+    const [tsmApprovalAccounts, setTsmApprovalAccounts] = useState<Account[]>([]);
+    const [loadingTsmApproval, setLoadingTsmApproval] = useState(false);
+    const [processingAccountId, setProcessingAccountId] = useState<string | null>(null);
+    // Remarks dialog state
+    const [remarksDialogOpen, setRemarksDialogOpen] = useState(false);
+    const [selectedAccountForRemarks, setSelectedAccountForRemarks] = useState<Account | null>(null);
+    const [tsmRemarksText, setTsmRemarksText] = useState("");
+    const [approvalActionType, setApprovalActionType] = useState<"active" | "inactive" | null>(null);
+    // Owner name map: { [referenceid]: "Firstname Lastname" }
+    const [ownerNames, setOwnerNames] = useState<Record<string, string>>({});
+
+    // Duplicate detection state
+    const [duplicateMap, setDuplicateMap] = useState<Record<string, any[]>>({});
+    const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+    const [duplicateModalData, setDuplicateModalData] = useState<{ company_name: string; matches: any[] } | null>(null);
 
     // SPF Notifications
     const [spfRequests, setSpfRequests] = useState<SPFRequest[]>([]);
@@ -369,9 +390,81 @@ function DashboardContent() {
         return () => clearInterval(interval);
     }, [userDetails.referenceid]);
 
-    // Fetch Approval History with "Approval for TSM" status
+    // Fetch accounts with "for approval of tsm" status
     useEffect(() => {
         if (!userDetails.referenceid) {
+            setTsmApprovalAccounts([]);
+            return;
+        }
+        const fetchTsmApprovalAccounts = async () => {
+            setLoadingTsmApproval(true);
+            try {
+                const response = await fetch(
+                    `/api/com-fetch-tsm-approval-accounts?tsm=${encodeURIComponent(userDetails.referenceid)}`
+                );
+                if (!response.ok) throw new Error("Failed to fetch accounts");
+                const data = await response.json();
+                setTsmApprovalAccounts(data.data || []);
+            } catch (err) {
+                console.error("Error fetching TSM approval accounts:", err);
+                setTsmApprovalAccounts([]);
+            } finally {
+                setLoadingTsmApproval(false);
+            }
+        };
+        fetchTsmApprovalAccounts();
+        const interval = setInterval(fetchTsmApprovalAccounts, 30000);
+        return () => clearInterval(interval);
+    }, [userDetails.referenceid]);
+
+    // Resolve owner names for all approval accounts using the TSM's agent list
+    useEffect(() => {
+        if (!userDetails.referenceid) return;
+        fetch(`/api/fetch-all-user?id=${encodeURIComponent(userDetails.referenceid)}`)
+            .then((r) => r.ok ? r.json() : [])
+            .then((agents: any[]) => {
+                const map: Record<string, string> = {};
+                for (const a of agents) {
+                    if (a.ReferenceID) {
+                        map[a.ReferenceID] = `${a.Firstname ?? ""} ${a.Lastname ?? ""}`.trim();
+                    }
+                }
+                setOwnerNames(map);
+            })
+            .catch(() => {});
+    }, [userDetails.referenceid]);
+
+    // Check duplicates for all approval accounts
+    useEffect(() => {
+        if (tsmApprovalAccounts.length === 0) { setDuplicateMap({}); return; }
+
+        const checkAll = async () => {
+            const map: Record<string, any[]> = {};
+            await Promise.all(
+                tsmApprovalAccounts.map(async (account) => {
+                    // Skip duplicate check if type client is Prospect
+                    if (account.type_client?.trim().toLowerCase() === "prospect") return;
+                    
+                    try {
+                        const res = await fetch(
+                            `/api/com-check-duplicate-account?company_name=${encodeURIComponent(account.company_name)}`
+                        );
+                        const data = await res.json();
+                        // Only flag if there are matches BESIDES this exact account itself
+                        const others = (data.companies || []).filter(
+                            (c: any) => String(c.owner_referenceid).toLowerCase() !== String(account.referenceid).toLowerCase()
+                        );
+                        if (others.length > 0) map[String(account.id)] = others;
+                    } catch { /* silent */ }
+                })
+            );
+            setDuplicateMap(map);
+        };
+        checkAll();
+    }, [tsmApprovalAccounts]);
+
+    // Fetch Approval History with "Approval for TSM" status
+    useEffect(() => {        if (!userDetails.referenceid) {
             setApprovalHistory([]);
             return;
         }
@@ -563,6 +656,58 @@ function DashboardContent() {
         }
     }
 
+    function handleApproval(id: string, status: "active" | "inactive") {
+        const account = tsmApprovalAccounts.find(a => a.id === id);
+        if (!account) return;
+        setSelectedAccountForRemarks(account);
+        setApprovalActionType(status);
+        setTsmRemarksText("");
+        setRemarksDialogOpen(true);
+    }
+
+    async function handleConfirmApproval() {
+        if (!selectedAccountForRemarks || !approvalActionType) return;
+        setProcessingAccountId(selectedAccountForRemarks.id);
+        try {
+            const res = await fetch("/api/com-fetch-tsm-approval-accounts", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    id: selectedAccountForRemarks.id, 
+                    status: approvalActionType, 
+                    tsm_remarks: tsmRemarksText || null,
+                }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || "Failed to update");
+            setTsmApprovalAccounts((prev) => prev.filter((a) => a.id !== selectedAccountForRemarks.id));
+            setRemarksDialogOpen(false);
+            setSelectedAccountForRemarks(null);
+            setApprovalActionType(null);
+            sileo.success({
+                title: approvalActionType === "active" ? "Approved" : "Declined",
+                description: approvalActionType === "active"
+                    ? "Account has been approved and set to active."
+                    : "Account has been declined and set to inactive.",
+                duration: 3000,
+                position: "top-right",
+                fill: "black",
+                styles: { title: "text-white!", description: "text-white" },
+            });
+        } catch (err: any) {
+            sileo.error({
+                title: "Failed",
+                description: err.message || "Failed to update account status.",
+                duration: 3000,
+                position: "top-right",
+                fill: "black",
+                styles: { title: "text-white!", description: "text-white" },
+            });
+        } finally {
+            setProcessingAccountId(null);
+        }
+    }
+
     return (
         <>
             <ProtectedPageWrapper>
@@ -588,6 +733,122 @@ function DashboardContent() {
                     </header>
 
                     <main className="flex flex-1 flex-col gap-4 p-4 overflow-auto">
+                        {/* Card 6 - For Approval of TSM Accounts */}
+                        <Card className="rounded-none border">
+                            <CardHeader className="flex flex-col space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <AlertCircleIcon className="w-5 h-5 text-yellow-500" />
+                                    <CardTitle className="text-sm font-semibold">
+                                        Client Approval
+                                        {!loadingTsmApproval && tsmApprovalAccounts.length > 0 && (
+                                            <span className="ml-2 inline-flex items-center justify-center rounded-full bg-yellow-100 text-yellow-800 text-[10px] font-bold px-2 py-0.5 border border-yellow-200">
+                                                {tsmApprovalAccounts.length}
+                                            </span>
+                                        )}
+                                    </CardTitle>
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                    accounts that are pending tsm approval before they are activated.
+                                </p>
+                            </CardHeader>
+                            <CardContent>
+                                {loadingTsmApproval ? (
+                                    <div className="text-center py-4 text-xs text-gray-500">loading...</div>
+                                ) : tsmApprovalAccounts.length === 0 ? (
+                                    <div className="text-center py-8 text-xs text-gray-400">no accounts pending tsm approval.</div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-xs">
+                                            <thead>
+                                                <tr className="bg-gray-50 border-b border-gray-200">
+                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">actions</th>
+                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">company name</th>
+                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">requestor</th>
+                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">contact person</th>
+                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">contact number</th>
+                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">email</th>
+                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">type</th>
+                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">region</th>
+                                                    <th className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">date request</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {tsmApprovalAccounts.map((account) => {
+                                                    const isProcessing = processingAccountId === account.id;
+                                                    return (
+                                                        <tr key={account.id} className="hover:bg-yellow-50/40 transition-colors">
+                                                            <td className="px-3 py-2.5 whitespace-nowrap">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <Button
+                                                                        size="sm"
+                                                                        disabled={isProcessing}
+                                                                        onClick={() => handleApproval(account.id, "active")}
+                                                                        className="h-7 px-3 rounded-none text-[10px] font-bold bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                                                                    >
+                                                                        {isProcessing ? "..." : "APPROVE"}
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        disabled={isProcessing}
+                                                                        onClick={() => handleApproval(account.id, "inactive")}
+                                                                        className="h-7 px-3 rounded-none text-[10px] font-bold bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+                                                                    >
+                                                                        {isProcessing ? "..." : "DECLINE"}
+                                                                    </Button>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-3 py-2.5">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span className="font-medium text-gray-800">{account.company_name || "—"}</span>
+                                                                    {duplicateMap[String(account.id)] && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => { setDuplicateModalData({ company_name: account.company_name, matches: duplicateMap[String(account.id)] }); setDuplicateModalOpen(true); }}
+                                                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300 hover:bg-amber-200 transition-colors"
+                                                                            title="Possible duplicate — click to view"
+                                                                        >
+                                                                            <AlertTriangle className="w-3 h-3" />
+                                                                            {duplicateMap[String(account.id)].length} duplicate{duplicateMap[String(account.id)].length !== 1 ? "s" : ""}
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-3 py-2.5">
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-medium text-gray-800">
+                                                                        {ownerNames[account.referenceid] || account.referenceid || "—"}
+                                                                    </span>
+                                                                    {ownerNames[account.referenceid] && (
+                                                                        <span className="text-[10px] text-gray-400 font-mono">{account.referenceid}</span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-3 py-2.5 text-gray-600">{account.contact_person || "—"}</td>
+                                                            <td className="px-3 py-2.5 text-gray-600">{account.contact_number || "—"}</td>
+                                                            <td className="px-3 py-2.5 text-gray-600">{account.email_address || "—"}</td>
+                                                            <td className="px-3 py-2.5">
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+                                                                    {account.type_client || "—"}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-3 py-2.5 text-gray-600">{account.region || "—"}</td>
+                                                            <td className="px-3 py-2.5 text-gray-500">
+                                                                {account.date_updated
+                                                                    ? new Date(account.date_updated).toLocaleDateString("en-PH", { 
+                                                                        dateStyle: "medium"
+                                                                      })
+                                                                    : "—"}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
                         {/* 4-card grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
                             {/* Card 1 */}
@@ -680,35 +941,6 @@ function DashboardContent() {
                                 </CardContent>
                             </Card>
                         </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-1 gap-4">
-                            {/* Card 5 - Approval for TSM Outbound Calls */}
-                            <Card className="rounded-none border">
-                                <CardHeader className="flex flex-col space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <AlertCircleIcon className="w-5 h-5 text-orange-500" />
-                                        <CardTitle className="text-sm font-semibold">Approval for TSM - Outbound Calls</CardTitle>
-                                    </div>
-                                    <p className="text-xs text-gray-500">
-                                        Outbound calls awaiting TSM approval with "Approval for TSM" status.
-                                    </p>
-                                </CardHeader>
-                                <CardContent>
-                                    {loadingApprovalHistory ? (
-                                        <div className="text-center py-4 text-xs text-gray-500">Loading...</div>
-                                    ) : (
-                                        <ApprovalHistory
-                                            history={approvalHistory}
-                                            dateCreatedFilterRange={dateCreatedFilterRange}
-                                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-                                            onRefresh={refreshApprovalHistory}
-                                        />
-                                    )}
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        {/* Existing content or other cards can go below */}
                     </main>
                 </SidebarInset>
 
@@ -716,6 +948,143 @@ function DashboardContent() {
                     dateCreatedFilterRange={dateCreatedFilterRange}
                     setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
                 />
+
+                {/* Duplicate Detection Modal */}
+                <Dialog open={duplicateModalOpen} onOpenChange={setDuplicateModalOpen}>
+                    <DialogContent className="max-w-2xl w-full p-0 gap-0 rounded-xl overflow-hidden bg-[#0d1117] border-0 shadow-2xl">
+                        {/* Header */}
+                        <div className="px-5 py-4 bg-[#161b22] border-b border-white/5 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                                <div>
+                                    <DialogTitle className="text-white text-xs font-bold uppercase tracking-widest">
+                                        Possible Duplicates
+                                    </DialogTitle>
+                                    <DialogDescription className="text-slate-500 text-[10px] font-mono mt-0.5">
+                                        {duplicateModalData?.company_name}
+                                    </DialogDescription>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setDuplicateModalOpen(false)}
+                                className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/40 hover:text-white transition-all border border-white/5"
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="overflow-y-auto max-h-[60vh] px-5 py-4 space-y-2">
+                            <p className="text-[10px] text-slate-500 font-mono mb-3">
+                                The following existing accounts may be duplicates. Review before approving.
+                            </p>
+                            {(duplicateModalData?.matches ?? []).map((match, i) => (
+                                <div key={i} className="rounded-xl bg-white/[0.03] border border-white/5 px-4 py-3 space-y-1.5">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <p className="text-xs font-bold text-white">{match.company_name}</p>
+                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                            {match.type_client && (
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/20 uppercase">
+                                                    {match.type_client}
+                                                </span>
+                                            )}
+                                            {match.status && (
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${
+                                                    match.status.toLowerCase() === "active"
+                                                        ? "bg-green-500/20 text-green-300 border-green-500/20"
+                                                        : "bg-slate-500/20 text-slate-400 border-slate-500/20"
+                                                }`}>
+                                                    {match.status}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[10px] font-mono">
+                                        {match.contact_person?.length > 0 && (
+                                            <p className="text-slate-400">
+                                                <span className="text-slate-600">Contact: </span>
+                                                {match.contact_person.join(", ")}
+                                            </p>
+                                        )}
+                                        {(match.owner_name || match.owner_referenceid) && (
+                                            <p className="text-slate-400">
+                                                <span className="text-slate-600">Owner: </span>
+                                                {match.owner_name || match.owner_referenceid}
+                                            </p>
+                                        )}
+                                        
+                                        {match.address && (
+                                            <p className="text-slate-400">
+                                                <span className="text-slate-600">Address: </span>
+                                                {match.address}
+                                            </p>
+                                        )}
+                                        
+                                        {match.tsm && (
+                                            <p className="text-slate-400">
+                                                <span className="text-slate-600">TSM: </span>
+                                                {match.tsm_name || match.tsm}
+                                            </p>
+                                        )}
+                                        {match.region && (
+                                            <p className="text-slate-400">
+                                                <span className="text-slate-600">Region: </span>
+                                                {match.region}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Remarks Dialog */}
+                <Dialog open={remarksDialogOpen} onOpenChange={setRemarksDialogOpen}>
+                    <DialogContent className="max-w-lg w-full">
+                        <DialogHeader>
+                            <DialogTitle className="text-sm font-bold">
+                                {approvalActionType === "active" ? "Approve Account" : "Decline Account"}
+                            </DialogTitle>
+                            <DialogDescription className="text-xs text-gray-500">
+                                {selectedAccountForRemarks?.company_name}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold uppercase text-gray-700 block mb-1">
+                                    TSM Remarks (Optional)
+                                </label>
+                                <textarea
+                                    value={tsmRemarksText}
+                                    onChange={(e) => setTsmRemarksText(e.target.value)}
+                                    placeholder="Enter remarks here..."
+                                    className="w-full border border-gray-300 rounded-md p-2 text-sm resize-none"
+                                    rows={4}
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter className="flex gap-2 mt-4">
+                            <Button
+                                variant="outline"
+                                onClick={() => setRemarksDialogOpen(false)}
+                                disabled={processingAccountId === selectedAccountForRemarks?.id}
+                                className="rounded-none"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleConfirmApproval}
+                                disabled={processingAccountId === selectedAccountForRemarks?.id}
+                                className="rounded-none"
+                            >
+                                {processingAccountId === selectedAccountForRemarks?.id 
+                                    ? "Processing..." 
+                                    : (approvalActionType === "active" ? "Confirm Approve" : "Confirm Decline")}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </ProtectedPageWrapper>
         </>
     );

@@ -8,31 +8,43 @@ const supabase = createClient(
 
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url);
+    const url         = new URL(req.url);
     const referenceid = url.searchParams.get("referenceid");
-    const from = url.searchParams.get("from");
-    const to   = url.searchParams.get("to");
+    const from        = url.searchParams.get("from");
+    const to          = url.searchParams.get("to");
 
     if (!referenceid) {
       return NextResponse.json({ success: false, error: "Missing reference ID." }, { status: 400 });
     }
 
     const now = new Date();
-    const startDate = from
-      ? `${from}T00:00:00Z`
-      : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01T00:00:00Z`;
-    const endDate = to ? `${to}T23:59:59Z` : null;
 
-    let query = supabase
+    // Helper to convert YYYY-MM-DD to Asia/Manila time range as UTC ISO strings
+    function getManilaDateRange(dateStr: string): { start: string; end: string } {
+      // Asia/Manila is UTC+8, so midnight Manila = UTC-8h
+      return {
+        start: `${dateStr}T00:00:00+08:00`,
+        end:   `${dateStr}T23:59:59.999+08:00`,
+      };
+    }
+
+    // Default range: start of current month in Manila time
+    const manilaMonth = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 7);
+    const defaultStartISO = `${manilaMonth}-01T00:00:00+08:00`;
+
+    const startISO = from ? getManilaDateRange(from).start : defaultStartISO;
+    const endISO   = to   ? getManilaDateRange(to).end   : (from ? getManilaDateRange(from).end : null);
+
+    let q = supabase
       .from("history")
       .select("*", { count: "exact" })
       .eq("referenceid", referenceid)
       .eq("source", "Outbound - Touchbase")
-      .gte("date_created", startDate);
+      .gte("date_created", startISO);
 
-    if (endDate) query = query.lte("date_created", endDate);
+    if (endISO) q = q.lte("date_created", endISO);
 
-    const { error, count } = await query;
+    const { error, count } = await q;
     if (error) throw error;
 
     return NextResponse.json({ success: true, count: count || 0 }, { status: 200 });
@@ -42,4 +54,4 @@ export async function GET(req: Request) {
   }
 }
 
-export const dynamic = "force-dynamic"; // Always fetch latest data
+export const dynamic = "force-dynamic";

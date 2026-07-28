@@ -120,15 +120,20 @@ export function CSRMetricsCard({
 
   /* ================= EXACT SAME LOGIC AS breaches.tsx ================= */
   const fetchCSRMetrics = useCallback(async (refId: string, from: string, to: string) => {
+    console.log("[csr.tsx] fetchCSRMetrics called with refId:", refId, "from:", from, "to:", to);
     if (!refId) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `/api/act-fetch-activity-v2?referenceid=${encodeURIComponent(refId)}`
-      );
-      if (!res.ok) throw new Error();
+      const url = `/api/act-fetch-activity-v2?referenceid=${encodeURIComponent(refId)}`;
+      console.log("[csr.tsx] Fetching from:", url);
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.error("[csr.tsx] Fetch failed with status:", res.status);
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
       const result = await res.json();
+      console.log("[csr.tsx] Fetched result:", result);
       const data: any[] = result.data || [];
 
       const excluded = [

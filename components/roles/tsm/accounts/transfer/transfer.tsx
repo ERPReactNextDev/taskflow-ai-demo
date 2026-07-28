@@ -165,7 +165,7 @@ export function AccountsCards({ posts = [], userDetails, setDateCreatedFilterRan
 
             const result = await res.json();
             if (result.success && result.updatedCount > 0) {
-                setLocalPosts(prev => prev.map(item => selectedIds.has(item.id) ? { ...item, status: "Approval for Transfer" } : item));
+                setLocalPosts(prev => prev.map(item => selectedIds.has(item.id) ? { ...item, status: "Active" } : item));
                 sileo.success({ title: "Success", description: "Accounts transfer successfully!", duration: 4000, position: "top-center" });
                 await onRefreshAccountsAction();
                 setSelectedIds(new Set());

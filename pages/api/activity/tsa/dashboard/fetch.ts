@@ -17,7 +17,7 @@ async function* fetchRowsInBatches(
   if (table === "revised_quotations") dateColumn = "date_updated";
   // Add other table-specific columns if needed
 
-  while (offset < 5000) { // Safety limit: don't fetch more than 5k total per table in one dashboard call
+  while (true) { // No safety limit - fetch all available data
     let query = supabase
       .from(table)
       .select("*")

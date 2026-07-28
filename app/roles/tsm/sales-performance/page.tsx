@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
@@ -30,6 +30,7 @@ interface UserDetails {
 
 function DashboardContent() {
     const searchParams = useSearchParams();
+    const router = useRouter();
     const { userId, setUserId } = useUser();
 
     const [userDetails, setUserDetails] = useState<UserDetails>({
@@ -129,7 +130,16 @@ function DashboardContent() {
                                 </BreadcrumbList>
                             </Breadcrumb>
                         </div>
-                        <div className="flex items-center px-3">
+                        <div className="flex items-center gap-2 px-3">
+                            <button
+                                onClick={() => {
+                                    const id = searchParams?.get("id") ?? "";
+                                    router.push(`/roles/tsm/si-breakdown${id ? `?id=${encodeURIComponent(id)}` : ""}`);
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gray-900 hover:bg-gray-700 text-white rounded-md transition-colors"
+                            >
+                                SI Breakdown
+                            </button>
                             <UnifiedNotificationBellLazy />
                         </div>
                     </header>

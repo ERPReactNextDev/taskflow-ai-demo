@@ -1570,16 +1570,23 @@ Procurement
     const restockingFeeNumber = parseFloat(restockingFee) || 0;
     const subtotalWithFees = roundedProductTotal + deliveryFeeNumber + restockingFeeNumber;
 
-    // Calculate EWT deduction
-    const whtBase = vatType === "vat_inc"
-      ? subtotalWithFees / 1.12
-      : subtotalWithFees;
-    const whtRate = whtType === "wht_1" ? 0.01 : whtType === "wht_2" ? 0.02 : 0;
-    const whtAmount = Math.round((whtBase * whtRate) * 100) / 100;
-
-    // Quotation amount should be the NET amount (after EWT deduction)
-    // This is what gets saved to the database
-    const finalAmount = Math.round((subtotalWithFees - whtAmount) * 100) / 100;
+    let netOfVatSave, whtRate, whtAmount, finalAmount;
+    
+    if (vatType === "zero_rated") {
+      // Zero-rated: no VAT deduction, no WHT deduction
+      netOfVatSave = subtotalWithFees;
+      whtRate = 0;
+      whtAmount = 0;
+      finalAmount = Math.round(subtotalWithFees * 100) / 100;
+    } else {
+      // vat_inc / vat_exe: normal behavior
+      netOfVatSave = subtotalWithFees / 1.12;
+      whtRate = whtType === "wht_1" ? 0.01 : whtType === "wht_2" ? 0.02 : 0;
+      whtAmount = Math.round((netOfVatSave * whtRate) * 100) / 100;
+      finalAmount = vatType === "vat_exe"
+        ? Math.round((netOfVatSave - whtAmount) * 100) / 100
+        : Math.round((subtotalWithFees - whtAmount) * 100) / 100;
+    }
 
     setQuotationAmount(finalAmount.toFixed(2));
   }, [selectedProducts, deliveryFee, restockingFee, discount, vatType, whtType]);
@@ -1988,18 +1995,32 @@ Procurement
 
     const whtRate = whtType === "wht_1" ? 0.01 : whtType === "wht_2" ? 0.02 : 0;
 
-    let totalInvoiceAmount: number;
-    if (whtRate === 0) {
+    // totalInvoiceAmount = the VAT-inclusive gross (what appears as "Total Invoice Amount")
+    // quotationAmount (netAmountToCollect) was already stored as:
+    //   vat_inc  → subtotalWithFees - wht  (full VAT-inclusive minus WHT)
+    //   vat_exe  → netOfVat - wht          (net-of-VAT minus WHT)
+    // Back-calculate totalInvoiceAmount from netAmountToCollect:
+    let totalInvoiceAmount: number, whtBase: number, whtAmount: number;
+    if (vatType === "zero_rated") {
+      // Zero-rated: no VAT, no WHT
       totalInvoiceAmount = netAmountToCollect;
-    } else if (vatType === "vat_inc") {
-      totalInvoiceAmount = netAmountToCollect / (1 - (whtRate / 1.12));
+      whtBase = netAmountToCollect;
+      whtAmount = 0;
     } else {
-      totalInvoiceAmount = netAmountToCollect / (1 - whtRate);
+      // vat_inc / vat_exe: normal behavior
+      if (whtRate === 0) {
+        totalInvoiceAmount = vatType === "vat_exe"
+          ? Math.round((netAmountToCollect * 1.12) * 100) / 100
+          : netAmountToCollect;
+      } else {
+        totalInvoiceAmount = vatType === "vat_exe"
+          ? netAmountToCollect * 1.12 / (1 - whtRate)
+          : netAmountToCollect / (1 - (whtRate / 1.12));
+      }
+      totalInvoiceAmount = Math.round(totalInvoiceAmount * 100) / 100;
+      whtBase = totalInvoiceAmount / 1.12;
+      whtAmount = Math.round((whtBase * whtRate) * 100) / 100;
     }
-    totalInvoiceAmount = Math.round(totalInvoiceAmount * 100) / 100;
-
-    const whtBase = vatType === "vat_inc" ? totalInvoiceAmount / 1.12 : totalInvoiceAmount;
-    const whtAmount = Math.round((whtBase * whtRate) * 100) / 100;
 
     return {
       referenceNo: quotationNumber ?? "DRAFT-XXXX",
@@ -6198,7 +6219,7 @@ Procurement
                                 {/* Row 3: Net Sales */}
                                 <tr className="border-b border-gray-100">
                                   <td className="px-3 py-1.5 text-right font-bold uppercase border-r-2 border-black w-[55%] text-[9px] text-gray-500">
-                                    Net Sales {payload.vatTypeLabel === "VAT Inc" ? "(VAT Inclusive)" : "(Non-VAT)"}
+                                    Net Sales {payload.vatTypeLabel === "VAT Inc" ? "(VAT Inclusive)" : ""}
                                   </td>
                                   <td className="px-3 py-1.5 text-right font-black text-gray-900">
                                     ₱{(payload.totalGross || payload.totalPrice - payload.deliveryFee - (Number(restockingFee) || 0)).toLocaleString(undefined, {
@@ -6966,7 +6987,7 @@ Procurement
                   <table className="w-full text-[10px] border-collapse">
                     <tbody>
                       <tr className="bg-white text-yellow-900 border-b border-yellow-100">
-                        <td className="px-2 py-1 text-right font-bold uppercase text-gray-400 text-[8px]">Net Sales {confirmDialog?.title?.toLowerCase().includes('inclusive') ? "(VAT Inclusive)" : "(Non-VAT)"}</td>
+                        <td className="px-2 py-1 text-right font-bold uppercase text-gray-400 text-[8px]">Net Sales {confirmDialog?.title?.toLowerCase().includes('inclusive') ? "(VAT Inclusive)" : ""}</td>
                         <td className="px-2 py-1 text-right font-bold">₱100,000.00</td>
                       </tr>
                       <tr className="bg-white text-yellow-900 border-b border-yellow-100">

@@ -28,6 +28,7 @@ interface Account {
   type_client: string;
   date_created: string;
   date_updated: string;
+  tsm_remarks?: string;
   contact_person: string | string[];
   contact_number: string | string[];
   email_address: string | string[];

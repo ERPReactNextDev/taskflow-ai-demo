@@ -11,25 +11,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const referenceid = req.query.referenceid as string;
     const month = req.query.month as string; // optional YYYY-MM
     const year = req.query.year as string; // optional YYYY
+    const from = req.query.from as string; // optional YYYY-MM-DD
+    const to = req.query.to as string; // optional YYYY-MM-DD
 
     if (!referenceid) {
       return res.status(400).json({ error: "Reference ID is required" });
     }
 
     // Calculate date range
+    let startDate, endDate;
     const now = new Date();
-    const targetYear = year ? parseInt(year) : now.getFullYear();
-    const targetMonth = month ? parseInt(month) - 1 : now.getMonth();
-    const monthStart = new Date(targetYear, targetMonth, 1).toISOString().slice(0, 10);
-    const monthEnd = new Date(targetYear, targetMonth + 1, 0).toISOString().slice(0, 10);
+    
+    if (from && to) {
+      // Explicit range provided — use it exactly
+      startDate = from;
+      endDate = to;
+    } else if (from) {
+      // Only "from" provided — scope to that calendar month
+      const d = new Date(from);
+      const year = d.getFullYear();
+      const month = d.getMonth(); // 0-indexed
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      startDate = from;
+      endDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    } else {
+      // No params — default to current calendar month
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+      endDate   = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    }
 
     // Fetch count from account_development_plans table
     const { data: plans, error: plansError } = await supabase
       .from("account_development_plans")
       .select("id")
       .eq("referenceid", referenceid)
-      .gte("created_at", monthStart)
-      .lte("created_at", monthEnd);
+      .gte("created_at", startDate)
+      .lte("created_at", endDate);
 
     if (plansError) throw plansError;
 

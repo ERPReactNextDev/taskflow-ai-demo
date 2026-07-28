@@ -78,7 +78,7 @@ export function SiteVisitCard({ referenceid, dateRange, name = "—" }: SiteVisi
         ).length;
 
         setVisitCount(logins);
-        setTarget(parseInt(targetData.target?.target ?? "0") || 0);
+        setTarget(parseInt(targetData.target?.target ?? "0") || 10); // Default to 10
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -96,7 +96,7 @@ export function SiteVisitCard({ referenceid, dateRange, name = "—" }: SiteVisi
     <Card className="rounded-xl border shadow-sm">
       <CardContent className="p-4">
         <p className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-4">
-          Site Visits
+          Site Visits (Based on Biolog)
         </p>
 
         {loading ? (
