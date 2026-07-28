@@ -760,13 +760,19 @@ function DashboardContent() {
       if (fromStr) siParams.append("from", fromStr);
       if (toStr)   siParams.append("to", toStr);
 
-      // SO is always current month — independent of the date filter
-      const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-      const [mYear, mMonth] = manilaToday.split("-");
-      const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
-      const monthStart = `${mYear}-${mMonth}-01`;
-      const monthEnd   = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
-      const soParams = new URLSearchParams({ referenceid, from: monthStart, to: monthEnd });
+      // SO follows the selected date range (or current month if no filter)
+      const soFrom = fromStr ?? (() => {
+        const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+        const [mYear, mMonth] = manilaToday.split("-");
+        return `${mYear}-${mMonth}-01`;
+      })();
+      const soTo = toStr ?? (() => {
+        const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+        const [mYear, mMonth] = manilaToday.split("-");
+        const monthDays = new Date(Number(mYear), Number(mMonth), 0).getDate();
+        return `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
+      })();
+      const soParams = new URLSearchParams({ referenceid, from: soFrom, to: soTo });
 
       const [siRes, soRes] = await Promise.all([
         fetch(`/api/history?${siParams}`),
@@ -1055,6 +1061,7 @@ function DashboardContent() {
                 totalRegular={totalSoRegular}
                 totalSPF={totalSoSPF}
                 loading={loadingHistory}
+                dateRange={dateCreatedFilterRange}
               />
               <OutboundTouchbaseCountCard
                 referenceid={userDetails.referenceid}

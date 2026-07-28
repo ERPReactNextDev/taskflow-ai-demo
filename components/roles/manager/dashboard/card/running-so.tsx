@@ -14,18 +14,41 @@ interface ManagerRunningSoCardProps {
   totalSPF?: number;
   loading?: boolean;
   userId?: string;
+  dateRange?: { from?: Date; to?: Date };
+}
+
+function buildRangeLabel(dateRange?: { from?: Date; to?: Date }): string {
+  const now = new Date();
+  if (dateRange?.from && dateRange?.to) {
+    const from = dateRange.from;
+    const to   = dateRange.to;
+    if (from.toDateString() === to.toDateString())
+      return from.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "Asia/Manila" });
+    if (from.getFullYear() === to.getFullYear() && from.getMonth() === to.getMonth()) {
+      const month = from.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
+      const year  = from.getFullYear();
+      const firstOfMonth = new Date(from.getFullYear(), from.getMonth(), 1);
+      const lastOfMonth  = new Date(from.getFullYear(), from.getMonth() + 1, 0);
+      const isFullMonth  = from.getDate() === firstOfMonth.getDate() && to.getDate() === lastOfMonth.getDate();
+      return isFullMonth ? `${month} ${year}` : `${month} ${from.getDate()}–${to.getDate()}, ${year}`;
+    }
+    const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", timeZone: "Asia/Manila" };
+    return `${from.toLocaleDateString("en-US", opts)} – ${to.toLocaleDateString("en-US", { ...opts, year: "numeric" })}`;
+  }
+  return now.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "Asia/Manila" });
 }
 
 export const ManagerRunningSoCard: React.FC<ManagerRunningSoCardProps> = ({
-  referenceid,
   targetTotal = 0,
   total = 0,
   totalRegular = 0,
   totalSPF = 0,
   loading = false,
   userId = "",
+  dateRange,
 }) => {
-  const router = useRouter();
+  const router     = useRouter();
+  const rangeLabel = buildRangeLabel(dateRange);
 
   const formatAmount = (amount: number) =>
     `₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -44,7 +67,7 @@ export const ManagerRunningSoCard: React.FC<ManagerRunningSoCardProps> = ({
       <CardContent className="flex-1 flex flex-col items-start justify-start p-6 gap-3">
         <div className="flex items-center justify-between w-full">
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
-            RUNNING SO ACTUAL
+            RUNNING SO ACTUAL — {rangeLabel}
           </div>
           <button
             onClick={handleSettings}
@@ -74,16 +97,12 @@ export const ManagerRunningSoCard: React.FC<ManagerRunningSoCardProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className={[
-              "px-3 py-1 text-sm font-medium rounded-full",
-              percentage >= 100
-                ? "bg-green-50 text-green-600"
-                : percentage >= 70
-                  ? "bg-amber-50 text-amber-600"
-                  : "bg-blue-50 text-blue-600",
-            ].join(" ")}
-          >
+          <span className={[
+            "px-3 py-1 text-sm font-medium rounded-full",
+            percentage >= 100 ? "bg-green-50 text-green-600"
+              : percentage >= 70  ? "bg-amber-50 text-amber-600"
+              : "bg-blue-50 text-blue-600",
+          ].join(" ")}>
             {percentage}% achieved
           </span>
         </div>

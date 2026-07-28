@@ -14,29 +14,57 @@ interface RunningSoCardProps {
   totalSPF?: number;
   loading?: boolean;
   userId?: string;
+  dateRange?: { from?: Date; to?: Date };
 }
 
 export const RunningSoCard: React.FC<RunningSoCardProps> = ({
-  referenceid,
   targetTotal = 8750000,
   total = 0,
   totalRegular = 0,
   totalSPF = 0,
   loading = false,
   userId = "",
+  dateRange,
 }) => {
-  const currentYear = new Date().getFullYear();
-  const router      = useRouter();
+  const router = useRouter();
+
+  // ── Label: show the active date range or fall back to current month ──────────
+  const rangeLabel = (() => {
+    const now = new Date();
+    if (dateRange?.from && dateRange?.to) {
+      const from = dateRange.from;
+      const to   = dateRange.to;
+      // Same day
+      if (from.toDateString() === to.toDateString()) {
+        return from.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "Asia/Manila" });
+      }
+      // Same month
+      if (
+        from.getFullYear() === to.getFullYear() &&
+        from.getMonth()    === to.getMonth()
+      ) {
+        const month = from.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
+        const year  = from.getFullYear();
+        // Full month check
+        const firstOfMonth = new Date(from.getFullYear(), from.getMonth(), 1);
+        const lastOfMonth  = new Date(from.getFullYear(), from.getMonth() + 1, 0);
+        const isFullMonth =
+          from.getDate() === firstOfMonth.getDate() &&
+          to.getDate()   === lastOfMonth.getDate();
+        return isFullMonth ? `${month} ${year}` : `${month} ${from.getDate()}–${to.getDate()}, ${year}`;
+      }
+      // Cross-month range
+      const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", timeZone: "Asia/Manila" };
+      return `${from.toLocaleDateString("en-US", opts)} – ${to.toLocaleDateString("en-US", { ...opts, year: "numeric" })}`;
+    }
+    // Default: current month
+    return now.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "Asia/Manila" });
+  })();
 
   const formatAmount = (amount: number) =>
     `₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  const calculatePercentage = (actual: number, target: number) => {
-    if (target <= 0) return 0;
-    return Math.round((actual / target) * 100);
-  };
-
-  const percentage = calculatePercentage(total, targetTotal);
+  const percentage = targetTotal > 0 ? Math.round((total / targetTotal) * 100) : 0;
 
   const handleSettings = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -50,7 +78,7 @@ export const RunningSoCard: React.FC<RunningSoCardProps> = ({
       <CardContent className="flex-1 flex flex-col items-start justify-start p-6 gap-3">
         <div className="flex items-center justify-between w-full">
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
-            RUNNING SO ACTUAL
+            RUNNING SO ACTUAL — {rangeLabel}
           </div>
           <button
             onClick={handleSettings}
@@ -80,7 +108,12 @@ export const RunningSoCard: React.FC<RunningSoCardProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-blue-50 text-blue-600 text-sm font-medium rounded-full">
+          <span className={[
+            "px-3 py-1 text-sm font-medium rounded-full",
+            percentage >= 100 ? "bg-green-50 text-green-600"
+              : percentage >= 70  ? "bg-blue-50 text-blue-600"
+              : "bg-amber-50 text-amber-600",
+          ].join(" ")}>
             {percentage}% achieved
           </span>
         </div>

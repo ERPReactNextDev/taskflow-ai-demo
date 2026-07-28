@@ -209,17 +209,9 @@ function DashboardContent() {
         toStr   = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
       }
 
-      // For SI: ALWAYS use full month boundaries derived from the 'from' date.
-      // SI total is never filtered by the selected date range — always the full month.
-      const refDate = dateCreatedFilterRange?.from ?? new Date();
-      const siYear  = refDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
-      const siMonth = refDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(5, 7);
-      const siMonthDays = new Date(Number(siYear), Number(siMonth), 0).getDate();
-      const siFromStr = `${siYear}-${siMonth}-01`;
-      const siToStr   = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}`;
-
+      // SI follows the selected date range (same as SO)
       const [siRes, soRes] = await Promise.all([
-        fetch(`/api/tsm-history-si?tsm=${encodeURIComponent(referenceid)}&from=${siFromStr}&to=${siToStr}`),
+        fetch(`/api/tsm-history-si?tsm=${encodeURIComponent(referenceid)}&from=${fromStr}&to=${toStr}`),
         fetch(`/api/tsm-history-so?tsm=${encodeURIComponent(referenceid)}&from=${fromStr}&to=${toStr}`),
       ]);
       const siData = await siRes.json();
@@ -410,6 +402,7 @@ function DashboardContent() {
                 total={totalActualSales}
                 loading={loadingHistory}
                 userId={queryUserId}
+                dateRange={dateCreatedFilterRange}
               />
               <RunningSoCard
                 referenceid={userDetails.referenceid}
@@ -419,6 +412,7 @@ function DashboardContent() {
                 totalSPF={totalSoSPF}
                 loading={loadingHistory}
                 userId={queryUserId}
+                dateRange={dateCreatedFilterRange}
               />
               <OutboundTouchbaseCountCard
                 referenceid={userDetails.referenceid}
