@@ -44,12 +44,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Fetch count from account_development_plans table
+    // Use +08:00 timezone to match Manila time
     const { data: plans, error: plansError } = await supabase
       .from("account_development_plans")
       .select("id")
       .eq("referenceid", referenceid)
-      .gte("created_at", startDate)
-      .lte("created_at", endDate);
+      .gte("created_at", `${startDate}T00:00:00+08:00`)
+      .lte("created_at", `${endDate}T23:59:59.999+08:00`);
 
     if (plansError) throw plansError;
 
