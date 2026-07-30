@@ -1023,10 +1023,8 @@ function DashboardContent() {
   // TSM-level data (for drill-down — fetched fresh per TSM)
   const [agents, setAgents] = useState<Agent[]>([]);
   const [tsmAccounts, setTsmAccounts] = useState<Account[]>([]);
-  const [tsmActivities, setTsmActivities] = useState<Activity[]>([]);
   const [loadingTsmData, setLoadingTsmData] = useState(false);
   const [agentAccounts, setAgentAccounts] = useState<Account[]>([]);
-  const [agentActivities, setAgentActivities] = useState<Activity[]>([]);
   const [loadingAgentData, setLoadingAgentData] = useState(false);
 
   const [loadingUser, setLoadingUser] = useState(true);
@@ -1239,9 +1237,27 @@ function DashboardContent() {
   }, [tsms, allActiveAccounts, filteredActivitiesByDate]);
 
   const selectedTsmActivitiesByDate = useMemo(() => {
-    if (!dateCreatedFilterRange?.from) return tsmActivities;
-    return tsmActivities.filter((a) => a.date_created && isDateInRange(a.date_created, dateCreatedFilterRange));
-  }, [tsmActivities, dateCreatedFilterRange]);
+    const tsmAccRefs = new Set(tsmAccounts.map((a) => a.account_reference_number?.toLowerCase()).filter(Boolean));
+    return filteredActivitiesByDate.filter(
+      (a) => a.account_reference_number && tsmAccRefs.has(a.account_reference_number.toLowerCase())
+    );
+  }, [tsmAccounts, filteredActivitiesByDate]);
+
+  // Derived tsmActivities (reactive — always in sync with date filter)
+  const tsmActivities = selectedTsmActivitiesByDate;
+
+  // Derived agentActivities (reactive — always in sync with date filter)
+  const agentActivities = useMemo(() => {
+    if (!agentAccounts.length) return [];
+    const agentAccRefs = new Set(agentAccounts.map((a) => a.account_reference_number?.toLowerCase()).filter(Boolean));
+    const agentRef = selectedAgentId ? normalizeReference(selectedAgentId) : null;
+    return filteredActivitiesByDate.filter(
+      (a) =>
+        a.account_reference_number &&
+        agentAccRefs.has(a.account_reference_number.toLowerCase()) &&
+        (!agentRef || !a.referenceid || normalizeReference(a.referenceid) === agentRef)
+    );
+  }, [agentAccounts, selectedAgentId, filteredActivitiesByDate]);
 
   const agentStats = useMemo<AgentWithStats[]>(() => {
     const activityRefs = new Set(
@@ -1587,10 +1603,8 @@ function DashboardContent() {
     setSelectedAgentName(null);
     setAgents([]);
     setTsmAccounts([]);
-    setTsmActivities([]);
     setLoadingTsmData(false);
     setAgentAccounts([]);
-    setAgentActivities([]);
     setLoadingAgentData(false);
     setSearch("");
     setTsmSearch("");
@@ -1607,7 +1621,6 @@ function DashboardContent() {
     setSelectedAgentId(null);
     setSelectedAgentName(null);
     setAgentAccounts([]);
-    setAgentActivities([]);
     setLoadingAgentData(false);
     setSearch("");
     setAgentSearch("");
@@ -1625,7 +1638,6 @@ function DashboardContent() {
     setSelectedAgentName(null);
     setAgents([]);
     setAgentAccounts([]);
-    setAgentActivities([]);
     setSearch("");
     setAgentSearch("");
     setCurrentPage(1);
@@ -1644,31 +1656,20 @@ function DashboardContent() {
         const legacyRef = normalizeReference(account.referenceid);
         return !knownTsmRefs.has(directTsmRef) && !knownTsmRefs.has(legacyRef);
       });
-      const unassignedAccRefs = new Set(unassignedAccounts.map((account) => account.account_reference_number));
-      const unassignedActivities = filteredActivitiesByDate.filter(
-        (activity) => activity.account_reference_number && unassignedAccRefs.has(activity.account_reference_number)
-      );
       setLoadingTsmData(false);
       setAgents([]);
       setTsmAccounts(unassignedAccounts);
-      setTsmActivities(unassignedActivities);
       return;
     }
 
     setLoadingTsmData(true);
     try {
-      // Use the same matching logic as manager-level stats calculation
       const tsmRef = normalizeReference(tsmId);
       const tsmAccounts = allActiveAccounts.filter((account) => {
         const directTsmRef = normalizeReference(account.tsm);
         const legacyRef = normalizeReference(account.referenceid);
         return directTsmRef === tsmRef || legacyRef === tsmRef;
       });
-
-      const tsmAccRefs = new Set(tsmAccounts.map((account) => account.account_reference_number));
-      const tsmActivities = filteredActivitiesByDate.filter(
-        (activity) => activity.account_reference_number && tsmAccRefs.has(activity.account_reference_number)
-      );
 
       // Fetch agents for this TSM
       const agentsRes = await fetch(`/api/fetch-all-user?id=${encodeURIComponent(tsmId)}`);
@@ -1687,12 +1688,10 @@ function DashboardContent() {
       }
 
       setTsmAccounts(tsmAccounts);
-      setTsmActivities(tsmActivities);
     } catch (err) {
       console.error("TSM data fetch error:", err);
       setAgents([]);
       setTsmAccounts([]);
-      setTsmActivities([]);
     } finally {
       setLoadingTsmData(false);
     }
@@ -1717,40 +1716,23 @@ function DashboardContent() {
         const accountRef = normalizeReference(account.referenceid);
         return !accountRef || !knownAgentRefs.has(accountRef);
       });
-      const unassignedAccRefs = new Set(unassignedAccounts.map((account) => account.account_reference_number));
-      const unassignedActivities = selectedTsmActivitiesByDate.filter(
-        (activity) => activity.account_reference_number && unassignedAccRefs.has(activity.account_reference_number)
-      );
       setLoadingAgentData(false);
       setAgentAccounts(unassignedAccounts);
-      setAgentActivities(unassignedActivities);
       return;
     }
 
     setLoadingAgentData(true);
     try {
-      // Use the same matching logic as TSM-level stats calculation
       const agentRef = normalizeReference(agentId);
       const agentAccounts = tsmAccounts.filter((account) => {
         const accountRef = normalizeReference(account.referenceid);
         return accountRef === agentRef;
       });
 
-      const agentAccRefs = new Set(agentAccounts.map((account) => account.account_reference_number));
-      // Only include activities logged by this agent (referenceid match), or null-referenceid ones
-      const agentActivities = selectedTsmActivitiesByDate.filter(
-        (activity) =>
-          activity.account_reference_number &&
-          agentAccRefs.has(activity.account_reference_number) &&
-          (!activity.referenceid || normalizeReference(activity.referenceid) === agentRef)
-      );
-
       setAgentAccounts(agentAccounts);
-      setAgentActivities(agentActivities);
     } catch (err) {
       console.error("Agent data fetch error:", err);
       setAgentAccounts([]);
-      setAgentActivities([]);
     } finally {
       setLoadingAgentData(false);
     }
@@ -1866,6 +1848,32 @@ function DashboardContent() {
                           accent={accentColors[i % accentColors.length]}
                           sublabel={`${stat.withActivity} with / ${stat.withoutActivity} without`} />
                       ))}
+                      {/* ── Leads & Customers combined card ── */}
+                      <div className="relative flex flex-col gap-2 rounded-xl border bg-white px-5 py-4 shadow-sm overflow-hidden"
+                        style={{ borderLeft: "3px solid #6366f1" }}>
+                        <div className="absolute inset-0 opacity-[0.04] pointer-events-none"
+                          style={{ background: "radial-gradient(circle at 80% 20%, #6366f1, transparent 70%)" }} />
+                        <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Leads / Customers</span>
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-xl font-bold text-amber-600 tabular-nums">{categoryStats.leads}</span>
+                            <span className="text-[9px] font-semibold text-amber-500 uppercase tracking-wide">Leads</span>
+                          </div>
+                          <div className="w-px h-8 bg-gray-100" />
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-xl font-bold text-emerald-600 tabular-nums">{categoryStats.customers}</span>
+                            <span className="text-[9px] font-semibold text-emerald-500 uppercase tracking-wide">Customers</span>
+                          </div>
+                        </div>
+                        {(categoryStats.leads + categoryStats.customers) > 0 && (
+                          <div className="h-1 rounded-full overflow-hidden bg-gray-100 flex">
+                            <div className="h-full bg-amber-400 transition-all"
+                              style={{ width: `${Math.round((categoryStats.leads / (categoryStats.leads + categoryStats.customers)) * 100)}%` }} />
+                            <div className="h-full bg-emerald-400 flex-1" />
+                          </div>
+                        )}
+                        <span className="text-[9px] text-gray-400">{dateCreatedFilterRange?.from ? "in date range" : "all time"}</span>
+                      </div>
                     </>
                   ) : (
                     <>
@@ -1908,7 +1916,6 @@ function DashboardContent() {
                             <span className="text-[9px] font-semibold text-emerald-500 uppercase tracking-wide">Customers</span>
                           </div>
                         </div>
-                        {/* mini bar */}
                         {(categoryStats.leads + categoryStats.customers) > 0 && (
                           <div className="h-1 rounded-full overflow-hidden bg-gray-100 flex">
                             <div className="h-full bg-amber-400 transition-all"
@@ -1916,6 +1923,7 @@ function DashboardContent() {
                             <div className="h-full bg-emerald-400 flex-1" />
                           </div>
                         )}
+                        <span className="text-[9px] text-gray-400">{dateCreatedFilterRange?.from ? "in date range" : "all time"}</span>
                       </div>
                     </>
                   )}

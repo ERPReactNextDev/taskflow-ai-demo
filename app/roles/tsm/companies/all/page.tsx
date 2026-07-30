@@ -799,6 +799,33 @@ function DashboardContent() {
 
   const accentColors = ["#6366f1", "#f59e0b", "#10b981", "#ef4444", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6"];
 
+  // ── Customer set: accounts that have actual sales / delivered / closed activity ──
+  const customerRefSet = useMemo(() => {
+    const s = new Set<string>();
+    scopedActivities.forEach((a) => {
+      if (!a.account_reference_number) return;
+      if (
+        (a.actual_sales ?? 0) > 0 ||
+        (a.type_activity ?? "").toLowerCase().includes("delivered") ||
+        (a.type_activity ?? "").toLowerCase().includes("closed")
+      ) {
+        s.add(a.account_reference_number.toLowerCase());
+      }
+    });
+    return s;
+  }, [scopedActivities]);
+
+  // ── Lead / Customer classification ──
+  const categoryStats = useMemo(() => {
+    let customers = 0;
+    let leads = 0;
+    scopedAccounts.forEach((account) => {
+      if (customerRefSet.has(account.account_reference_number?.toLowerCase() ?? "")) customers++;
+      else leads++;
+    });
+    return { customers, leads };
+  }, [scopedAccounts, customerRefSet]);
+
   const handleDownloadCSV = () => {
     const csv = convertToCSV(filteredAccounts);
     if (!csv) return;
@@ -910,6 +937,29 @@ function DashboardContent() {
                       {tsmStatCards.typeStats.map((stat, i) => (
                         <StatCard key={stat.type} label={stat.type} value={stat.total} accent={accentColors[i % accentColors.length]} sublabel={`${stat.withActivity} with / ${stat.withoutActivity} without`} />
                       ))}
+                      {/* ── Leads & Customers combined card ── */}
+                      <div className="relative flex flex-col gap-2 rounded-xl border bg-white px-5 py-4 shadow-sm overflow-hidden" style={{ borderLeft: "3px solid #6366f1" }}>
+                        <div className="absolute inset-0 opacity-[0.04] pointer-events-none" style={{ background: "radial-gradient(circle at 80% 20%, #6366f1, transparent 70%)" }} />
+                        <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Leads / Customers</span>
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-xl font-bold text-amber-600 tabular-nums">{categoryStats.leads}</span>
+                            <span className="text-[9px] font-semibold text-amber-500 uppercase tracking-wide">Leads</span>
+                          </div>
+                          <div className="w-px h-8 bg-gray-100" />
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-xl font-bold text-emerald-600 tabular-nums">{categoryStats.customers}</span>
+                            <span className="text-[9px] font-semibold text-emerald-500 uppercase tracking-wide">Customers</span>
+                          </div>
+                        </div>
+                        {(categoryStats.leads + categoryStats.customers) > 0 && (
+                          <div className="h-1 rounded-full overflow-hidden bg-gray-100 flex">
+                            <div className="h-full bg-amber-400 transition-all" style={{ width: `${Math.round((categoryStats.leads / (categoryStats.leads + categoryStats.customers)) * 100)}%` }} />
+                            <div className="h-full bg-emerald-400 flex-1" />
+                          </div>
+                        )}
+                        <span className="text-[9px] text-gray-400">{dateCreatedFilterRange?.from ? "in date range" : "all time"}</span>
+                      </div>
                     </>
                   ) : (
                     <>
@@ -919,6 +969,29 @@ function DashboardContent() {
                       {typeClientStats.map((stat, i) => (
                         <StatCard key={stat.type} label={stat.type} value={stat.total} accent={accentColors[i % accentColors.length]} onClick={() => setTypeFilter(typeFilter === stat.type ? null : stat.type)} isActive={typeFilter === stat.type} sublabel={`${stat.withActivity} with / ${stat.withoutActivity} without`} />
                       ))}
+                      {/* ── Leads & Customers combined card ── */}
+                      <div className="relative flex flex-col gap-2 rounded-xl border bg-white px-5 py-4 shadow-sm overflow-hidden" style={{ borderLeft: "3px solid #6366f1" }}>
+                        <div className="absolute inset-0 opacity-[0.04] pointer-events-none" style={{ background: "radial-gradient(circle at 80% 20%, #6366f1, transparent 70%)" }} />
+                        <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Leads / Customers</span>
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-xl font-bold text-amber-600 tabular-nums">{categoryStats.leads}</span>
+                            <span className="text-[9px] font-semibold text-amber-500 uppercase tracking-wide">Leads</span>
+                          </div>
+                          <div className="w-px h-8 bg-gray-100" />
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-xl font-bold text-emerald-600 tabular-nums">{categoryStats.customers}</span>
+                            <span className="text-[9px] font-semibold text-emerald-500 uppercase tracking-wide">Customers</span>
+                          </div>
+                        </div>
+                        {(categoryStats.leads + categoryStats.customers) > 0 && (
+                          <div className="h-1 rounded-full overflow-hidden bg-gray-100 flex">
+                            <div className="h-full bg-amber-400 transition-all" style={{ width: `${Math.round((categoryStats.leads / (categoryStats.leads + categoryStats.customers)) * 100)}%` }} />
+                            <div className="h-full bg-emerald-400 flex-1" />
+                          </div>
+                        )}
+                        <span className="text-[9px] text-gray-400">{dateCreatedFilterRange?.from ? "in date range" : "all time"}</span>
+                      </div>
                     </>
                   )}
                 </div>
