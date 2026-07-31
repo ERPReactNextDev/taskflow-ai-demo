@@ -65,7 +65,7 @@ export async function GET(req: Request) {
     const uniqueQuotations = new Set<string>();
     data.forEach((row) => { if (row.quotation_number) uniqueQuotations.add(row.quotation_number); });
 
-    return NextResponse.json({ success: true, count: uniqueQuotations.size }, { status: 200 });
+    return NextResponse.json({ success: true, count: uniqueQuotations.size, rawCount: data.length }, { status: 200 });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }

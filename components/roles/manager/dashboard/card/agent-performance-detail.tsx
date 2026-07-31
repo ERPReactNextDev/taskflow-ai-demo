@@ -179,30 +179,8 @@ export const ManagerAgentPerformanceDetail: React.FC<ManagerAgentPerformanceDeta
   const [error,      setError]      = useState<string | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
 
-  const getCacheKey = useCallback(() => {
-    const fromStr = dateRange?.from ? toDateStr(dateRange.from) : "default";
-    const toStr   = dateRange?.to   ? toDateStr(dateRange.to)   : "default";
-    return `manager-agent-performance-${manager}-${fromStr}-${toStr}-v2`;
-  }, [manager, dateRange]);
-
-  useEffect(() => {
-    const cacheKey = getCacheKey();
-    const cached   = localStorage.getItem(cacheKey);
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        setAgents(parsed.agents);
-        setHasFetched(true);
-      } catch {
-        localStorage.removeItem(cacheKey);
-      }
-    }
-  }, [getCacheKey]);
-
   const fetchData = useCallback(async () => {
     if (!manager) return;
-    const cacheKey = getCacheKey();
-    localStorage.removeItem(cacheKey);
     setLoading(true);
     setError(null);
     setHasFetched(true);
@@ -215,15 +193,13 @@ export const ManagerAgentPerformanceDetail: React.FC<ManagerAgentPerformanceDeta
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error ?? "Unknown error");
-      const newAgents = data.agents ?? [];
-      setAgents(newAgents);
-      localStorage.setItem(cacheKey, JSON.stringify({ agents: newAgents }));
+      setAgents(data.agents ?? []);
     } catch (err: any) {
       setError(err.message ?? "Failed to load data.");
     } finally {
       setLoading(false);
     }
-  }, [manager, dateRange, getCacheKey]);
+  }, [manager, dateRange]);
 
   // ── Totals ────────────────────────────────────────────────────────────────
   const totals = agents.reduce(

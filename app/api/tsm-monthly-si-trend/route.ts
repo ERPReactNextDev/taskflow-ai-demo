@@ -69,8 +69,8 @@ export async function GET(req: Request) {
     const endDate     = to   ? to : null;
 
     if (agentIds.length === 0) {
-      const endMonth   = to   ? new Date(to).getMonth()   : new Date().getMonth();
-      const startMonth = from ? new Date(from).getMonth() : 0;
+      const endMonth   = to   ? new Date(to + "T12:00:00").getMonth()   : new Date().getMonth();
+      const startMonth = from ? new Date(from + "T12:00:00").getMonth() : 0;
       const months = MONTH_NAMES.slice(startMonth, endMonth + 1).map((name) => ({ month: name, total: 0 }));
       return NextResponse.json({ success: true, months, weeks: null }, { status: 200 });
     }
@@ -91,7 +91,7 @@ export async function GET(req: Request) {
     if (granularity === "weekly") {
       const weekTotals: Record<string, number> = { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0 };
       for (const record of data ?? []) {
-        const date = new Date(record.delivery_date);
+        const date = new Date((record.delivery_date as string) + "T12:00:00");
         if (isNaN(date.getTime())) continue;
         const day   = date.getDate();
         const week  = day <= 7 ? "W1" : day <= 14 ? "W2" : day <= 21 ? "W3" : day <= 28 ? "W4" : "W5";
@@ -104,13 +104,13 @@ export async function GET(req: Request) {
     // 3b. Monthly granularity (default)
     const monthlyTotals = new Array(12).fill(0);
     for (const record of data ?? []) {
-      const date = new Date(record.delivery_date);
+      const date = new Date((record.delivery_date as string) + "T12:00:00");
       if (isNaN(date.getTime())) continue;
       monthlyTotals[date.getMonth()] += Number(record.actual_sales) || 0;
     }
 
-    const endLimit   = to   ? new Date(to).getMonth()   : new Date().getMonth();
-    const startLimit = from ? new Date(from).getMonth() : 0;
+    const endLimit   = to   ? new Date(to + "T12:00:00").getMonth()   : new Date().getMonth();
+    const startLimit = from ? new Date(from + "T12:00:00").getMonth() : 0;
     const months = MONTH_NAMES.slice(startLimit, endLimit + 1).map((name, i) => ({
       month: name,
       total: monthlyTotals[startLimit + i],

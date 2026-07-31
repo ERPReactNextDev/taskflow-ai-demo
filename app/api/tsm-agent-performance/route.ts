@@ -69,7 +69,7 @@ async function connectToDatabase() {
  *   non-quotation HT, quotation HT, SPF handling duration.
  */
 
-// ── Pagination helper ─────────────────────────────────────────────────────────
+//        Pagination helper                                                                                                                                                                            
 
 /** Fetch all rows from Supabase (handles pagination for large datasets) */
 async function fetchAllRows<T = any>(query: any): Promise<T[]> {
@@ -89,7 +89,7 @@ async function fetchAllRows<T = any>(query: any): Promise<T[]> {
   return allData;
 }
 
-// ── CSR metrics (from MongoDB activity collection) ───────────────────────────
+//        CSR metrics (from MongoDB activity collection)                                                                                  
 
 const CSR_EXCLUDED = [
   "Customer Feedback/Recommendation", "Job Inquiry", "Job Applicants",
@@ -230,7 +230,7 @@ async function calcCsrForAgents(
   return result;
 }
 
-// ── Time spent (from multiple Supabase tables with start_date / end_date) ─────
+//        Time spent (from multiple Supabase tables with start_date / end_date)                
 
 async function calcTimeSpentForAgents(
   agentIds: string[],
@@ -241,7 +241,7 @@ async function calcTimeSpentForAgents(
 ): Promise<Record<string, { total: number; breakdown: Record<string, number> }>> {
   const result: Record<string, { total: number; breakdown: Record<string, number> }> = {};
   try {
-    // Fetch from history table — include type_activity for breakdown
+    // Fetch from history table     include type_activity for breakdown
     const historyQ = fetchAllRows(
       supabase.from("history")
         .select("referenceid, start_date, end_date, type_activity")
@@ -323,14 +323,14 @@ async function calcTimeSpentForAgents(
   return result;
 }
 
-// ── DB Coverage (cluster accounts + activities) ───────────────────────────────
+//        DB Coverage (cluster accounts + activities)                                                                                              
 
 interface DbCoverageResult {
   coveredCount: number;
   totalCount: number;
 }
 
-// Normalize a company name: lowercase → collapse whitespace → strip trailing dot(s)
+// Normalize a company name: lowercase     collapse whitespace     strip trailing dot(s)
 const normalizeCompany = (name: string): string =>
   (name || "").toLowerCase().replace(/\s+/g, " ").trim().replace(/\.+$/, "");
 
@@ -342,7 +342,7 @@ async function calcDbCoverageForAgents(
   const result: Record<string, DbCoverageResult> = {};
   try {
     console.log("[calcDbCoverageForAgents] Starting with agentIds:", agentIds, "monthStart:", monthStartDate, "monthEnd:", monthEndDate);
-    // Fetch accounts — exclude removed/approved for deletion/subject for transfer (matches companies page)
+    // Fetch accounts     exclude removed/approved for deletion/subject for transfer (matches companies page)
     const clusterAccounts = await sql`
       SELECT referenceid, company_name, account_reference_number, status, type_client
       FROM accounts
@@ -411,7 +411,7 @@ async function calcDbCoverageForAgents(
       }
     }
 
-    // Filter accounts — exclude removed/approved for deletion/subject for transfer
+    // Filter accounts     exclude removed/approved for deletion/subject for transfer
     const EXCLUDED_STATUSES = new Set(["removed", "approved for deletion", "subject for transfer"]);
     const allowedTypes      = new Set(["top 50", "next 30", "balance 20", "tsa client", "csr client", "new client"]);
 
@@ -444,7 +444,7 @@ async function calcDbCoverageForAgents(
   return result;
 }
 
-// ── GET ───────────────────────────────────────────────────────────────────────
+//        GET                                                                                                                                                                                                                      
 
 export async function GET(req: Request) {
   try {
@@ -462,7 +462,7 @@ export async function GET(req: Request) {
       );
     }
 
-    // ── 1. Resolve active TSAs under this TSM ─────────────────────────────────
+    //        1. Resolve active TSAs under this TSM                                                                                                    
     console.log("[tsm-agent-performance] Fetching agents from Supabase");
     const { data: agentRows, error: agentErr } = await supabase
       .from("users")
@@ -490,7 +490,7 @@ export async function GET(req: Request) {
 
     const agentIds = agents.map((a) => a.referenceid);
 
-    // ── 2. Date scoping ───────────────────────────────────────────────────────
+    //        2. Date scoping                                                                                                                                                                      
     const now         = new Date();
     const currentYear = now.getFullYear().toString();
 
@@ -501,7 +501,7 @@ export async function GET(req: Request) {
     const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
 
     // SI always uses full month boundaries derived from the 'from' date (or current month if not provided).
-    // SI total is never filtered by the selected date range — always the full month.
+    // SI total is never filtered by the selected date range     always the full month.
     const siRefDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
     const siYear    = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
     const siMonth   = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(5, 7);
@@ -509,7 +509,7 @@ export async function GET(req: Request) {
     const siStart   = `${siYear}-${siMonth}-01`;
     const siEnd     = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}`;
 
-    // SO uses full +08:00 timestamp bounds — same as tsm-history-so and tsm-agent-so
+    // SO uses full +08:00 timestamp bounds     same as tsm-history-so and tsm-agent-so
     const soStartISO = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
     const soEndISO   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
 
@@ -521,23 +521,23 @@ export async function GET(req: Request) {
     const rangeStartTs = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
     const rangeEndTs   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
 
-    // New account dev — selected range (or current month)
+    // New account dev     selected range (or current month)
     const naStart = rangeStartTs;
     const naEnd   = rangeEndTs;
 
-    // Site visits — same range, +08:00 timezone
+    // Site visits     same range, +08:00 timezone
     const svStart = rangeStartTs;
     const svEnd   = rangeEndTs;
 
     // Quota year
     const quotaYear = from ? new Date(`${from}T00:00:00+08:00`).getFullYear().toString() : currentYear;
 
-    // ── 3. Parallel Supabase queries ──────────────────────────────────────────
+    //        3. Parallel Supabase queries                                                                                                                               
 
     // SI (actual sales) - always based on full month boundaries of delivery_date
     const siQ = (() => {
       let q = supabase.from("history")
-        .select("referenceid, actual_sales")
+        .select("referenceid, actual_sales, activity_reference_number")
         .in("referenceid", agentIds)
         .eq("type_activity", "Delivered / Closed Transaction")
         .gte("delivery_date", siStart)
@@ -545,7 +545,7 @@ export async function GET(req: Request) {
       return fetchAllRows(q);
     })();
 
-    // SO amount — use Manila-aware +08:00 bounds to match tsm-history-so and tsm-agent-so
+    // SO amount     use Manila-aware +08:00 bounds to match tsm-history-so and tsm-agent-so
     const soQ = (() => {
       let q = supabase.from("history")
         .select("referenceid, so_amount")
@@ -556,15 +556,15 @@ export async function GET(req: Request) {
       return fetchAllRows(q);
     })();
 
-    // OB calls — Successful only
+    // OB calls     Successful only (use +08:00 timestamps to match tsm-agent-outbound-history API)
     const obQ = fetchAllRows(
       supabase.from("history")
         .select("referenceid")
         .in("referenceid", agentIds)
         .eq("source", "Outbound - Touchbase")
         .eq("call_status", "Successful")
-        .gte("date_created", rangeStartDate)
-        .lte("date_created", rangeEndDate)
+        .gte("date_created", rangeStartTs)
+        .lte("date_created", rangeEndTs)
     );
 
     // Quotation amount (Quote-Done, sum of quotation_amount)
@@ -578,11 +578,11 @@ export async function GET(req: Request) {
         .lte("date_created", rangeEndDate)
     );
 
-    // Site visits (tasklog Login entries)
+    // Site visits (tasklog Login/Logout entries, counted by unique SiteVisitAccount)
     const svQ = fetchAllRows(
       supabase
         .from("tasklog")
-        .select(`"ReferenceID", "Status"`)
+        .select(`"ReferenceID", "Status", "SiteVisitAccount"`)
         .in("ReferenceID", agentIds)
         .gte("date_created", svStart)
         .lte("date_created", svEnd)
@@ -603,7 +603,7 @@ export async function GET(req: Request) {
     const quotaMonth = quotaMonthDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
     const quotaMonthYear = quotaMonthDate.toLocaleDateString("en-CA", { year: "numeric", timeZone: "Asia/Manila" }).split("-")[0];
 
-    // Sales quota — monthly plan (filter by year + month to avoid summing the full year)
+    // Sales quota     monthly plan (filter by year + month to avoid summing the full year)
     const quotaQ = fetchAllRows(
       supabase
         .from("sales_quota")
@@ -652,7 +652,7 @@ export async function GET(req: Request) {
         .eq("year", quotaMonthYear)
     );
 
-    // Conversion pipeline — single query for calls→quote, quote→SO, SO→SI per agent
+    // Conversion pipeline     single query for calls   quote, quote   SO, SO   SI per agent
     const convQ = fetchAllRows(
       supabase.from("history")
         .select("referenceid, activity_reference_number, source, type_activity")
@@ -686,7 +686,7 @@ export async function GET(req: Request) {
     ]);
     console.log("[tsm-agent-performance] Parallel queries complete");
 
-    // ── 4. Aggregate per agent ────────────────────────────────────────────────
+    //        4. Aggregate per agent                                                                                                                                                 
 
     const siMap:    Record<string, number> = {};
     const soMap:    Record<string, number> = {};
@@ -702,14 +702,30 @@ export async function GET(req: Request) {
     const accountDevTargetMap: Record<string, number> = {};
     const obTargetMap:         Record<string, number> = {};
 
-    for (const r of siData)    siMap[r.referenceid]    = (siMap[r.referenceid]    ?? 0) + (Number(r.actual_sales)     || 0);
+    // SI: deduplicate by activity_reference_number per agent (matches /api/history logic)
+    const siSeenRefs = new Map<string, Set<string>>();
+    for (const r of siData) {
+      const arn = r.activity_reference_number;
+      if (!siSeenRefs.has(r.referenceid)) siSeenRefs.set(r.referenceid, new Set());
+      if (arn && siSeenRefs.get(r.referenceid)!.has(arn)) continue; // skip duplicate
+      if (arn) siSeenRefs.get(r.referenceid)!.add(arn);
+      siMap[r.referenceid] = (siMap[r.referenceid] ?? 0) + (Number(r.actual_sales) || 0);
+    }
     for (const r of soData)    soMap[r.referenceid]    = (soMap[r.referenceid]    ?? 0) + (Number(r.so_amount)        || 0);
     for (const r of obData)    obMap[r.referenceid]    = (obMap[r.referenceid]    ?? 0) + 1;
     for (const r of qaData) {
       qaMap[r.referenceid]      = (qaMap[r.referenceid]      ?? 0) + (Number(r.quotation_amount) || 0);
       qaCountMap[r.referenceid] = (qaCountMap[r.referenceid] ?? 0) + 1;
     }
-    for (const r of svData)    { if (r.Status === "Login") svMap[r.ReferenceID] = (svMap[r.ReferenceID] ?? 0) + 1; }
+    // Count unique SiteVisitAccount per agent (Login or Logout = 1 visit each unique account)
+    const svSetMap: Record<string, Set<string>> = {};
+    for (const r of svData) {
+      if (r.Status !== "Login" && r.Status !== "Logout") continue;
+      if (!r.ReferenceID || !r.SiteVisitAccount) continue;
+      if (!svSetMap[r.ReferenceID]) svSetMap[r.ReferenceID] = new Set();
+      svSetMap[r.ReferenceID].add(r.SiteVisitAccount);
+    }
+    for (const ref of agentIds) svMap[ref] = svSetMap[ref]?.size ?? 0;
     for (const r of naData)    naMap[r.referenceid]    = (naMap[r.referenceid]    ?? 0) + 1;
     for (const r of quotaData) quotaMap[r.referenceid] = (quotaMap[r.referenceid] ?? 0) + (Number(r.amount) || 0);
     for (const r of quotationTargetData) {
@@ -720,51 +736,58 @@ export async function GET(req: Request) {
     for (const r of accountDevTargetData) accountDevTargetMap[r.referenceid] = (accountDevTargetMap[r.referenceid] ?? 0) + (Number(r.target) || 0);
     for (const r of obTargetData)         obTargetMap[r.referenceid]         = (obTargetMap[r.referenceid]         ?? 0) + (Number(r.ob_target) || 0);
 
-    // ── Per-agent conversion counts (calls→quote, quote→SO, SO→SI) ────────────
-    // Group activity rows by agent + activity_reference_number, flag pipeline stages
-    type ConvGroup = { hasOutbound: boolean; hasQuotation: boolean; hasSalesOrder: boolean; hasDelivered: boolean };
-    const convGroups: Record<string, Map<string, ConvGroup>> = {};
-    for (const ref of agentIds) convGroups[ref] = new Map();
+    // -- Per-agent conversion counts using global flat grouping --
+    // Groups by activity_reference_number across ALL rows (same as standalone pipeline APIs).
+    // Each group tracks pipeline stages + ALL agent refs that appear in it.
+    // Attribution: group is counted for an agent if their referenceid appears on ANY row
+    // in that group (prioritising OB call row, then any other row).
+    type ConvGroup = {
+      hasOutbound: boolean; hasQuotation: boolean;
+      hasSalesOrder: boolean; hasDelivered: boolean;
+      refs: Set<string>;
+      obRef: string | null;
+    };
+    const globalConvGroups = new Map<string, ConvGroup>();
+
+    const agentIdSet = new Set(agentIds);
 
     for (const r of convData) {
-      const ref = r.referenceid;
       const arn = r.activity_reference_number;
-      if (!ref || !arn || !convGroups[ref]) continue;
-      if (!convGroups[ref].has(arn))
-        convGroups[ref].set(arn, { hasOutbound: false, hasQuotation: false, hasSalesOrder: false, hasDelivered: false });
-      const g = convGroups[ref].get(arn)!;
-      if (r.source         === "Outbound - Touchbase")                  g.hasOutbound   = true;
-      if (r.type_activity  === "Quotation Preparation")                 g.hasQuotation  = true;
-      if (r.type_activity  === "Sales Order Preparation")               g.hasSalesOrder = true;
-      if (r.type_activity  === "Delivered / Closed Transaction")        g.hasDelivered  = true;
+      if (!arn) continue;
+      if (!globalConvGroups.has(arn))
+        globalConvGroups.set(arn, { hasOutbound: false, hasQuotation: false, hasSalesOrder: false, hasDelivered: false, refs: new Set(), obRef: null });
+      const g = globalConvGroups.get(arn)!;
+      if (r.referenceid && agentIdSet.has(r.referenceid)) g.refs.add(r.referenceid);
+      if (r.source        === "Outbound - Touchbase")           { g.hasOutbound = true; if (!g.obRef && r.referenceid && agentIdSet.has(r.referenceid)) g.obRef = r.referenceid; }
+      if (r.type_activity === "Quotation Preparation")          g.hasQuotation  = true;
+      if (r.type_activity === "Sales Order Preparation")        g.hasSalesOrder = true;
+      if (r.type_activity === "Delivered / Closed Transaction") g.hasDelivered  = true;
     }
 
-    // callsToQuote = groups with outbound + quotation
-    // quoteToSO_q  = groups with outbound + quotation (denominator for Q→SO)
-    // quoteToSO_so = groups with outbound + quotation + salesOrder
-    // soToSI_so    = groups with outbound + quotation + salesOrder (denominator for SO→SI)
-    // soToSI_si    = groups with outbound + quotation + salesOrder + delivered
-    const callsToQuoteMap: Record<string, number> = {};
+    const callsToQuoteMap:  Record<string, number> = {};
     const quoteToSOQuotMap: Record<string, number> = {};
     const quoteToSOSoMap:   Record<string, number> = {};
     const soToSISoMap:      Record<string, number> = {};
     const soToSISiMap:      Record<string, number> = {};
 
-    for (const ref of agentIds) {
-      let c2q = 0, q2soQ = 0, q2soSO = 0, s2siSO = 0, s2siSI = 0;
-      convGroups[ref].forEach((g) => {
-        if (g.hasOutbound && g.hasQuotation)                                        { c2q++;  q2soQ++;  }
-        if (g.hasOutbound && g.hasQuotation && g.hasSalesOrder)                     { q2soSO++; s2siSO++; }
-        if (g.hasOutbound && g.hasQuotation && g.hasSalesOrder && g.hasDelivered)   { s2siSI++; }
-      });
-      callsToQuoteMap[ref] = c2q;
-      quoteToSOQuotMap[ref] = q2soQ;
-      quoteToSOSoMap[ref]   = q2soSO;
-      soToSISoMap[ref]      = s2siSO;
-      soToSISiMap[ref]      = s2siSI;
-    }
+    globalConvGroups.forEach((g) => {
+      // Attribute to the OB call owner if they are a known agent, else fall back to any ref in the group.
+      const ref = (g.obRef && agentIdSet.has(g.obRef)) ? g.obRef : (g.refs.size > 0 ? g.refs.values().next().value : null);
+      if (!ref) return;
+      if (g.hasOutbound && g.hasQuotation) {
+        callsToQuoteMap[ref]  = (callsToQuoteMap[ref]  ?? 0) + 1;
+        quoteToSOQuotMap[ref] = (quoteToSOQuotMap[ref] ?? 0) + 1;
+      }
+      if (g.hasOutbound && g.hasQuotation && g.hasSalesOrder) {
+        quoteToSOSoMap[ref] = (quoteToSOSoMap[ref] ?? 0) + 1;
+        soToSISoMap[ref]    = (soToSISoMap[ref]    ?? 0) + 1;
+      }
+      if (g.hasOutbound && g.hasQuotation && g.hasSalesOrder && g.hasDelivered) {
+        soToSISiMap[ref] = (soToSISiMap[ref] ?? 0) + 1;
+      }
+    });
 
-    // ── 5. Assemble result ────────────────────────────────────────────────────
+    //        5. Assemble result                                                                                                                                                             
     const result = agents.map(({ referenceid, name }) => {
       const plan  = quotaMap[referenceid] ?? 0;
       const si    = siMap[referenceid]    ?? 0;

@@ -287,7 +287,7 @@ export async function GET(req: Request) {
       fetchAllRows(supabase.from("account_development_plans").select("referenceid").in("referenceid", agentIds).gte("created_at", `${naFrom}T00:00:00+08:00`).lte("created_at", `${naTo}T23:59:59.999+08:00`)),
       fetchAllRows(supabase.from("sales_account_development").select("referenceid, target").in("referenceid", agentIds).eq("month", monthLabel(naRefDate)).eq("year", naRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4))),
       fetchAllRows(supabase.from("site_visit_target").select("referenceid, target").in("referenceid", agentIds).eq("month", monthLabel(now)).eq("year", now.getFullYear().toString())),
-      fetchAllRows(supabase.from("tasklog").select(`"ReferenceID", "Status"`).in("ReferenceID", agentIds).gte("date_created", clientVisitsStart).lte("date_created", clientVisitsEnd)),
+      fetchAllRows(supabase.from("tasklog").select(`"ReferenceID", "Status", "SiteVisitAccount"`).in("ReferenceID", agentIds).gte("date_created", clientVisitsStart).lte("date_created", clientVisitsEnd)),
     ]);
 
     // ── Build lookup maps (identical to tsm-kpi) ──────────────────────────────
@@ -370,12 +370,16 @@ export async function GET(req: Request) {
     const siteVisitTargetMap: Record<string, number> = {};
     for (const r of siteVisitTargetData) siteVisitTargetMap[r.referenceid] = Number(r.target) || 10;
 
-    const clientVisitsCountMap: Record<string, number> = {};
+    // Count unique SiteVisitAccount per agent (Login or Logout = 1 visit each unique account)
+    const clientVisitsSetMap: Record<string, Set<string>> = {};
     for (const r of clientVisitsData) {
-      if (r.Status !== "Login") continue;
-      const ref = r.ReferenceID;
-      if (ref) clientVisitsCountMap[ref] = (clientVisitsCountMap[ref] ?? 0) + 1;
+      if (r.Status !== "Login" && r.Status !== "Logout") continue;
+      if (!r.ReferenceID || !r.SiteVisitAccount) continue;
+      if (!clientVisitsSetMap[r.ReferenceID]) clientVisitsSetMap[r.ReferenceID] = new Set();
+      clientVisitsSetMap[r.ReferenceID].add(r.SiteVisitAccount);
     }
+    const clientVisitsCountMap: Record<string, number> = {};
+    for (const ref of agentIds) clientVisitsCountMap[ref] = clientVisitsSetMap[ref]?.size ?? 0;
 
     // ── CSR metrics ───────────────────────────────────────────────────────────
     const [mYear, mMonth] = manilaToday.split("-");

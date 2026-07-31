@@ -17,7 +17,7 @@ import {
   CartesianGrid,
   Cell,
 } from "recharts";
-import { HelpCircle, X, ChevronRight, Settings } from "lucide-react";
+import { HelpCircle, X, ChevronRight, Settings, RefreshCw } from "lucide-react";
 
 interface ChartDataItem {
   name: string;
@@ -26,7 +26,7 @@ interface ChartDataItem {
 }
 
 interface SalesPipelineCardProps {
-  /** TSM ReferenceID — used to self-fetch team OB and quotes targets */
+  /** TSM ReferenceID          used to self-fetch team OB and quotes targets */
   tsm?: string;
   /** Date range to determine which month's targets to show */
   dateRange?: { from?: Date; to?: Date };
@@ -49,7 +49,7 @@ interface SalesPipelineCardProps {
   loadingNewAccount?: boolean;
 }
 
-// ── Rating scale helper (shared by OB Calls, Quotes, New Account Dev) ────────
+//                  Rating scale helper (shared by OB Calls, Quotes, New Account Dev)                                                                 
 function standardRating(pct: number) {
   if (pct >= 91) return 5;
   if (pct >= 81) return 4;
@@ -58,7 +58,7 @@ function standardRating(pct: number) {
   return 1;
 }
 
-// ── Explain Panel ─────────────────────────────────────────────────────────────
+//                  Explain Panel                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
 interface ExplainPanelProps {
   open: boolean;
   onClose: () => void;
@@ -89,33 +89,33 @@ interface ExplainPanelProps {
 }
 
 const RATING_TABLE = [
-  { range: "≥ 91%", rating: 5, color: "text-green-700 bg-green-50" },
-  { range: "81 – 90%", rating: 4, color: "text-blue-700 bg-blue-50" },
-  { range: "61 – 80%", rating: 3, color: "text-yellow-700 bg-yellow-50" },
-  { range: "50 – 60%", rating: 2, color: "text-orange-700 bg-orange-50" },
+  { range: "91%", rating: 5, color: "text-green-700 bg-green-50" },
+  { range: "81 - 90%", rating: 4, color: "text-blue-700 bg-blue-50" },
+  { range: "61 - 80%", rating: 3, color: "text-yellow-700 bg-yellow-50" },
+  { range: "50 - 60%", rating: 2, color: "text-orange-700 bg-orange-50" },
   { range: "< 50%", rating: 1, color: "text-red-700 bg-red-50" },
 ];
 
 const CONV_RATING_TABLE = {
   callsToQuote: [
-    { range: "≥ 20%", rating: 5, color: "text-green-700 bg-green-50" },
-    { range: "14.01 – 19.99%", rating: 4, color: "text-blue-700 bg-blue-50" },
-    { range: "12.01 – 14%", rating: 3, color: "text-yellow-700 bg-yellow-50" },
-    { range: "10.01 – 12%", rating: 2, color: "text-orange-700 bg-orange-50" },
+    { range: "20%", rating: 5, color: "text-green-700 bg-green-50" },
+    { range: "14.01 - 19.99%", rating: 4, color: "text-blue-700 bg-blue-50" },
+    { range: "12.01 - 14%", rating: 3, color: "text-yellow-700 bg-yellow-50" },
+    { range: "10.01 - 12%", rating: 2, color: "text-orange-700 bg-orange-50" },
     { range: "< 10%", rating: 1, color: "text-red-700 bg-red-50" },
   ],
   quoteToSO: [
-    { range: "≥ 30%", rating: 5, color: "text-green-700 bg-green-50" },
-    { range: "25.01 – 29.99%", rating: 4, color: "text-blue-700 bg-blue-50" },
-    { range: "20.01 – 25%", rating: 3, color: "text-yellow-700 bg-yellow-50" },
-    { range: "15.01 – 20%", rating: 2, color: "text-orange-700 bg-orange-50" },
+    { range: "30%", rating: 5, color: "text-green-700 bg-green-50" },
+    { range: "25.01 - 29.99%", rating: 4, color: "text-blue-700 bg-blue-50" },
+    { range: "20.01 - 25%", rating: 3, color: "text-yellow-700 bg-yellow-50" },
+    { range: "15.01 - 20%", rating: 2, color: "text-orange-700 bg-orange-50" },
     { range: "< 15%", rating: 1, color: "text-red-700 bg-red-50" },
   ],
   soToSI: [
-    { range: "≥ 70%", rating: 5, color: "text-green-700 bg-green-50" },
-    { range: "60.01 – 69.99%", rating: 4, color: "text-blue-700 bg-blue-50" },
-    { range: "50.01 – 60%", rating: 3, color: "text-yellow-700 bg-yellow-50" },
-    { range: "40.01 – 50%", rating: 2, color: "text-orange-700 bg-orange-50" },
+    { range: "70%", rating: 5, color: "text-green-700 bg-green-50" },
+    { range: "60.01 - 69.99%", rating: 4, color: "text-blue-700 bg-blue-50" },
+    { range: "50.01 - 60%", rating: 3, color: "text-yellow-700 bg-yellow-50" },
+    { range: "40.01 - 50%", rating: 2, color: "text-orange-700 bg-orange-50" },
     { range: "< 40%", rating: 1, color: "text-red-700 bg-red-50" },
   ],
 };
@@ -189,7 +189,7 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
 
-          {/* ── 1. OB Calls ── */}
+          {/* 1. OB Calls */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <button onClick={() => toggle("ob")} className="w-full flex items-center justify-between px-4 py-3 bg-blue-50 hover:bg-blue-100 transition-colors">
               <SectionHeader icon="📞" title="OB Calls — Achievement" color="bg-transparent text-blue-800" />
@@ -200,7 +200,7 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
                 <p className="text-[10px] text-gray-500 mb-2">Sinusukat kung gaano kalaki ang na-achieve ng TSA kumpara sa monthly OB call target.</p>
                 <FormulaRow label="Actual OB Calls" formula="Bilang ng Outbound - Touchbase" result={obCallsCount} />
                 <FormulaRow label="Monthly Target" formula="Nakaset na target sa settings" result={obCallsTarget} />
-                <FormulaRow label="Achievement %" formula={`(${obCallsCount} ÷ ${obCallsTarget}) × 100`} result={`${obCallsPercentage}%`} />
+                <FormulaRow label="Achievement %" formula={`(${callsToQuotesCount} ÷ ${obCallsTarget}) × 100`} result={`${obCallsPercentage}%`} />
                 <FormulaRow label="Rating" formula="Batay sa achievement %" result={obCallsRating} highlight />
                 <p className="text-[10px] font-bold text-gray-500 mt-2 uppercase tracking-widest">Rating Scale</p>
                 <RatingTable rows={RATING_TABLE} />
@@ -208,10 +208,10 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
             )}
           </div>
 
-          {/* ── 2. Quotes Generated ── */}
+          {/* 2. Quotes Generated */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <button onClick={() => toggle("quotes")} className="w-full flex items-center justify-between px-4 py-3 bg-green-50 hover:bg-green-100 transition-colors">
-              <SectionHeader icon="📄" title="Quotes Generated — Achievement" color="bg-transparent text-green-800" />
+              <SectionHeader icon="🔄" title="Quotes Generated          Achievement" color="bg-transparent text-green-800" />
               <ChevronRight className={`w-4 h-4 text-green-500 transition-transform ${expandedSection === "quotes" ? "rotate-90" : ""}`} />
             </button>
             {expandedSection === "quotes" && (
@@ -219,7 +219,7 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
                 <p className="text-[10px] text-gray-500 mb-2">Sinusukat ang bilang ng mga quotation na nagawa kumpara sa target na bilang para sa buwan.</p>
                 <FormulaRow label="Quotes Made" formula="Bilang ng Quotation Preparation" result={quotesCount} />
                 <FormulaRow label="Monthly Target" formula="Nakaset na target sa settings" result={quotesTarget} />
-                <FormulaRow label="Achievement %" formula={`(${quotesCount} ÷ ${quotesTarget}) × 100`} result={`${quotesPercentage}%`} />
+                <FormulaRow label="Achievement %" formula={`(${callsToQuotesCount} ÷ ${quotesTarget}) × 100`} result={`${quotesPercentage}%`} />
                 <FormulaRow label="Rating" formula="Batay sa achievement %" result={quotesRating} highlight />
                 <p className="text-[10px] font-bold text-gray-500 mt-2 uppercase tracking-widest">Rating Scale</p>
                 <RatingTable rows={RATING_TABLE} />
@@ -227,7 +227,7 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
             )}
           </div>
 
-          {/* ── 3. Calls → Quote ── */}
+          {/*                  3. Calls → Quote                  */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <button onClick={() => toggle("c2q")} className="w-full flex items-center justify-between px-4 py-3 bg-yellow-50 hover:bg-yellow-100 transition-colors">
               <SectionHeader icon="🔄" title="Calls → Quote Conversion" color="bg-transparent text-yellow-800" />
@@ -249,10 +249,10 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
             )}
           </div>
 
-          {/* ── 4. Quote → SO ── */}
+          {/*                  4. Quote → SO                  */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <button onClick={() => toggle("q2so")} className="w-full flex items-center justify-between px-4 py-3 bg-orange-50 hover:bg-orange-100 transition-colors">
-              <SectionHeader icon="📦" title="Quote → SO Conversion" color="bg-transparent text-orange-800" />
+              <SectionHeader icon="🔄" title="Quote → SO Conversion" color="bg-transparent text-orange-800" />
               <ChevronRight className={`w-4 h-4 text-orange-500 transition-transform ${expandedSection === "q2so" ? "rotate-90" : ""}`} />
             </button>
             {expandedSection === "q2so" && (
@@ -271,10 +271,10 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
             )}
           </div>
 
-          {/* ── 5. SO → SI ── */}
+          {/*                  5. SO → SI                  */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <button onClick={() => toggle("so2si")} className="w-full flex items-center justify-between px-4 py-3 bg-red-50 hover:bg-red-100 transition-colors">
-              <SectionHeader icon="✅" title="SO → SI Conversion" color="bg-transparent text-red-800" />
+              <SectionHeader icon="🔄" title="SO → SI Conversion" color="bg-transparent text-red-800" />
               <ChevronRight className={`w-4 h-4 text-red-500 transition-transform ${expandedSection === "so2si" ? "rotate-90" : ""}`} />
             </button>
             {expandedSection === "so2si" && (
@@ -293,10 +293,10 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
             )}
           </div>
 
-          {/* ── 6. New Account Dev ── */}
+          {/*                  6. New Account Dev                  */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <button onClick={() => toggle("newacct")} className="w-full flex items-center justify-between px-4 py-3 bg-purple-50 hover:bg-purple-100 transition-colors">
-              <SectionHeader icon="🏢" title="New Account Development" color="bg-transparent text-purple-800" />
+              <SectionHeader icon="🔄" title="New Account Development" color="bg-transparent text-purple-800" />
               <ChevronRight className={`w-4 h-4 text-purple-500 transition-transform ${expandedSection === "newacct" ? "rotate-90" : ""}`} />
             </button>
             {expandedSection === "newacct" && (
@@ -304,7 +304,7 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
                 <p className="text-[10px] text-gray-500 mb-2">Sinusukat ang bilang ng bagong account na na-develop kumpara sa monthly target.</p>
                 <FormulaRow label="New Accounts" formula="Bilang ng bagong accounts" result={newAccountCount} />
                 <FormulaRow label="Monthly Target" formula="Nakaset na target sa settings" result={newAccountTarget} />
-                <FormulaRow label="Achievement %" formula={`(${newAccountCount} ÷ ${newAccountTarget}) × 100`} result={`${newAccountPercentage}%`} />
+                <FormulaRow label="Achievement %" formula={`(${callsToQuotesCount} ÷ ${newAccountTarget}) × 100`} result={`${newAccountPercentage}%`} />
                 <FormulaRow label="Rating" formula="Batay sa achievement %" result={newAccountRating} highlight />
                 <p className="text-[10px] font-bold text-gray-500 mt-2 uppercase tracking-widest">Rating Scale</p>
                 <RatingTable rows={RATING_TABLE} />
@@ -312,10 +312,10 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
             )}
           </div>
 
-          {/* ── How activities are grouped ── */}
+          {/*                  How activities are grouped                  */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <button onClick={() => toggle("howgroup")} className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors">
-              <SectionHeader icon="🔍" title="Paano binibilang ang conversion?" color="bg-transparent text-gray-700" />
+              <SectionHeader icon="🔄" title="Paano binibilang ang conversion?" color="bg-transparent text-gray-700" />
               <ChevronRight className={`w-4 h-4 text-gray-500 transition-transform ${expandedSection === "howgroup" ? "rotate-90" : ""}`} />
             </button>
             {expandedSection === "howgroup" && (
@@ -339,7 +339,7 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
                   ))}
                 </div>
                 <p className="mt-2 text-[10px] bg-yellow-50 border border-yellow-200 rounded p-2 text-yellow-800">
-                  <span className="font-bold">Halimbawa:</span> Kung ang isang activity group ay may steps 1, 2, at 3, ibilang ito sa Calls→Quote at Quote→SO, pero <em>hindi</em> sa SO→SI (kailangan ang step 4).
+                  <span className="font-bold">Halimbawa:</span> Kung ang isang activity group ay may steps 1, 2, at 3, ibilang ito sa Calls → Quote at Quote → SO, pero <em>hindi</em> sa SO → SI (kailangan ang step 4).
                 </p>
               </div>
             )}
@@ -349,14 +349,14 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
 
         {/* Footer */}
         <div className="shrink-0 px-5 py-3 border-t bg-gray-50 text-[10px] text-gray-400 text-center">
-          Ang mga halaga ay live — batay sa kasalukuyang date range filter
+          Ang mga halaga ay live          batay sa kasalukuyang date range filter
         </div>
       </div>
     </div>
   );
 };
 
-// ── Main Card ─────────────────────────────────────────────────────────────────
+//                  Main Card                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
 
 export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   tsm,
@@ -368,13 +368,13 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   quotesCount = 0,
   quotesTarget: propQuotesTarget,
   loadingQuotes = false,
-  callsToQuotesCount = 0,
+  callsToQuotesCount: callsToQuotesCountProp = 0,
   loadingCallsToQuotes = false,
-  quoteToSOQuotationCount = 0,
-  quoteToSOSalesOrderCount = 0,
+  quoteToSOQuotationCount: quoteToSOQuotationCountProp = 0,
+  quoteToSOSalesOrderCount: quoteToSOSalesOrderCountProp = 0,
   loadingQuoteToSO = false,
-  soToSISalesOrderCount = 0,
-  soToSIDeliveredCount = 0,
+  soToSISalesOrderCount: soToSISalesOrderCountProp = 0,
+  soToSIDeliveredCount: soToSIDeliveredCountProp = 0,
   newAccountCount = 0,
   newAccountTarget: propNewAccountTarget = 0,
   loadingNewAccount = false,
@@ -389,104 +389,125 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
     router.push(`/roles/tsm/sales-quotation-settings${id ? `?id=${encodeURIComponent(id)}` : ""}`);
   };
 
-  // ── Self-fetch OB count (Successful) + targets ─────────────────────────────
-  const [selfObCallsCount,     setSelfObCallsCount]     = useState<number | null>(null);
-  const [teamObTarget,         setTeamObTarget]         = useState<number | null>(null);
-  const [teamQuotesTarget,     setTeamQuotesTarget]     = useState<number | null>(null);
-  const [teamNewAccountTarget, setTeamNewAccountTarget] = useState<number | null>(null);
+  // -- Self-fetch: OB count + ALL conversion counts from unified API + targets --
+  const [selfObCallsCount,          setSelfObCallsCount]          = useState<number | null>(null);
+  const [selfCallsToQuotesCount,    setSelfCallsToQuotesCount]    = useState<number | null>(null);
+  const [selfQuoteToSOQuotation,    setSelfQuoteToSOQuotation]    = useState<number | null>(null);
+  const [selfQuoteToSOSalesOrder,   setSelfQuoteToSOSalesOrder]   = useState<number | null>(null);
+  const [selfSoToSISalesOrder,      setSelfSoToSISalesOrder]      = useState<number | null>(null);
+  const [selfSoToSIDelivered,       setSelfSoToSIDelivered]       = useState<number | null>(null);
+  const [teamObTarget,              setTeamObTarget]              = useState<number | null>(null);
+  const [teamQuotesTarget,          setTeamQuotesTarget]          = useState<number | null>(null);
+  const [teamNewAccountTarget,      setTeamNewAccountTarget]      = useState<number | null>(null);
+  const [loadingFetch,              setLoadingFetch]              = useState(false);
 
   const fetchTeamTargets = useCallback(async () => {
     if (!tsm) return;
+    setLoadingFetch(true);
     const refDate   = dateRange?.from ?? new Date();
     const monthName = ["January","February","March","April","May","June",
                        "July","August","September","October","November","December"][refDate.getMonth()];
     const year      = refDate.getFullYear().toString();
     const params    = new URLSearchParams({ tsm, year });
+    const now  = new Date();
+    const from = dateRange?.from
+      ? dateRange.from.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+      : new Date(now.getFullYear(), now.getMonth(), 1)
+          .toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const to   = dateRange?.to
+      ? dateRange.to.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+      : now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const tsmBase    = `tsm=${encodeURIComponent(tsm)}`;
+    const dateSuffix = `&from=${from}&to=${to}`;
 
-    // ── Actual OB count — same API + same date defaults as the OB Calls card ──
+    // OB count (Successful)
     try {
-      const now  = new Date();
-      const from = dateRange?.from
-        ? dateRange.from.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-        : new Date(now.getFullYear(), now.getMonth(), 1)
-            .toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-      const to   = dateRange?.to
-        ? dateRange.to.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-        : now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-
-      const res = await fetch(
-        `/api/tsm-agent-outbound-history?tsm=${encodeURIComponent(tsm)}&from=${from}&to=${to}`
-      );
+      const res = await fetch(`/api/tsm-agent-outbound-history?${tsmBase}&from=${from}&to=${to}`);
       if (res.ok) {
         const data = await res.json();
         const history: any[] = data.history ?? [];
-        const successful = history.filter(
+        setSelfObCallsCount(history.filter(
           (r) => r.source === "Outbound - Touchbase" && r.call_status === "Successful"
-        ).length;
-        setSelfObCallsCount(successful);
+        ).length);
       }
     } catch { /* silent */ }
 
+    // All conversion counts from unified API (same logic as Agent Performance Detail)
     try {
-      // OB target — sum all agents' ob_target for the month
-      const obRes  = await fetch(`/api/tsm-agent-ob-target?${params.toString()}`);
+      const convRes = await fetch(`/api/tsm-pipeline-conversion?${tsmBase}${dateSuffix}`);
+      if (convRes.ok) {
+        const convData = await convRes.json();
+        if (convData.success) {
+          setSelfCallsToQuotesCount(Number(convData.callsToQuoteCount)         || 0);
+          setSelfQuoteToSOQuotation(Number(convData.quoteToSOQuotationCount)   || 0);
+          setSelfQuoteToSOSalesOrder(Number(convData.quoteToSOSalesOrderCount) || 0);
+          setSelfSoToSISalesOrder(Number(convData.soToSISalesOrderCount)       || 0);
+          setSelfSoToSIDelivered(Number(convData.soToSIDeliveredCount)         || 0);
+        }
+      }
+    } catch { /* silent */ }
+
+    // OB target
+    try {
+      const obRes = await fetch(`/api/tsm-agent-ob-target?${params.toString()}`);
       if (obRes.ok) {
         const obData = await obRes.json();
         if (obData.success) {
           const total = Object.values(obData.targets ?? {}).reduce(
-            (acc: number, agentMonths) =>
-              acc + ((agentMonths as Record<string, number>)[monthName] ?? 0),
-            0
+            (acc: number, agentMonths) => acc + ((agentMonths as Record<string, number>)[monthName] ?? 0), 0
           );
           setTeamObTarget(total as number);
         }
       }
     } catch { /* silent */ }
 
+    // Quotes target
     try {
-      // Quotes target — sum all agents' quote_target for the month
       const qtRes = await fetch(`/api/tsm-agent-quote-target?${params.toString()}`);
       if (qtRes.ok) {
         const qtData = await qtRes.json();
         if (qtData.success) {
           const total = Object.values(qtData.targets ?? {}).reduce(
-            (acc: number, agentMonths) =>
-              acc + ((agentMonths as Record<string, number>)[monthName] ?? 0),
-            0
+            (acc: number, agentMonths) => acc + ((agentMonths as Record<string, number>)[monthName] ?? 0), 0
           );
           setTeamQuotesTarget(total as number);
         }
       }
     } catch { /* silent */ }
 
+    // New account target
     try {
-      // New account dev target — sum all agents' target for the month
       const naRes = await fetch(`/api/tsm-agent-account-development?${params.toString()}`);
       if (naRes.ok) {
         const naData = await naRes.json();
         if (naData.success) {
-          const total = Object.values(naData.targets ?? {}).reduce(
-            (acc: number, agentMonths) => {
-              const monthVal = (agentMonths as Record<string, { target: number; count: number }>)[monthName];
-              return acc + (monthVal?.target ?? 0);
-            },
-            0
-          );
+          const total = Object.values(naData.targets ?? {}).reduce((acc: number, agentMonths) => {
+            const monthVal = (agentMonths as Record<string, { target: number; count: number }>)[monthName];
+            return acc + (monthVal?.target ?? 0);
+          }, 0);
           setTeamNewAccountTarget(total as number);
         }
       }
     } catch { /* silent */ }
+
+    setLoadingFetch(false);
   }, [tsm, dateRange]);
 
   useEffect(() => { fetchTeamTargets(); }, [fetchTeamTargets]);
 
-  // Use self-fetched values when available; fall back to props
-  const obCallsCount    = selfObCallsCount     ?? obCallsCountProp;
-  const obCallsTarget   = teamObTarget         ?? propObCallsTarget ?? 0;
-  const quotesTarget    = teamQuotesTarget     ?? propQuotesTarget  ?? 0;
-  const newAccountTarget = teamNewAccountTarget ?? propNewAccountTarget ?? 0;
+  // Resolved values -- self-fetched always wins over props
+  const obCallsCount             = selfObCallsCount        ?? obCallsCountProp;
+  const obCallsTarget            = teamObTarget            ?? propObCallsTarget ?? 0;
+  const quotesTarget             = teamQuotesTarget        ?? propQuotesTarget  ?? 0;
+  const newAccountTarget         = teamNewAccountTarget    ?? propNewAccountTarget ?? 0;
+  const callsToQuotesCount       = selfCallsToQuotesCount  ?? callsToQuotesCountProp;
+  const quoteToSOQuotationCount  = selfQuoteToSOQuotation  ?? quoteToSOQuotationCountProp;
+  const quoteToSOSalesOrderCount = selfQuoteToSOSalesOrder ?? quoteToSOSalesOrderCountProp;
+  const soToSISalesOrderCount    = selfSoToSISalesOrder    ?? soToSISalesOrderCountProp;
+  const soToSIDeliveredCount     = selfSoToSIDelivered     ?? soToSIDeliveredCountProp;
 
-  // ── Computations ────────────────────────────────────────────────────────────
+
+  //                  Computations                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
   const obCallsPercentage = obCallsTarget > 0 ? Math.round((obCallsCount / obCallsTarget) * 100) : 0;
   const obCallsRating = standardRating(obCallsPercentage);
 
@@ -529,9 +550,9 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   const newAccountRating = standardRating(newAccountPercentage);
 
   const chartData: ChartDataItem[] = [
-    { name: "Calls → Quote", conversion: callsToQuotePercentage, fill: "#3b82f6" },
-    { name: "Quote → SO",    conversion: quoteToSOPercentage,    fill: "#10b981" },
-    { name: "SO → SI",       conversion: soToSIPercentage,       fill: "#f59e0b" },
+    { name: "Calls \u2192 Quote", conversion: callsToQuotePercentage, fill: "#3b82f6" },
+    { name: "Quote \u2192 SO",    conversion: quoteToSOPercentage,    fill: "#10b981" },
+    { name: "SO \u2192 SI",       conversion: soToSIPercentage,       fill: "#f59e0b" },
   ];
 
   const chartConfig = { conversion: { label: "Conversion Rate (%)", color: "#3b82f6" } };
@@ -575,6 +596,16 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
               </button>
               <button
                 type="button"
+                onClick={() => fetchTeamTargets()}
+                disabled={loadingFetch}
+                className="relative z-20 p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer disabled:opacity-40"
+                aria-label="Refresh pipeline data"
+                title="Refresh conversion metrics"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingFetch ? "animate-spin" : ""}`} />
+              </button>
+              <button
+                type="button"
                 onClick={() => setExplainOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest bg-gray-900 hover:bg-gray-700 text-white rounded-lg transition-colors shadow-sm"
                 title="Paano kinukwenta ang bawat metric?"
@@ -594,7 +625,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
               </div>
               <div className="text-xs font-medium text-gray-600">OB Calls (Successful)</div>
               <div className="text-xs text-gray-500">
-                Target: {loadingObCallsTarget ? "..." : obCallsTarget} · Achievement: {obCallsPercentage}% · Rating: {obCallsRating}
+                Target: {loadingObCallsTarget ? "..." : obCallsTarget}      Achievement: {obCallsPercentage}%      Rating: {obCallsRating}
               </div>
               <div className="w-full bg-gray-200 h-2 rounded-full">
                 <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.min(obCallsPercentage, 100)}%` }} />
@@ -608,7 +639,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
               </div>
               <div className="text-xs font-medium text-gray-600">Quotes generated</div>
               <div className="text-xs text-gray-500">
-                Target: {quotesTarget} · Achievement: {quotesPercentage}% · Rating: {quotesRating}
+                Target: {quotesTarget}      Achievement: {quotesPercentage}%      Rating: {quotesRating}
               </div>
               <div className="w-full bg-gray-200 h-2 rounded-full">
                 <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.min(quotesPercentage, 100)}%` }} />
@@ -621,7 +652,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
                 {loadingCallsToQuotes ? <Spinner className="w-6 h-6" /> : `${callsToQuotesCount} (${callsToQuotePercentage}%)`}
               </div>
               <div className="text-xs font-medium text-gray-600">Calls → Quote</div>
-              <div className="text-xs text-gray-500">Target: {callsToQuoteTargetPercentage}% · Achievement: {callsToQuoteAchievementPercentage}% · Rating: {callsToQuoteRating}</div>
+              <div className="text-xs text-gray-500">Target: {callsToQuoteTargetPercentage}%      Achievement: {callsToQuoteAchievementPercentage}%      Rating: {callsToQuoteRating}</div>
               <div className="w-full bg-gray-200 h-2 rounded-full">
                 <div className="bg-yellow-500 h-2 rounded-full" style={{ width: `${Math.min(callsToQuoteAchievementPercentage, 100)}%` }} />
               </div>
@@ -633,7 +664,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
                 {loadingQuoteToSO ? <Spinner className="w-6 h-6" /> : `${quoteToSOSalesOrderCount} (${quoteToSOPercentage}%)`}
               </div>
               <div className="text-xs font-medium text-gray-600">Quote → SO</div>
-              <div className="text-xs text-gray-500">Target: {quoteToSOTargetPercentage}% · Achievement: {quoteToSOAchievementPercentage}% · Rating: {quoteToSORating}</div>
+              <div className="text-xs text-gray-500">Target: {quoteToSOTargetPercentage}%      Achievement: {quoteToSOAchievementPercentage}%      Rating: {quoteToSORating}</div>
               <div className="w-full bg-gray-200 h-2 rounded-full">
                 <div className="bg-orange-500 h-2 rounded-full" style={{ width: `${Math.min(quoteToSOAchievementPercentage, 100)}%` }} />
               </div>
@@ -645,7 +676,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
                 {loadingQuoteToSO ? <Spinner className="w-6 h-6" /> : `${soToSIDeliveredCount} (${soToSIPercentage}%)`}
               </div>
               <div className="text-xs font-medium text-gray-600">SO → SI</div>
-              <div className="text-xs text-gray-500">Target: {soToSITargetPercentage}% · Achievement: {soToSIAchievementPercentage}% · Rating: {soToSIRating}</div>
+              <div className="text-xs text-gray-500">Target: {soToSITargetPercentage}%      Achievement: {soToSIAchievementPercentage}%      Rating: {soToSIRating}</div>
               <div className="w-full bg-gray-200 h-2 rounded-full">
                 <div className="bg-red-500 h-2 rounded-full" style={{ width: `${Math.min(soToSIAchievementPercentage, 100)}%` }} />
               </div>
@@ -658,7 +689,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
               </div>
               <div className="text-xs font-medium text-gray-600">New Account Dev.</div>
               <div className="text-xs text-gray-500">
-                Target: {newAccountTarget} · Achievement: {newAccountPercentage}% · Rating: {newAccountRating}
+                Target: {newAccountTarget}      Achievement: {newAccountPercentage}%      Rating: {newAccountRating}
               </div>
               <div className="w-full bg-gray-200 h-2 rounded-full">
                 <div className="bg-purple-500 h-2 rounded-full" style={{ width: `${Math.min(newAccountPercentage, 100)}%` }} />

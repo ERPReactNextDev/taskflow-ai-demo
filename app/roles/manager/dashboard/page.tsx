@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from "react";
-import { Settings, X } from "lucide-react";
+import { RefreshCw, Settings, X } from "lucide-react";
 import { sileo } from "sileo";
 import { useUser } from "@/contexts/UserContext";
 import { useSearchParams } from "next/navigation";
@@ -288,6 +288,24 @@ function DashboardContent() {
 
   useEffect(() => { fetchPipeline(); }, [fetchPipeline]);
 
+  // ── Refresh all ──────────────────────────────────────────────────────────────
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefreshAll = useCallback(async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        fetchSalesQuota(),
+        fetchHistory(),
+        fetchOutbound(),
+        fetchPipeline(),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing, fetchSalesQuota, fetchHistory, fetchOutbound, fetchPipeline]);
+
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
@@ -311,6 +329,15 @@ function DashboardContent() {
             </Breadcrumb>
           </div>
           <div className="flex items-center gap-2 px-3">
+            <button
+              onClick={handleRefreshAll}
+              disabled={isRefreshing}
+              className="p-2 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Refresh dashboard"
+              title="Refresh all cards"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            </button>
             <button
               onClick={() => setSettingsOpen(true)}
               className="p-2 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"

@@ -121,8 +121,15 @@ export const AgentPerformanceDetailSingle: React.FC<AgentPerformanceDetailSingle
       if (!res.ok) throw new Error("Failed to fetch site visits");
       const data = await res.json();
 
-      // Count only Login status entries — same logic as the parent dashboard
-      const count = (data.siteVisits ?? []).filter((v: any) => v.Status === "Login").length;
+      // Count unique SiteVisitAccount entries (Login or Logout) — same account with
+      // both Login and Logout still counts as 1 visit.
+      const uniqueAccounts = new Set(
+        (data.siteVisits ?? [])
+          .filter((v: any) => v.Status === "Login" || v.Status === "Logout")
+          .map((v: any) => v.SiteVisitAccount)
+          .filter(Boolean)
+      );
+      const count = uniqueAccounts.size;
       setSiteVisitsCount(count);
     } catch (err) {
       console.error("AgentPerformanceDetailSingle: error fetching site visits", err);

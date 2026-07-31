@@ -348,8 +348,15 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
       const res = await fetch(visitsUrl.toString());
       if (!res.ok) throw new Error("Failed to fetch client visits");
       const data = await res.json();
-      const logins = (data.siteVisits || []).filter((v: any) => v.Status === "Login").length;
-      setClientVisitsCount(logins);
+      // Count unique SiteVisitAccount entries (Login or Logout) — same account with
+      // both Login and Logout still counts as 1 visit.
+      const uniqueAccounts = new Set(
+        (data.siteVisits || [])
+          .filter((v: any) => v.Status === "Login" || v.Status === "Logout")
+          .map((v: any) => v.SiteVisitAccount)
+          .filter(Boolean)
+      );
+      setClientVisitsCount(uniqueAccounts.size);
     } catch (err) {
       console.error("Error fetching client visits count:", err);
       setError(err instanceof Error ? err.message : "Failed to fetch client visits");

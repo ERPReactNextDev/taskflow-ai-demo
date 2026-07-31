@@ -72,10 +72,15 @@ export function SiteVisitCard({ referenceid, dateRange, name = "—" }: SiteVisi
         const visitsData = await visitsRes.json();
         const targetData = await targetRes.json();
 
-        // Count only Login entries
-        const logins = (visitsData.siteVisits || []).filter(
-          (v: any) => v.Status === "Login"
-        ).length;
+        // Count unique SiteVisitAccount entries where Status is Login or Logout.
+        // If the same account has both Login and Logout, it still counts as 1 visit.
+        const uniqueAccounts = new Set(
+          (visitsData.siteVisits || [])
+            .filter((v: any) => v.Status === "Login" || v.Status === "Logout")
+            .map((v: any) => v.SiteVisitAccount)
+            .filter(Boolean)
+        );
+        const logins = uniqueAccounts.size;
 
         setVisitCount(logins);
         setTarget(parseInt(targetData.target?.target ?? "0") || 10); // Default to 10

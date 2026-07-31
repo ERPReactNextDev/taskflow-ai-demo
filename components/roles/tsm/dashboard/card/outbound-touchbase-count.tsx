@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { Settings } from "lucide-react";
+import { RefreshCw, Settings } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -54,6 +54,9 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
   const [successfulCount,   setSuccessfulCount]   = useState<number>(0);
   const [unsuccessfulCount, setUnsuccessfulCount] = useState<number>(0);
   const [loadingBreakdown,  setLoadingBreakdown]  = useState(false);
+
+  // Refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchTeamTarget = useCallback(async () => {
     if (!referenceid) return;
@@ -128,6 +131,16 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
   useEffect(() => { fetchTeamTarget(); }, [fetchTeamTarget]);
   useEffect(() => { fetchBreakdown(); }, [fetchBreakdown]);
 
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await Promise.all([fetchTeamTarget(), fetchBreakdown()]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing, fetchTeamTarget, fetchBreakdown]);
+
   const totalCalls = successfulCount + unsuccessfulCount;
   const percentage = teamTarget > 0 ? Math.round((totalCalls / teamTarget) * 100) : 0;
 
@@ -147,15 +160,27 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
             Total OB Calls
           </div>
-          <button
-            onClick={handleSettings}
-            className="relative z-20 p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer"
-            aria-label="OB calls breakdown"
-            title="View OB calls breakdown &amp; manage team targets"
-            type="button"
-          >
-            <Settings className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="relative z-20 p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Refresh OB calls data"
+              title="Refresh data"
+              type="button"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              onClick={handleSettings}
+              className="relative z-20 p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer"
+              aria-label="OB calls breakdown"
+              title="View OB calls breakdown &amp; manage team targets"
+              type="button"
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Total count */}

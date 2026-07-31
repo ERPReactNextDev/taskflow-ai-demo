@@ -284,34 +284,8 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
   const [hasFetched, setHasFetched] = useState(false);
   const [showForecast, setShowForecast] = useState(false);
 
-  // Create a unique cache key based on tsm and date range
-  const getCacheKey = useCallback(() => {
-    const fromStr = dateRange?.from ? toDateStr(dateRange.from) : "default";
-    const toStr = dateRange?.to ? toDateStr(dateRange.to) : "default";
-    return `tsm-agent-performance-${tsm}-${fromStr}-${toStr}-v2`; // v2 = cache bust for YTD→monthly change
-  }, [tsm, dateRange]);
-
-  // Load from localStorage on initial render
-  useEffect(() => {
-    const cacheKey = getCacheKey();
-    const cachedData = localStorage.getItem(cacheKey);
-    if (cachedData) {
-      try {
-        const parsed = JSON.parse(cachedData);
-        setAgents(parsed.agents);
-        setHasFetched(true);
-      } catch (e) {
-        console.error("Failed to parse cached data:", e);
-        localStorage.removeItem(cacheKey);
-      }
-    }
-  }, [getCacheKey]);
-
   const fetchData = useCallback(async () => {
     if (!tsm) return;
-    const cacheKey = getCacheKey();
-    // Delete old cache
-    localStorage.removeItem(cacheKey);
     setLoading(true);
     setError(null);
     setHasFetched(true);
@@ -324,17 +298,14 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error ?? "Unknown error");
-      const newAgents = data.agents ?? [];
-      setAgents(newAgents);
-      // Save to localStorage
-      localStorage.setItem(cacheKey, JSON.stringify({ agents: newAgents }));
+      setAgents(data.agents ?? []);
     } catch (err: any) {
       console.error("AgentPerformanceDetail fetch error:", err);
       setError(err.message ?? "Failed to load data.");
     } finally {
       setLoading(false);
     }
-  }, [tsm, dateRange, getCacheKey]);
+  }, [tsm, dateRange]);
 
   // ── Totals row ────────────────────────────────────────────────────────────
   const totals = agents.reduce(
@@ -484,6 +455,7 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
                     <th className="text-left py-2 px-1 font-medium text-gray-500 whitespace-nowrap sticky left-0 bg-white z-10 min-w-[140px]">Agent</th>
                     <th className={thCls}>Plan</th>
                     <th className={`${thCls} text-green-600`}>SI Actual</th>
+                    <th className={`${thCls} text-green-600`}>SO Actual</th>
                     {showForecast && <th className={thCls} style={{ background: "#eef2ff" }}>Run Rate/Day</th>}
                     {showForecast && <th className={thCls} style={{ background: "#eef2ff" }}>Projected EOM SI</th>}
                     {showForecast && <th className={`${thCls} text-center`} style={{ background: "#eef2ff" }}>Proj. Att%</th>}

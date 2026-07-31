@@ -424,7 +424,7 @@ export async function GET(req: Request) {
     // 11. Client visits — scoped to the selected date range (or current month if no range)
     const clientVisitsQuery = supabase
       .from("tasklog")
-      .select(`"ReferenceID", "Status"`)
+      .select(`"ReferenceID", "Status", "SiteVisitAccount"`)
       .in("ReferenceID", agentIds)
       .gte("date_created", clientVisitsStart)
       .lte("date_created", clientVisitsEnd);
@@ -561,23 +561,52 @@ export async function GET(req: Request) {
       }
     }
 
-    // Pipeline groups: { referenceid → Map<activity_ref → { hasOB, hasQuote, hasSO, hasSI }> }
-    type PipelineGroup = { hasOutbound: boolean; hasQuotation: boolean; hasSalesOrder: boolean; hasDelivered: boolean };
-    const pipelineMap: Record<string, Map<string, PipelineGroup>> = {};
+    // Pipeline groups: global flat map (same as tsm-pipeline-conversion)
+    // Groups by activity_reference_number across ALL agents.
+    // This matches the standalone pipeline APIs so KPI conversion metrics tally.
+    type PipelineGroup = {
+      hasOutbound: boolean; hasQuotation: boolean;
+      hasSalesOrder: boolean; hasDelivered: boolean;
+      refs: Set<string>; obRef: string | null;
+    };
+    const agentIdSet = new Set(agentIds);
+    const globalPipelineGroups = new Map<string, PipelineGroup>();
 
     for (const row of pipelineData ?? []) {
-      if (!row.activity_reference_number) continue;
-      if (!pipelineMap[row.referenceid]) pipelineMap[row.referenceid] = new Map();
-      const groups = pipelineMap[row.referenceid];
-      if (!groups.has(row.activity_reference_number)) {
-        groups.set(row.activity_reference_number, { hasOutbound: false, hasQuotation: false, hasSalesOrder: false, hasDelivered: false });
-      }
-      const g = groups.get(row.activity_reference_number)!;
-      if (row.source === "Outbound - Touchbase")                       g.hasOutbound   = true;
-      if (row.type_activity === "Quotation Preparation")               g.hasQuotation  = true;
-      if (row.type_activity === "Sales Order Preparation")             g.hasSalesOrder = true;
-      if (row.type_activity === "Delivered / Closed Transaction")      g.hasDelivered  = true;
+      const arn = row.activity_reference_number;
+      if (!arn) continue;
+      if (!globalPipelineGroups.has(arn))
+        globalPipelineGroups.set(arn, { hasOutbound: false, hasQuotation: false, hasSalesOrder: false, hasDelivered: false, refs: new Set(), obRef: null });
+      const g = globalPipelineGroups.get(arn)!;
+      if (row.referenceid && agentIdSet.has(row.referenceid)) g.refs.add(row.referenceid);
+      if (row.source        === "Outbound - Touchbase")           { g.hasOutbound = true; if (!g.obRef && row.referenceid && agentIdSet.has(row.referenceid)) g.obRef = row.referenceid; }
+      if (row.type_activity === "Quotation Preparation")          g.hasQuotation  = true;
+      if (row.type_activity === "Sales Order Preparation")        g.hasSalesOrder = true;
+      if (row.type_activity === "Delivered / Closed Transaction") g.hasDelivered  = true;
     }
+
+    // Per-agent conversion counts derived from the global map
+    const c2qMap:      Record<string, number> = {};
+    const q2soQMap:    Record<string, number> = {};
+    const q2soSOMap:   Record<string, number> = {};
+    const s2siSOMap:   Record<string, number> = {};
+    const s2siSIMap:   Record<string, number> = {};
+
+    globalPipelineGroups.forEach((g) => {
+      const ref = (g.obRef && agentIdSet.has(g.obRef)) ? g.obRef : (g.refs.size > 0 ? g.refs.values().next().value : null);
+      if (!ref) return;
+      if (g.hasOutbound && g.hasQuotation) {
+        c2qMap[ref]   = (c2qMap[ref]   ?? 0) + 1;
+        q2soQMap[ref] = (q2soQMap[ref] ?? 0) + 1;
+      }
+      if (g.hasOutbound && g.hasQuotation && g.hasSalesOrder) {
+        q2soSOMap[ref] = (q2soSOMap[ref] ?? 0) + 1;
+        s2siSOMap[ref] = (s2siSOMap[ref] ?? 0) + 1;
+      }
+      if (g.hasOutbound && g.hasQuotation && g.hasSalesOrder && g.hasDelivered) {
+        s2siSIMap[ref] = (s2siSIMap[ref] ?? 0) + 1;
+      }
+    });
 
     // New account count map: { referenceid → count }
     const naCountMap: Record<string, number> = {};
@@ -599,13 +628,20 @@ export async function GET(req: Request) {
       siteVisitTargetMap[row.referenceid] = val;
     }
 
-    // Client visits count map: { referenceid -> login count }
-    // Filter Status === "Login" here (not in query) — matches fetch-tasklog-supabase pattern
-    const clientVisitsCountMap: Record<string, number> = {};
+    // Client visits count map: { referenceid -> unique SiteVisitAccount count }
+    // Login or Logout entries for the same SiteVisitAccount count as 1 visit.
+    const clientVisitsSetMap: Record<string, Set<string>> = {};
     for (const row of clientVisitsData ?? []) {
-      if (row.Status !== "Login") continue;
-      const ref = row.ReferenceID;
-      if (ref) clientVisitsCountMap[ref] = (clientVisitsCountMap[ref] ?? 0) + 1;
+      if (row.Status !== "Login" && row.Status !== "Logout") continue;
+      const ref     = row.ReferenceID;
+      const account = row.SiteVisitAccount;
+      if (!ref || !account) continue;
+      if (!clientVisitsSetMap[ref]) clientVisitsSetMap[ref] = new Set();
+      clientVisitsSetMap[ref].add(account);
+    }
+    const clientVisitsCountMap: Record<string, number> = {};
+    for (const [ref, accounts] of Object.entries(clientVisitsSetMap)) {
+      clientVisitsCountMap[ref] = accounts.size;
     }
 
     // DEBUG: log target rows for diagnosis (safe to remove once verified in prod)
@@ -625,21 +661,7 @@ export async function GET(req: Request) {
 
     // ── Assemble per-agent result ─────────────────────────────────────────────
     const result = agents.map(({ referenceid, name }) => {
-      const groups = pipelineMap[referenceid];
       const csrMetrics = csrMetricsMap[referenceid] || { avgResponseTime: 0, avgQuotationHT: 0, avgNonQuotationHT: 0, avgSpfHT: 0 };
-
-      let c2qCount = 0, q2soQuotation = 0, q2soSalesOrder = 0;
-      let soToSISalesOrder = 0, soToSIDelivered = 0;
-
-      if (groups) {
-        groups.forEach((g) => {
-          if (g.hasOutbound && g.hasQuotation)                            c2qCount++;
-          if (g.hasOutbound && g.hasQuotation)                            q2soQuotation++;
-          if (g.hasOutbound && g.hasQuotation && g.hasSalesOrder)         q2soSalesOrder++;
-          if (g.hasOutbound && g.hasQuotation && g.hasSalesOrder)         soToSISalesOrder++;
-          if (g.hasOutbound && g.hasQuotation && g.hasSalesOrder && g.hasDelivered) soToSIDelivered++;
-        });
-      }
 
       return {
         referenceid,
@@ -650,7 +672,7 @@ export async function GET(req: Request) {
         obCallsTarget:            calculateRangedTarget(
                                    obTargetMap[referenceid] ?? [],
                                    monthSlices,
-                                   0,   // 0 = no target set; avoids misleading hardcoded fallback
+                                   0,
                                    shouldProrateMonthlyTargets
                                  ),
         quotesCount:              quotesSetMap[referenceid]?.size ?? 0,
@@ -662,11 +684,11 @@ export async function GET(req: Request) {
                                  ),
         quotationAmountActual:    quotationAmountMap[referenceid]      ?? 0,
         quotationAmountTarget:    quotationAmountTargetMap[referenceid] ?? 0,
-        callsToQuotesCount:       c2qCount,
-        quoteToSOQuotationCount:  q2soQuotation,
-        quoteToSOSalesOrderCount: q2soSalesOrder,
-        soToSISalesOrderCount:    soToSISalesOrder,
-        soToSIDeliveredCount:     soToSIDelivered,
+        callsToQuotesCount:       c2qMap[referenceid]    ?? 0,
+        quoteToSOQuotationCount:  q2soQMap[referenceid]  ?? 0,
+        quoteToSOSalesOrderCount: q2soSOMap[referenceid] ?? 0,
+        soToSISalesOrderCount:    s2siSOMap[referenceid] ?? 0,
+        soToSIDeliveredCount:     s2siSIMap[referenceid] ?? 0,
         newAccountCount:          naCountMap[referenceid]         ?? 0,
         newAccountTarget:         naTargetMap[referenceid]        ?? 2,
         clientVisitsCount:        clientVisitsCountMap[referenceid] ?? 0,
