@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Spinner } from "@/components/ui/spinner";
 import { Info, X, Settings } from "lucide-react";
 
@@ -419,12 +419,14 @@ function saveTsmHiddenAgents(set: Set<string>) {
 }
 
 export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm, dateRange }) => {
-  const [loading,      setLoading]      = useState(false);
-  const [agents,       setAgents]       = useState<AgentKpiData[]>([]);
-  const [error,        setError]        = useState<string | null>(null);
-  const [hasFetched,   setHasFetched]   = useState(false);
-  const [hiddenAgents, setHiddenAgents] = useState<Set<string>>(new Set());
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [loading,       setLoading]       = useState(false);
+  const [agents,        setAgents]        = useState<AgentKpiData[]>([]);
+  const [error,         setError]         = useState<string | null>(null);
+  const [hasFetched,    setHasFetched]    = useState(false);
+  const [hiddenAgents,  setHiddenAgents]  = useState<Set<string>>(new Set());
+  const [settingsOpen,  setSettingsOpen]  = useState(false);
+  const [loadingAgents, setLoadingAgents] = useState<Set<string>>(new Set());
+  const fetchIdRef = useRef(0);
 
   useEffect(() => { setHiddenAgents(loadTsmHiddenAgents()); }, []);
 
@@ -449,24 +451,66 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
 
   const fetchData = useCallback(async () => {
     if (!tsm) return;
+    const fetchId = ++fetchIdRef.current;
+
     setLoading(true);
     setError(null);
     setHasFetched(true);
-    try {
-      const params = new URLSearchParams({ tsm });
-      if (dateRange?.from) params.append("from", toDateStr(dateRange.from));
-      if (dateRange?.to)   params.append("to",   toDateStr(dateRange.to));
+    setAgents([]);
+    setLoadingAgents(new Set());
 
-      const res = await fetch(`/api/tsm-kpi?${params.toString()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error ?? "Unknown error");
-      setAgents(data.agents ?? []);
+    const baseParams = new URLSearchParams({ tsm });
+    if (dateRange?.from) baseParams.append("from", toDateStr(dateRange.from));
+    if (dateRange?.to)   baseParams.append("to",   toDateStr(dateRange.to));
+
+    try {
+      // Step 1: get agent list only — fast, no KPI computation
+      const listParams = new URLSearchParams(baseParams);
+      listParams.set("listOnly", "true");
+      const listRes = await fetch(`/api/tsm-kpi?${listParams}`);
+      if (!listRes.ok) throw new Error(`HTTP ${listRes.status}`);
+      const listData = await listRes.json();
+      if (!listData.success) throw new Error(listData.error ?? "Unknown error");
+      if (fetchId !== fetchIdRef.current) return;
+
+      const agentStubs: { referenceid: string; name: string }[] = listData.agents ?? [];
+      if (agentStubs.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      setLoadingAgents(new Set(agentStubs.map((a) => a.referenceid)));
+      setLoading(false);
+
+      // Step 2: fetch each agent's full KPI one by one
+      for (const stub of agentStubs) {
+        if (fetchId !== fetchIdRef.current) return;
+
+        const agentParams = new URLSearchParams(baseParams);
+        agentParams.set("referenceid", stub.referenceid);
+        try {
+          const res = await fetch(`/api/tsm-kpi?${agentParams}`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (!data.success || !data.agents?.length) continue;
+          if (fetchId !== fetchIdRef.current) return;
+
+          const agentData: AgentKpiData = data.agents[0];
+          setAgents((prev) => {
+            const idx = prev.findIndex((a) => a.referenceid === agentData.referenceid);
+            if (idx >= 0) { const next = [...prev]; next[idx] = agentData; return next; }
+            return [...prev, agentData];
+          });
+        } catch { /* silent */ }
+
+        setLoadingAgents((prev) => { const next = new Set(prev); next.delete(stub.referenceid); return next; });
+      }
     } catch (err: any) {
+      if (fetchId !== fetchIdRef.current) return;
       console.error("TsmKpiWeightedScores fetch error:", err);
       setError(err.message ?? "Failed to load KPI data.");
-    } finally {
       setLoading(false);
+      setLoadingAgents(new Set());
     }
   }, [tsm, dateRange]);
 
@@ -496,6 +540,12 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
             <div className="flex items-center gap-1.5 text-xs text-gray-400">
               <Spinner className="w-3.5 h-3.5" />
               <span>Loading…</span>
+            </div>
+          )}
+          {!loading && loadingAgents.size > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+              <Spinner className="w-3.5 h-3.5" />
+              <span>{loadingAgents.size} agent{loadingAgents.size !== 1 ? "s" : ""} remaining…</span>
             </div>
           )}
         </div>
@@ -567,9 +617,9 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
 
       {/* Grid */}
       {hasFetched && (
-        <div className={`transition-all duration-300 relative ${loading ? "blur-sm opacity-50 pointer-events-none" : ""}`}>
+        <div className="transition-all duration-300 relative">
           {loading && (
-            <div className="absolute inset-0 flex items-center justify-center z-10">
+            <div className="flex items-center justify-center py-8">
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Spinner className="w-5 h-5" />
                 <span>Loading data…</span>
@@ -577,13 +627,13 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
             </div>
           )}
 
-          {!loading && !error && agents.length === 0 && (
+          {!loading && !error && agents.length === 0 && loadingAgents.size === 0 && (
             <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-8 text-center text-xs text-gray-400">
               No active agents found under your team.
             </div>
           )}
 
-          {agents.length > 0 && (
+          {(agents.length > 0 || loadingAgents.size > 0) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {agents
                 .filter((a) => !hiddenAgents.has(a.referenceid))
@@ -594,6 +644,18 @@ export const TsmKpiWeightedScores: React.FC<TsmKpiWeightedScoresProps> = ({ tsm,
                     onHide={() => hideAgent(agent.referenceid)}
                   />
                 ))}
+              {/* Skeleton placeholders for agents still being fetched */}
+              {[...loadingAgents].map((ref) => (
+                <div key={ref} className="rounded-xl border border-gray-100 bg-gray-50 p-4 flex flex-col gap-2 animate-pulse">
+                  <div className="h-3 bg-gray-200 rounded w-3/4" />
+                  <div className="h-6 bg-gray-200 rounded w-1/2 mt-1" />
+                  <div className="space-y-1.5 mt-2">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="h-2 bg-gray-200 rounded w-full" />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
           {hiddenAgents.size > 0 && agents.length > 0 && (

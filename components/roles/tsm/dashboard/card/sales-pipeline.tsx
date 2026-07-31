@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
@@ -359,14 +359,12 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
 //                  Main Card                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
 
 export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
-  tsm,
-  dateRange,
   obCallsCount: obCallsCountProp = 0,
-  obCallsTarget: propObCallsTarget,
+  obCallsTarget: propObCallsTarget = 0,
   loadingObCalls = false,
   loadingObCallsTarget = false,
-  quotesCount = 0,
-  quotesTarget: propQuotesTarget,
+  quotesCount: quotesCountProp = 0,
+  quotesTarget: propQuotesTarget = 0,
   loadingQuotes = false,
   callsToQuotesCount: callsToQuotesCountProp = 0,
   loadingCallsToQuotes = false,
@@ -389,122 +387,17 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
     router.push(`/roles/tsm/sales-quotation-settings${id ? `?id=${encodeURIComponent(id)}` : ""}`);
   };
 
-  // -- Self-fetch: OB count + ALL conversion counts from unified API + targets --
-  const [selfObCallsCount,          setSelfObCallsCount]          = useState<number | null>(null);
-  const [selfCallsToQuotesCount,    setSelfCallsToQuotesCount]    = useState<number | null>(null);
-  const [selfQuoteToSOQuotation,    setSelfQuoteToSOQuotation]    = useState<number | null>(null);
-  const [selfQuoteToSOSalesOrder,   setSelfQuoteToSOSalesOrder]   = useState<number | null>(null);
-  const [selfSoToSISalesOrder,      setSelfSoToSISalesOrder]      = useState<number | null>(null);
-  const [selfSoToSIDelivered,       setSelfSoToSIDelivered]       = useState<number | null>(null);
-  const [teamObTarget,              setTeamObTarget]              = useState<number | null>(null);
-  const [teamQuotesTarget,          setTeamQuotesTarget]          = useState<number | null>(null);
-  const [teamNewAccountTarget,      setTeamNewAccountTarget]      = useState<number | null>(null);
-  const [loadingFetch,              setLoadingFetch]              = useState(false);
-
-  const fetchTeamTargets = useCallback(async () => {
-    if (!tsm) return;
-    setLoadingFetch(true);
-    const refDate   = dateRange?.from ?? new Date();
-    const monthName = ["January","February","March","April","May","June",
-                       "July","August","September","October","November","December"][refDate.getMonth()];
-    const year      = refDate.getFullYear().toString();
-    const params    = new URLSearchParams({ tsm, year });
-    const now  = new Date();
-    const from = dateRange?.from
-      ? dateRange.from.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-      : new Date(now.getFullYear(), now.getMonth(), 1)
-          .toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-    const to   = dateRange?.to
-      ? dateRange.to.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-      : now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-    const tsmBase    = `tsm=${encodeURIComponent(tsm)}`;
-    const dateSuffix = `&from=${from}&to=${to}`;
-
-    // OB count (Successful)
-    try {
-      const res = await fetch(`/api/tsm-agent-outbound-history?${tsmBase}&from=${from}&to=${to}`);
-      if (res.ok) {
-        const data = await res.json();
-        const history: any[] = data.history ?? [];
-        setSelfObCallsCount(history.filter(
-          (r) => r.source === "Outbound - Touchbase" && r.call_status === "Successful"
-        ).length);
-      }
-    } catch { /* silent */ }
-
-    // All conversion counts from unified API (same logic as Agent Performance Detail)
-    try {
-      const convRes = await fetch(`/api/tsm-pipeline-conversion?${tsmBase}${dateSuffix}`);
-      if (convRes.ok) {
-        const convData = await convRes.json();
-        if (convData.success) {
-          setSelfCallsToQuotesCount(Number(convData.callsToQuoteCount)         || 0);
-          setSelfQuoteToSOQuotation(Number(convData.quoteToSOQuotationCount)   || 0);
-          setSelfQuoteToSOSalesOrder(Number(convData.quoteToSOSalesOrderCount) || 0);
-          setSelfSoToSISalesOrder(Number(convData.soToSISalesOrderCount)       || 0);
-          setSelfSoToSIDelivered(Number(convData.soToSIDeliveredCount)         || 0);
-        }
-      }
-    } catch { /* silent */ }
-
-    // OB target
-    try {
-      const obRes = await fetch(`/api/tsm-agent-ob-target?${params.toString()}`);
-      if (obRes.ok) {
-        const obData = await obRes.json();
-        if (obData.success) {
-          const total = Object.values(obData.targets ?? {}).reduce(
-            (acc: number, agentMonths) => acc + ((agentMonths as Record<string, number>)[monthName] ?? 0), 0
-          );
-          setTeamObTarget(total as number);
-        }
-      }
-    } catch { /* silent */ }
-
-    // Quotes target
-    try {
-      const qtRes = await fetch(`/api/tsm-agent-quote-target?${params.toString()}`);
-      if (qtRes.ok) {
-        const qtData = await qtRes.json();
-        if (qtData.success) {
-          const total = Object.values(qtData.targets ?? {}).reduce(
-            (acc: number, agentMonths) => acc + ((agentMonths as Record<string, number>)[monthName] ?? 0), 0
-          );
-          setTeamQuotesTarget(total as number);
-        }
-      }
-    } catch { /* silent */ }
-
-    // New account target
-    try {
-      const naRes = await fetch(`/api/tsm-agent-account-development?${params.toString()}`);
-      if (naRes.ok) {
-        const naData = await naRes.json();
-        if (naData.success) {
-          const total = Object.values(naData.targets ?? {}).reduce((acc: number, agentMonths) => {
-            const monthVal = (agentMonths as Record<string, { target: number; count: number }>)[monthName];
-            return acc + (monthVal?.target ?? 0);
-          }, 0);
-          setTeamNewAccountTarget(total as number);
-        }
-      }
-    } catch { /* silent */ }
-
-    setLoadingFetch(false);
-  }, [tsm, dateRange]);
-
-  useEffect(() => { fetchTeamTargets(); }, [fetchTeamTargets]);
-
-  // Resolved values -- self-fetched always wins over props
-  const obCallsCount             = selfObCallsCount        ?? obCallsCountProp;
-  const obCallsTarget            = teamObTarget            ?? propObCallsTarget ?? 0;
-  const quotesTarget             = teamQuotesTarget        ?? propQuotesTarget  ?? 0;
-  const newAccountTarget         = teamNewAccountTarget    ?? propNewAccountTarget ?? 0;
-  const callsToQuotesCount       = selfCallsToQuotesCount  ?? callsToQuotesCountProp;
-  const quoteToSOQuotationCount  = selfQuoteToSOQuotation  ?? quoteToSOQuotationCountProp;
-  const quoteToSOSalesOrderCount = selfQuoteToSOSalesOrder ?? quoteToSOSalesOrderCountProp;
-  const soToSISalesOrderCount    = selfSoToSISalesOrder    ?? soToSISalesOrderCountProp;
-  const soToSIDeliveredCount     = selfSoToSIDelivered     ?? soToSIDeliveredCountProp;
+  // All values come directly from props — populated by AgentPerformanceDetail.onTotalsReady
+  const obCallsCount             = obCallsCountProp;
+  const obCallsTarget            = propObCallsTarget;
+  const quotesCount              = quotesCountProp;
+  const quotesTarget             = propQuotesTarget;
+  const newAccountTarget         = propNewAccountTarget;
+  const callsToQuotesCount       = callsToQuotesCountProp;
+  const quoteToSOQuotationCount  = quoteToSOQuotationCountProp;
+  const quoteToSOSalesOrderCount = quoteToSOSalesOrderCountProp;
+  const soToSISalesOrderCount    = soToSISalesOrderCountProp;
+  const soToSIDeliveredCount     = soToSIDeliveredCountProp;
 
 
   //                  Computations                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
@@ -593,16 +486,6 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
                 type="button"
               >
                 <Settings className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => fetchTeamTargets()}
-                disabled={loadingFetch}
-                className="relative z-20 p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer disabled:opacity-40"
-                aria-label="Refresh pipeline data"
-                title="Refresh conversion metrics"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loadingFetch ? "animate-spin" : ""}`} />
               </button>
               <button
                 type="button"

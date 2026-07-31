@@ -208,10 +208,12 @@ async function getAgents(manager: string): Promise<{ referenceid: string; name: 
 
 export async function GET(req: Request) {
   try {
-    const url     = new URL(req.url);
-    const manager = url.searchParams.get("manager");
-    const from    = url.searchParams.get("from");
-    const to      = url.searchParams.get("to");
+    const url        = new URL(req.url);
+    const manager    = url.searchParams.get("manager");
+    const from       = url.searchParams.get("from");
+    const to         = url.searchParams.get("to");
+    // Optional: scope to a single agent for per-agent sequential fetching
+    const agentParam = url.searchParams.get("referenceid");
 
     if (!manager) {
       return NextResponse.json({ success: false, error: "Missing manager." }, { status: 400 });
@@ -253,11 +255,27 @@ export async function GET(req: Request) {
     const clientVisitsEnd   = to   ? `${to}T23:59:59+08:00`   : `${todayDate}T23:59:59+08:00`;
 
     // ── Agents ────────────────────────────────────────────────────────────────
-    const agents = await getAgents(manager);
+    let agents = await getAgents(manager);
     if (agents.length === 0) {
       return NextResponse.json({ success: true, agents: [], tsmNames: {} }, { status: 200 });
     }
+    // If a specific agent is requested, filter to just that one
+    if (agentParam) {
+      agents = agents.filter((a) => a.referenceid === agentParam);
+      if (agents.length === 0) {
+        return NextResponse.json({ success: true, agents: [], tsmNames: {} }, { status: 200 });
+      }
+    }
     const agentIds = agents.map((a) => a.referenceid);
+
+    // listOnly=true: just return agent stubs so the component can queue per-agent fetches
+    if (url.searchParams.get("listOnly") === "true") {
+      const { data: tsmUD } = await supabase.from("users").select("ReferenceID, Firstname, Lastname")
+        .eq("Manager", manager).eq("Role", "Territory Sales Manager").not("Status", "in", '("Resigned","Terminated","Inactive")');
+      const tsmNamesMap: Record<string, string> = {};
+      for (const t of tsmUD ?? []) tsmNamesMap[t.ReferenceID] = `${t.Firstname ?? ""} ${t.Lastname ?? ""}`.trim();
+      return NextResponse.json({ success: true, agents: agents.map((a) => ({ referenceid: a.referenceid, name: a.name, tsm: a.tsm })), tsmNames: tsmNamesMap }, { status: 200 });
+    }
 
     // ── TSM name map for grouping ─────────────────────────────────────────────
     const { data: tsmUsersData } = await supabase

@@ -253,10 +253,12 @@ async function getAgents(tsm: string): Promise<{ referenceid: string; name: stri
 
 export async function GET(req: Request) {
   try {
-    const url  = new URL(req.url);
-    const tsm  = url.searchParams.get("tsm");
-    const from = url.searchParams.get("from"); // YYYY-MM-DD
-    const to   = url.searchParams.get("to");   // YYYY-MM-DD
+    const url          = new URL(req.url);
+    const tsm          = url.searchParams.get("tsm");
+    const from         = url.searchParams.get("from"); // YYYY-MM-DD
+    const to           = url.searchParams.get("to");   // YYYY-MM-DD
+    const agentParam   = url.searchParams.get("referenceid"); // single-agent mode
+    const listOnly     = url.searchParams.get("listOnly") === "true";
 
     if (!tsm) {
       return NextResponse.json({ success: false, error: "Missing tsm." }, { status: 400 });
@@ -294,7 +296,6 @@ export async function GET(req: Request) {
     const naTo   = to   ?? `${naYear}-${naMonth}-${String(naDaysInMonth).padStart(2, "0")}`;
 
     // SI always uses full month boundaries derived from the 'from' date (or current month if not provided).
-    // SI total is never filtered by the selected date range — always the full month.
     const siRefDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
     const siYear    = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
     const siMonth   = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(5, 7);
@@ -302,22 +303,32 @@ export async function GET(req: Request) {
     const siStart   = `${siYear}-${siMonth}-01T00:00:00+08:00`;
     const siEnd     = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}T23:59:59.999+08:00`;
 
-    // OB Calls / Quotes / Pipeline: selected range, else current month
     const obStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
     const obEnd   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
     const quotesStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
     const quotesEnd   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
     const pipelineStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
     const pipelineEnd   = to   ? `${to}T23:59:59.999+08:00` : `${manilaMonthEnd}T23:59:59.999+08:00`;
-
-    // Client Visits (tasklog): use +08:00 timezone like fetch-tasklog-supabase
     const clientVisitsStart = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;
     const clientVisitsEnd   = to ? `${to}T23:59:59+08:00` : `${manilaMonthEnd}T23:59:59+08:00`;
 
     // ── Fetch agents ──────────────────────────────────────────────────────────
-    const agents = await getAgents(tsm);
+    let agents = await getAgents(tsm);
     if (agents.length === 0) {
       return NextResponse.json({ success: true, agents: [] }, { status: 200 });
+    }
+
+    // listOnly: return stubs only — no KPI computation
+    if (listOnly) {
+      return NextResponse.json({ success: true, agents: agents.map((a) => ({ referenceid: a.referenceid, name: a.name })) }, { status: 200 });
+    }
+
+    // Single-agent mode: filter to just the requested agent
+    if (agentParam) {
+      agents = agents.filter((a) => a.referenceid === agentParam);
+      if (agents.length === 0) {
+        return NextResponse.json({ success: true, agents: [] }, { status: 200 });
+      }
     }
 
     const agentIds = agents.map((a) => a.referenceid);

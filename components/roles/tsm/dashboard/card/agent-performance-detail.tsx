@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { User } from "lucide-react";
@@ -13,6 +13,15 @@ interface AgentPerformanceDetailProps {
   /** TSM ReferenceID — used as ?tsm= param */
   tsm: string;
   dateRange?: DateRange;
+  /** Called whenever agent totals update — used to sync with SalesPipelineCard */
+  onTotalsReady?: (totals: {
+    obCalls: number; obCallsTarget: number;
+    callsToQuote: number;
+    quoteToSOQuotation: number; quoteToSOSalesOrder: number;
+    soToSISalesOrder: number; soToSIDelivered: number;
+    quotesCount: number; quotesTarget: number;
+    accountDevelopment: number; accountDevelopmentTarget: number;
+  }) => void;
 }
 
 interface AgentRow {
@@ -277,38 +286,144 @@ function TimeSpentCell({
 export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
   tsm,
   dateRange,
+  onTotalsReady,
 }) => {
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
   const [showForecast, setShowForecast] = useState(false);
+  // Per-column loading indicators
+  const [loadingCols, setLoadingCols] = useState<Set<string>>(new Set());
+  const fetchIdRef = useRef(0); // cancel stale fetches
+
+  // Column groups in the order they will be fetched (via tsm-agent-performance?fields=)
+  // "dbcoverage" is handled separately via /api/db-coverage per-agent (same as database-coverage.tsx)
+  const COLUMN_GROUPS = [
+    "si_so",
+    "ob",
+    "conversion",
+    "quotation",
+    "sitevisits",
+    "accountdev",
+    "dbcoverage",
+    "timespent",
+    "csr",
+  ] as const;
+
+  type ColGroup = typeof COLUMN_GROUPS[number];
 
   const fetchData = useCallback(async () => {
     if (!tsm) return;
+    const fetchId = ++fetchIdRef.current;
+
     setLoading(true);
     setError(null);
     setHasFetched(true);
-    try {
-      const params = new URLSearchParams({ tsm });
-      if (dateRange?.from) params.append("from", toDateStr(dateRange.from));
-      if (dateRange?.to) params.append("to", toDateStr(dateRange.to));
+    setAgents([]);
+    setLoadingCols(new Set<string>(COLUMN_GROUPS));
 
-      const res = await fetch(`/api/tsm-agent-performance?${params.toString()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error ?? "Unknown error");
-      setAgents(data.agents ?? []);
+    const params = new URLSearchParams({ tsm });
+    if (dateRange?.from) params.append("from", toDateStr(dateRange.from));
+    if (dateRange?.to)   params.append("to",   toDateStr(dateRange.to));
+
+    try {
+      // ── Step 1: si_so — establishes agent rows in the table immediately ──
+      const firstParams = new URLSearchParams(params);
+      firstParams.set("fields", "si_so");
+      const firstRes = await fetch(`/api/tsm-agent-performance?${firstParams}`);
+      if (!firstRes.ok) throw new Error(`HTTP ${firstRes.status}`);
+      const firstData = await firstRes.json();
+      if (!firstData.success) throw new Error(firstData.error ?? "Unknown error");
+      if (fetchId !== fetchIdRef.current) return;
+
+      const agentList: AgentRow[] = firstData.agents ?? [];
+      setAgents(agentList);
+      setLoadingCols((prev) => { const s = new Set(prev); s.delete("si_so"); return s; });
+      setLoading(false);
+
+      // ── Step 2: remaining columns sequentially ──
+      for (const col of COLUMN_GROUPS.slice(1) as ColGroup[]) {
+        if (fetchId !== fetchIdRef.current) return;
+
+        // dbcoverage: call /api/db-coverage per agent (Pages Router — exact same as database-coverage.tsx)
+        if (col === "dbcoverage") {
+          try {
+            if (agentList.length > 0) {
+              const refDate    = dateRange?.from ?? new Date();
+              const refStr     = refDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+              const [fy, fm]   = refStr.split("-").map(Number);
+              const monthStart = `${fy}-${String(fm).padStart(2, "0")}-01`;
+              const monthEnd   = new Date(Date.UTC(fy, fm, 0)).toISOString().split("T")[0];
+
+              const results = await Promise.all(
+                agentList.map((a) =>
+                  fetch(`/api/db-coverage?referenceid=${encodeURIComponent(a.referenceid)}&from=${monthStart}&to=${monthEnd}`)
+                    .then((r) => r.ok ? r.json() : { success: false })
+                    .catch(() => ({ success: false }))
+                )
+              );
+              if (fetchId !== fetchIdRef.current) return;
+
+              const dbMap = new Map<string, { coveredCount: number; totalCount: number }>();
+              agentList.forEach((a, i) => {
+                const d = results[i];
+                dbMap.set(a.referenceid, {
+                  coveredCount: d.success ? (d.coveredCount ?? 0) : 0,
+                  totalCount:   d.success ? (d.totalCount   ?? 0) : 0,
+                });
+              });
+
+              setAgents((prev) => prev.map((agent) => {
+                const db = dbMap.get(agent.referenceid);
+                return db ? { ...agent, dbCoverageCovered: db.coveredCount, dbCoverageTotal: db.totalCount } : agent;
+              }));
+            }
+          } catch { /* silent */ }
+          setLoadingCols((prev) => { const s = new Set(prev); s.delete("dbcoverage"); return s; });
+          continue;
+        }
+
+        // All other columns: call tsm-agent-performance?fields=<col>
+        const colParams = new URLSearchParams(params);
+        colParams.set("fields", col);
+        try {
+          const res = await fetch(`/api/tsm-agent-performance?${colParams}`);
+          if (!res.ok) { setLoadingCols((prev) => { const s = new Set(prev); s.delete(col); return s; }); continue; }
+          const data = await res.json();
+          if (!data.success || !data.agents) { setLoadingCols((prev) => { const s = new Set(prev); s.delete(col); return s; }); continue; }
+          if (fetchId !== fetchIdRef.current) return;
+
+          setAgents((prev) => {
+            const incoming = new Map<string, AgentRow>(data.agents.map((a: AgentRow) => [a.referenceid, a]));
+            return prev.map((agent) => {
+              const upd = incoming.get(agent.referenceid);
+              if (!upd) return agent;
+              const m = { ...agent };
+              if (col === "ob")         { m.obCalls = upd.obCalls; m.obCallsTarget = upd.obCallsTarget; }
+              if (col === "conversion") { m.callsToQuote = upd.callsToQuote; m.quoteToSOQuotation = upd.quoteToSOQuotation; m.quoteToSOSalesOrder = upd.quoteToSOSalesOrder; m.soToSISalesOrder = upd.soToSISalesOrder; m.soToSIDelivered = upd.soToSIDelivered; }
+              if (col === "quotation")  { m.quotationAmount = upd.quotationAmount; m.quotationAmountTarget = upd.quotationAmountTarget; m.quotesCount = upd.quotesCount; m.quotesTarget = upd.quotesTarget; }
+              if (col === "sitevisits") { m.siteVisits = upd.siteVisits; m.siteVisitTarget = upd.siteVisitTarget; }
+              if (col === "accountdev") { m.accountDevelopment = upd.accountDevelopment; m.accountDevelopmentTarget = upd.accountDevelopmentTarget; }
+              if (col === "timespent")  { m.timeSpentMs = upd.timeSpentMs; m.timeSpentBreakdown = upd.timeSpentBreakdown; }
+              if (col === "csr")        { m.avgResponseTime = upd.avgResponseTime; m.avgNonQuotationHT = upd.avgNonQuotationHT; m.avgQuotationHT = upd.avgQuotationHT; m.avgSpfHT = upd.avgSpfHT; }
+              return m;
+            });
+          });
+        } catch { /* silent */ }
+        setLoadingCols((prev) => { const s = new Set(prev); s.delete(col); return s; });
+      }
     } catch (err: any) {
+      if (fetchId !== fetchIdRef.current) return;
       console.error("AgentPerformanceDetail fetch error:", err);
       setError(err.message ?? "Failed to load data.");
-    } finally {
       setLoading(false);
+      setLoadingCols(new Set());
     }
   }, [tsm, dateRange]);
 
   // ── Totals row ────────────────────────────────────────────────────────────
-  const totals = agents.reduce(
+  const totals = useMemo(() => agents.reduce(
     (acc, a) => ({
       plan: acc.plan + a.plan,
       siActual: acc.siActual + a.siActual,
@@ -323,15 +438,35 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
       quotationAmountTarget: acc.quotationAmountTarget + a.quotationAmountTarget,
       quotationAmount: acc.quotationAmount + a.quotationAmount,
       quotesCount: acc.quotesCount + (a.quotesCount ?? 0),
+      quotesTarget: acc.quotesTarget + (a.quotesTarget ?? 0),
       siteVisits: acc.siteVisits + a.siteVisits,
       siteVisitTarget: acc.siteVisitTarget + a.siteVisitTarget,
       accountDevelopment: acc.accountDevelopment + a.accountDevelopment,
       accountDevelopmentTarget: acc.accountDevelopmentTarget + a.accountDevelopmentTarget,
       timeSpentMs: acc.timeSpentMs + a.timeSpentMs,
     }),
-    { plan: 0, siActual: 0, soActual: 0, obCalls: 0, obCallsTarget: 0, callsToQuote: 0, quoteToSOQuotation: 0, quoteToSOSalesOrder: 0, soToSISalesOrder: 0, soToSIDelivered: 0, quotationAmountTarget: 0, quotationAmount: 0, quotesCount: 0, siteVisits: 0, siteVisitTarget: 0, accountDevelopment: 0, accountDevelopmentTarget: 0, timeSpentMs: 0 }
-  );
+    { plan: 0, siActual: 0, soActual: 0, obCalls: 0, obCallsTarget: 0, callsToQuote: 0, quoteToSOQuotation: 0, quoteToSOSalesOrder: 0, soToSISalesOrder: 0, soToSIDelivered: 0, quotationAmountTarget: 0, quotationAmount: 0, quotesCount: 0, quotesTarget: 0, siteVisits: 0, siteVisitTarget: 0, accountDevelopment: 0, accountDevelopmentTarget: 0, timeSpentMs: 0 }
+  ), [agents]);
   const totalSiPct = totals.plan > 0 ? Math.round((totals.siActual / totals.plan) * 100) : 0;
+
+  // ── Notify parent whenever totals update (only when agents array actually changes) ──
+  useEffect(() => {
+    if (!onTotalsReady || agents.length === 0) return;
+    onTotalsReady({
+      obCalls:                  totals.obCalls,
+      obCallsTarget:            totals.obCallsTarget,
+      callsToQuote:             totals.callsToQuote,
+      quoteToSOQuotation:       totals.quoteToSOQuotation,
+      quoteToSOSalesOrder:      totals.quoteToSOSalesOrder,
+      soToSISalesOrder:         totals.soToSISalesOrder,
+      soToSIDelivered:          totals.soToSIDelivered,
+      quotesCount:              totals.quotesCount,
+      quotesTarget:             totals.quotesTarget,
+      accountDevelopment:       totals.accountDevelopment,
+      accountDevelopmentTarget: totals.accountDevelopmentTarget,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agents]); // agents is the source of truth — totals is derived, onTotalsReady is stable
 
   // ── Forecast date info — ALWAYS based on today's Manila date, not the filter range ──
   const { daysInMonth, daysElapsed } = useMemo(() => {
@@ -408,6 +543,11 @@ export const AgentPerformanceDetail: React.FC<AgentPerformanceDetailProps> = ({
               <div className="flex items-center gap-1.5 text-xs text-gray-400">
                 <Spinner className="w-3.5 h-3.5" />
                 <span>Loading…</span>
+              </div>
+            ) : loadingCols.size > 0 ? (
+              <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <Spinner className="w-3.5 h-3.5" />
+                <span>Fetching {[...loadingCols].join(", ")}…</span>
               </div>
             ) : null}
           </div>

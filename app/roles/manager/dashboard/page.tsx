@@ -217,6 +217,16 @@ function DashboardContent() {
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
+  // ── Agent Performance totals — populated by ManagerAgentPerformanceDetail.onTotalsReady ──
+  const [agentPerfTotals, setAgentPerfTotals] = useState<{
+    obCalls: number; obCallsTarget: number;
+    callsToQuote: number;
+    quoteToSOQuotation: number; quoteToSOSalesOrder: number;
+    soToSISalesOrder: number; soToSIDelivered: number;
+    quotesCount: number; quotesTarget: number;
+    accountDevelopment: number; accountDevelopmentTarget: number;
+  } | null>(null);
+
   // ── OB Calls (manager-level) ──────────────────────────────────────────────────
   const [outboundCallsCount,   setOutboundCallsCount]   = useState<number>(0);
   const [loadingOutboundCalls, setLoadingOutboundCalls] = useState(false);
@@ -423,6 +433,47 @@ function DashboardContent() {
             </div>
           )}
 
+          {/* KPI Weighted Scores — Team View */}
+          {visibility.kpiScores && userDetails.referenceid && (
+            <ManagerKpiWeightedScores
+              manager={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+            />
+          )}
+
+          {/* Agent Performance Detail — Team View */}
+          {visibility.agentDetail && userDetails.referenceid && (
+            <ManagerAgentPerformanceDetail
+              manager={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+              onTotalsReady={setAgentPerfTotals}
+            />
+          )}
+
+          {/* Sales Pipeline — Conversion Metrics */}
+          {visibility.pipeline && (
+            <ManagerSalesPipelineCard
+              manager={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+              obCallsCount={agentPerfTotals?.obCalls ?? outboundCallsCount}
+              obCallsTarget={agentPerfTotals?.obCallsTarget}
+              loadingObCalls={loadingOutboundCalls}
+              quotesCount={agentPerfTotals?.quotesCount ?? quotesCount}
+              quotesTarget={agentPerfTotals?.quotesTarget}
+              loadingQuotes={loadingPipeline}
+              callsToQuotesCount={agentPerfTotals?.callsToQuote ?? callsToQuotesCount}
+              loadingCallsToQuotes={loadingPipeline}
+              quoteToSOQuotationCount={agentPerfTotals?.quoteToSOQuotation ?? quoteToSOQuotationCount}
+              quoteToSOSalesOrderCount={agentPerfTotals?.quoteToSOSalesOrder ?? quoteToSOSalesOrderCount}
+              loadingQuoteToSO={loadingPipeline}
+              soToSISalesOrderCount={agentPerfTotals?.soToSISalesOrder ?? soToSISalesOrderCount}
+              soToSIDeliveredCount={agentPerfTotals?.soToSIDelivered ?? soToSIDeliveredCount}
+              newAccountCount={agentPerfTotals?.accountDevelopment ?? newAccountCount}
+              newAccountTarget={agentPerfTotals?.accountDevelopmentTarget ?? newAccountTarget}
+              loadingNewAccount={loadingPipeline}
+            />
+          )}
+          
           {/* Analytics Row — Pacing + Pipeline + Cycle Time + Forecast */}
           {visibility.analyticsCards && (
             <>
@@ -458,36 +509,6 @@ function DashboardContent() {
             </>
           )}
 
-          {/* KPI Weighted Scores — Team View */}
-          {visibility.kpiScores && userDetails.referenceid && (
-            <ManagerKpiWeightedScores
-              manager={userDetails.referenceid}
-              dateRange={dateCreatedFilterRange}
-            />
-          )}
-
-          {/* Sales Pipeline — Conversion Metrics */}
-          {visibility.pipeline && (
-            <ManagerSalesPipelineCard
-              manager={userDetails.referenceid}
-              dateRange={dateCreatedFilterRange}
-              obCallsCount={outboundCallsCount}
-              loadingObCalls={loadingOutboundCalls}
-              quotesCount={quotesCount}
-              loadingQuotes={loadingPipeline}
-              callsToQuotesCount={callsToQuotesCount}
-              loadingCallsToQuotes={loadingPipeline}
-              quoteToSOQuotationCount={quoteToSOQuotationCount}
-              quoteToSOSalesOrderCount={quoteToSOSalesOrderCount}
-              loadingQuoteToSO={loadingPipeline}
-              soToSISalesOrderCount={soToSISalesOrderCount}
-              soToSIDeliveredCount={soToSIDeliveredCount}
-              newAccountCount={newAccountCount}
-              newAccountTarget={newAccountTarget}
-              loadingNewAccount={loadingPipeline}
-            />
-          )}
-
           {/* Monthly SI Trend — Team Total */}
           {visibility.siTrend && userDetails.referenceid && (
             <ManagerMonthlySiTrendCard
@@ -495,13 +516,6 @@ function DashboardContent() {
             />
           )}
 
-          {/* Agent Performance Detail — Team View */}
-          {visibility.agentDetail && userDetails.referenceid && (
-            <ManagerAgentPerformanceDetail
-              manager={userDetails.referenceid}
-              dateRange={dateCreatedFilterRange}
-            />
-          )}
         </div>
 
       </SidebarInset>

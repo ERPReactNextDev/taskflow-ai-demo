@@ -1,20 +1,22 @@
 ﻿"use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell } from "recharts";
-import { HelpCircle, X, ChevronRight, Settings, RefreshCw } from "lucide-react";
+import { HelpCircle, X, ChevronRight, Settings } from "lucide-react";
 
 interface ManagerSalesPipelineCardProps {
   manager?: string;
   dateRange?: { from?: Date; to?: Date };
   obCallsCount?: number;
+  obCallsTarget?: number;
   loadingObCalls?: boolean;
   loadingObCallsTarget?: boolean;
   quotesCount?: number;
+  quotesTarget?: number;
   loadingQuotes?: boolean;
   callsToQuotesCount?: number;
   loadingCallsToQuotes?: boolean;
@@ -239,12 +241,12 @@ const ExplainPanel: React.FC<ExplainPanelProps> = ({
 // â”€â”€ Main Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const ManagerSalesPipelineCard: React.FC<ManagerSalesPipelineCardProps> = ({
-  manager,
-  dateRange,
   obCallsCount: obCallsCountProp = 0,
+  obCallsTarget: propObCallsTarget = 0,
   loadingObCalls = false,
   loadingObCallsTarget = false,
   quotesCount = 0,
+  quotesTarget: propQuotesTarget = 0,
   loadingQuotes = false,
   callsToQuotesCount: callsToQuotesCountProp = 0,
   loadingCallsToQuotes = false,
@@ -267,119 +269,16 @@ export const ManagerSalesPipelineCard: React.FC<ManagerSalesPipelineCardProps> =
     router.push(`/roles/manager/sales-quotation-settings${id ? `?id=${encodeURIComponent(id)}` : ""}`);
   };
 
-  // -- Self-fetch: OB count + ALL conversion counts from unified API + targets --
-  const [selfObCallsCount,          setSelfObCallsCount]          = useState<number | null>(null);
-  const [selfCallsToQuotesCount,    setSelfCallsToQuotesCount]    = useState<number | null>(null);
-  const [selfQuoteToSOQuotation,    setSelfQuoteToSOQuotation]    = useState<number | null>(null);
-  const [selfQuoteToSOSalesOrder,   setSelfQuoteToSOSalesOrder]   = useState<number | null>(null);
-  const [selfSoToSISalesOrder,      setSelfSoToSISalesOrder]      = useState<number | null>(null);
-  const [selfSoToSIDelivered,       setSelfSoToSIDelivered]       = useState<number | null>(null);
-  const [teamObTarget,              setTeamObTarget]              = useState<number | null>(null);
-  const [teamQuotesTarget,          setTeamQuotesTarget]          = useState<number | null>(null);
-  const [teamNewAccountTarget,      setTeamNewAccountTarget]      = useState<number | null>(null);
-  const [loadingFetch,              setLoadingFetch]              = useState(false);
-
-  const fetchTeamTargets = useCallback(async () => {
-    if (!manager) return;
-    setLoadingFetch(true);
-    const refDate   = dateRange?.from ?? new Date();
-    const monthName = ["January","February","March","April","May","June",
-                       "July","August","September","October","November","December"][refDate.getMonth()];
-    const year      = refDate.getFullYear().toString();
-    const params    = new URLSearchParams({ manager, year });
-    const now  = new Date();
-    const from = dateRange?.from
-      ? dateRange.from.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-      : new Date(now.getFullYear(), now.getMonth(), 1)
-          .toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-    const to   = dateRange?.to
-      ? dateRange.to.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
-      : now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-    const mBase      = `manager=${encodeURIComponent(manager)}`;
-    const dateSuffix = `&from=${from}&to=${to}`;
-
-    // OB count (Successful)
-    try {
-      const res = await fetch(`/api/manager-agent-outbound-history?${mBase}&from=${from}&to=${to}`);
-      if (res.ok) {
-        const data = await res.json();
-        const history: any[] = data.history ?? [];
-        setSelfObCallsCount(history.filter(
-          (r) => r.source === "Outbound - Touchbase" && r.call_status === "Successful"
-        ).length);
-      }
-    } catch { /* silent */ }
-
-    // All conversion counts from unified API (same logic as Agent Performance Detail)
-    try {
-      const convRes = await fetch(`/api/manager-pipeline-conversion?${mBase}${dateSuffix}`);
-      if (convRes.ok) {
-        const convData = await convRes.json();
-        if (convData.success) {
-          setSelfCallsToQuotesCount(Number(convData.callsToQuoteCount)         || 0);
-          setSelfQuoteToSOQuotation(Number(convData.quoteToSOQuotationCount)   || 0);
-          setSelfQuoteToSOSalesOrder(Number(convData.quoteToSOSalesOrderCount) || 0);
-          setSelfSoToSISalesOrder(Number(convData.soToSISalesOrderCount)       || 0);
-          setSelfSoToSIDelivered(Number(convData.soToSIDeliveredCount)         || 0);
-        }
-      }
-    } catch { /* silent */ }
-
-    // OB target
-    try {
-      const obRes = await fetch(`/api/manager-agent-ob-target-sum?${params.toString()}`);
-      if (obRes.ok) {
-        const obData = await obRes.json();
-        if (obData.success) {
-          const total = Object.values(obData.targets ?? {}).reduce(
-            (acc: number, agentMonths) => acc + ((agentMonths as Record<string, number>)[monthName] ?? 0), 0
-          );
-          setTeamObTarget(total as number);
-        }
-      }
-    } catch { /* silent */ }
-
-    // Quotes target
-    try {
-      const qtRes = await fetch(`/api/manager-agent-quote-target?${params.toString()}`);
-      if (qtRes.ok) {
-        const qtData = await qtRes.json();
-        if (qtData.success) {
-          const total = Object.values(qtData.targets ?? {}).reduce(
-            (acc: number, agentMonths) => acc + ((agentMonths as Record<string, number>)[monthName] ?? 0), 0
-          );
-          setTeamQuotesTarget(total as number);
-        }
-      }
-    } catch { /* silent */ }
-
-    // New account target
-    try {
-      const dateParams = new URLSearchParams({ manager });
-      if (dateRange?.from) dateParams.append("from", from);
-      if (dateRange?.to)   dateParams.append("to",   to);
-      const naRes = await fetch(`/api/manager-new-account-development?${dateParams.toString()}`);
-      if (naRes.ok) {
-        const naData = await naRes.json();
-        if (naData.success) setTeamNewAccountTarget(Number(naData.target) || 0);
-      }
-    } catch { /* silent */ }
-
-    setLoadingFetch(false);
-  }, [manager, dateRange]);
-
-  useEffect(() => { fetchTeamTargets(); }, [fetchTeamTargets]);
-
-  // Resolved values -- self-fetched always wins over props
-  const obCallsCount             = selfObCallsCount        ?? obCallsCountProp;
-  const obCallsTarget            = teamObTarget            ?? 0;
-  const quotesTarget             = teamQuotesTarget        ?? 0;
-  const newAccountTarget         = teamNewAccountTarget    ?? propNewAccountTarget ?? 0;
-  const callsToQuotesCount       = selfCallsToQuotesCount  ?? callsToQuotesCountProp;
-  const quoteToSOQuotationCount  = selfQuoteToSOQuotation  ?? quoteToSOQuotationCountProp;
-  const quoteToSOSalesOrderCount = selfQuoteToSOSalesOrder ?? quoteToSOSalesOrderCountProp;
-  const soToSISalesOrderCount    = selfSoToSISalesOrder    ?? soToSISalesOrderCountProp;
-  const soToSIDeliveredCount     = selfSoToSIDelivered     ?? soToSIDeliveredCountProp;
+  // All values come directly from props — populated by ManagerAgentPerformanceDetail.onTotalsReady
+  const obCallsCount             = obCallsCountProp;
+  const obCallsTarget            = propObCallsTarget;
+  const quotesTarget             = propQuotesTarget;
+  const newAccountTarget         = propNewAccountTarget;
+  const callsToQuotesCount       = callsToQuotesCountProp;
+  const quoteToSOQuotationCount  = quoteToSOQuotationCountProp;
+  const quoteToSOSalesOrderCount = quoteToSOSalesOrderCountProp;
+  const soToSISalesOrderCount    = soToSISalesOrderCountProp;
+  const soToSIDeliveredCount     = soToSIDeliveredCountProp;
 
   // â”€â”€ Computations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const obCallsPercentage = obCallsTarget > 0 ? Math.round((obCallsCount / obCallsTarget) * 100) : 0;
@@ -451,11 +350,6 @@ export const ManagerSalesPipelineCard: React.FC<ManagerSalesPipelineCardProps> =
             <div className="flex items-center gap-2">
               <button onClick={handleSettings} className="relative z-20 p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer" type="button">
                 <Settings className="w-3.5 h-3.5" />
-              </button>
-              <button type="button" onClick={() => fetchTeamTargets()} disabled={loadingFetch}
-                className="relative z-20 p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer disabled:opacity-40"
-                aria-label="Refresh pipeline data" title="Refresh conversion metrics">
-                <RefreshCw className={`w-3.5 h-3.5 ${loadingFetch ? "animate-spin" : ""}`} />
               </button>
               <button type="button" onClick={() => setExplainOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest bg-gray-900 hover:bg-gray-700 text-white rounded-lg transition-colors shadow-sm">

@@ -252,6 +252,16 @@ function DashboardContent() {
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
+  // ── Agent Performance totals — populated by AgentPerformanceDetail.onTotalsReady ──
+  const [agentPerfTotals, setAgentPerfTotals] = useState<{
+    obCalls: number; obCallsTarget: number;
+    callsToQuote: number;
+    quoteToSOQuotation: number; quoteToSOSalesOrder: number;
+    soToSISalesOrder: number; soToSIDelivered: number;
+    quotesCount: number; quotesTarget: number;
+    accountDevelopment: number; accountDevelopmentTarget: number;
+  } | null>(null);
+
   // ── OB Calls — query by tsm column ───────────────────────────────────────────
   const [outboundCallsCount, setOutboundCallsCount] = useState<number>(0);
   const [outboundCallsTarget, setOutboundCallsTarget] = useState<number>(0);
@@ -482,7 +492,46 @@ function DashboardContent() {
             </div>
           )}
 
-          {/* Second row: Pacing + Pipeline + Forecast */}
+          {/* KPI Weighted Scores — Team View */}
+          {visibility.kpiScores && userDetails.referenceid && (
+            <TsmKpiWeightedScores
+              tsm={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+            />
+          )}
+
+          {/* Agent Performance Detail — Team View */}
+          {visibility.agentDetail && userDetails.referenceid && (
+            <AgentPerformanceDetail
+              tsm={userDetails.referenceid}
+              dateRange={dateCreatedFilterRange}
+              onTotalsReady={setAgentPerfTotals}
+            />
+          )}
+
+          <SalesPipelineCard
+            tsm={userDetails.referenceid}
+            dateRange={dateCreatedFilterRange}
+            obCallsCount={agentPerfTotals?.obCalls ?? outboundCallsCount}
+            obCallsTarget={agentPerfTotals?.obCallsTarget}
+            loadingObCalls={loadingOutboundCalls}
+            loadingObCallsTarget={loadingOutboundCallsTarget}
+            quotesCount={agentPerfTotals?.quotesCount ?? quotesCount}
+            quotesTarget={agentPerfTotals?.quotesTarget}
+            loadingQuotes={loadingPipeline}
+            callsToQuotesCount={agentPerfTotals?.callsToQuote ?? callsToQuotesCount}
+            loadingCallsToQuotes={loadingPipeline}
+            quoteToSOQuotationCount={agentPerfTotals?.quoteToSOQuotation ?? quoteToSOQuotationCount}
+            quoteToSOSalesOrderCount={agentPerfTotals?.quoteToSOSalesOrder ?? quoteToSOSalesOrderCount}
+            loadingQuoteToSO={loadingPipeline}
+            soToSISalesOrderCount={agentPerfTotals?.soToSISalesOrder ?? soToSISalesOrderCount}
+            soToSIDeliveredCount={agentPerfTotals?.soToSIDelivered ?? soToSIDeliveredCount}
+            newAccountCount={agentPerfTotals?.accountDevelopment ?? newAccountCount}
+            newAccountTarget={agentPerfTotals?.accountDevelopmentTarget ?? newAccountTarget}
+            loadingNewAccount={loadingPipeline}
+          />
+
+           {/* Second row: Pacing + Pipeline + Forecast */}
           {visibility.analyticsCards && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -516,13 +565,6 @@ function DashboardContent() {
               />
             </>
           )}
-          {/* KPI Weighted Scores — Team View */}
-          {visibility.kpiScores && userDetails.referenceid && (
-            <TsmKpiWeightedScores
-              tsm={userDetails.referenceid}
-              dateRange={dateCreatedFilterRange}
-            />
-          )}
 
           {/* Agent Attainment Ranking Board */}
           {visibility.attainmentRanking && userDetails.referenceid && (
@@ -539,26 +581,7 @@ function DashboardContent() {
               dateRange={dateCreatedFilterRange}
             />
           )}
-
-          <SalesPipelineCard
-            tsm={userDetails.referenceid}
-            dateRange={dateCreatedFilterRange}
-            obCallsCount={outboundCallsCount}
-            loadingObCalls={loadingOutboundCalls}
-            loadingObCallsTarget={loadingOutboundCallsTarget}
-            quotesCount={quotesCount}
-            loadingQuotes={loadingPipeline}
-            callsToQuotesCount={callsToQuotesCount}
-            loadingCallsToQuotes={loadingPipeline}
-            quoteToSOQuotationCount={quoteToSOQuotationCount}
-            quoteToSOSalesOrderCount={quoteToSOSalesOrderCount}
-            loadingQuoteToSO={loadingPipeline}
-            soToSISalesOrderCount={soToSISalesOrderCount}
-            soToSIDeliveredCount={soToSIDeliveredCount}
-            newAccountCount={newAccountCount}
-            newAccountTarget={newAccountTarget}
-            loadingNewAccount={loadingPipeline}
-          />
+          
 
           {/* New vs Existing Account Revenue */}
           {visibility.newVsExisting && (
@@ -588,14 +611,6 @@ function DashboardContent() {
           {/* Funnel Leakage Heatmap — Per-Agent Diagnostics */}
           {visibility.funnelHeatmap && userDetails.referenceid && (
             <FunnelLeakageHeatmap
-              tsm={userDetails.referenceid}
-              dateRange={dateCreatedFilterRange}
-            />
-          )}
-
-          {/* Agent Performance Detail — Team View */}
-          {visibility.agentDetail && userDetails.referenceid && (
-            <AgentPerformanceDetail
               tsm={userDetails.referenceid}
               dateRange={dateCreatedFilterRange}
             />

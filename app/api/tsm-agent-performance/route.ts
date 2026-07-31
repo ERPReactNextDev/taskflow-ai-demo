@@ -336,11 +336,16 @@ const normalizeCompany = (name: string): string =>
 
 async function calcDbCoverageForAgents(
   agentIds: string[],
-  monthStartDate: string,
-  monthEndDate: string
+  fromDate: string,
+  toDate: string
 ): Promise<Record<string, DbCoverageResult>> {
   const result: Record<string, DbCoverageResult> = {};
   try {
+    // Derive month boundaries from fromDate — same as pages/api/db-coverage.ts
+    const [fy, fm] = fromDate.split("-").map(Number);
+    const monthStartDate = `${fy}-${String(fm).padStart(2, "0")}-01`;
+    const monthEndDate   = toDate || `${fy}-${String(fm).padStart(2, "0")}-${String(new Date(fy, fm, 0).getDate()).padStart(2, "0")}`;
+
     console.log("[calcDbCoverageForAgents] Starting with agentIds:", agentIds, "monthStart:", monthStartDate, "monthEnd:", monthEndDate);
     // Fetch accounts     exclude removed/approved for deletion/subject for transfer (matches companies page)
     const clusterAccounts = await sql`
@@ -426,12 +431,15 @@ async function calcDbCoverageForAgents(
         return true;
       });
 
-      const touchedCompanies = agentTouchedCompanies[ref] || new Set<string>();
+      const touchedCompanies  = agentTouchedCompanies[ref]    || new Set<string>();
+      const touchedAccountRefs = agentTouchedAccountRefs[ref] || new Set<string>();
 
-      // Match by normalized company name only
-      const coveredCount = filteredAccounts.filter((acc) =>
-        acc.company_name ? touchedCompanies.has(normalizeCompany(acc.company_name)) : false
-      ).length;
+      // Match by account_reference_number first, then fall back to normalized company name
+      const coveredCount = filteredAccounts.filter((acc) => {
+        if (acc.account_reference_number && touchedAccountRefs.has(acc.account_reference_number.toString().trim())) return true;
+        if (acc.company_name && touchedCompanies.has(normalizeCompany(acc.company_name))) return true;
+        return false;
+      }).length;
 
       result[ref] = { coveredCount, totalCount: filteredAccounts.length };
     }
@@ -448,12 +456,18 @@ async function calcDbCoverageForAgents(
 
 export async function GET(req: Request) {
   try {
-    const url  = new URL(req.url);
-    const tsm  = url.searchParams.get("tsm");
-    const from = url.searchParams.get("from"); // YYYY-MM-DD
-    const to   = url.searchParams.get("to");   // YYYY-MM-DD
+    const url    = new URL(req.url);
+    const tsm    = url.searchParams.get("tsm");
+    const from   = url.searchParams.get("from"); // YYYY-MM-DD
+    const to     = url.searchParams.get("to");   // YYYY-MM-DD
+    // fields: comma-separated list of column groups to compute.
+    // Supported: agents, si_so, ob, conversion, quotation, sitevisits, accountdev, dbcoverage, timespent, csr
+    // If omitted, compute everything (legacy / backward compat).
+    const fieldsParam = url.searchParams.get("fields");
+    const fields      = fieldsParam ? new Set(fieldsParam.split(",").map((f) => f.trim())) : null; // null = all
+    const want = (f: string) => fields === null || fields.has(f);
 
-    console.log("[tsm-agent-performance] GET called with tsm:", tsm, "from:", from, "to:", to);
+    console.log("[tsm-agent-performance] GET called with tsm:", tsm, "from:", from, "to:", to, "fields:", fieldsParam);
 
     if (!tsm) {
       return NextResponse.json(
@@ -532,157 +546,91 @@ export async function GET(req: Request) {
     // Quota year
     const quotaYear = from ? new Date(`${from}T00:00:00+08:00`).getFullYear().toString() : currentYear;
 
-    //        3. Parallel Supabase queries                                                                                                                               
+    //        3. Parallel Supabase queries — gated by `fields` param                                                                          
 
-    // SI (actual sales) - always based on full month boundaries of delivery_date
-    const siQ = (() => {
-      let q = supabase.from("history")
-        .select("referenceid, actual_sales, activity_reference_number")
-        .in("referenceid", agentIds)
-        .eq("type_activity", "Delivered / Closed Transaction")
-        .gte("delivery_date", siStart)
-        .lte("delivery_date", siEnd);
-      return fetchAllRows(q);
-    })();
-
-    // SO amount     use Manila-aware +08:00 bounds to match tsm-history-so and tsm-agent-so
-    const soQ = (() => {
-      let q = supabase.from("history")
-        .select("referenceid, so_amount")
-        .in("referenceid", agentIds)
-        .eq("status", "SO-Done")
-        .gte("date_created", soStartISO)
-        .lte("date_created", soEndISO);
-      return fetchAllRows(q);
-    })();
-
-    // OB calls     Successful only (use +08:00 timestamps to match tsm-agent-outbound-history API)
-    const obQ = fetchAllRows(
-      supabase.from("history")
-        .select("referenceid")
-        .in("referenceid", agentIds)
-        .eq("source", "Outbound - Touchbase")
-        .eq("call_status", "Successful")
-        .gte("date_created", rangeStartTs)
-        .lte("date_created", rangeEndTs)
-    );
-
-    // Quotation amount (Quote-Done, sum of quotation_amount)
-    const qaQ = fetchAllRows(
-      supabase.from("history")
-        .select("referenceid, quotation_amount")
-        .in("referenceid", agentIds)
-        .eq("type_activity", "Quotation Preparation")
-        .eq("status", "Quote-Done")
-        .gte("date_created", rangeStartDate)
-        .lte("date_created", rangeEndDate)
-    );
-
-    // Site visits (tasklog Login/Logout entries, counted by unique SiteVisitAccount)
-    const svQ = fetchAllRows(
-      supabase
-        .from("tasklog")
-        .select(`"ReferenceID", "Status", "SiteVisitAccount"`)
-        .in("ReferenceID", agentIds)
-        .gte("date_created", svStart)
-        .lte("date_created", svEnd)
-    );
-
-    // New account development
-    const naQ = fetchAllRows(
-      supabase
-        .from("account_development_plans")
-        .select("referenceid")
-        .in("referenceid", agentIds)
-        .gte("created_at", naStart)
-        .lte("created_at", naEnd)
-    );
-
-    // Quotation amount target (from sales_quotation table, current month of the range)
     const quotaMonthDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
     const quotaMonth = quotaMonthDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
     const quotaMonthYear = quotaMonthDate.toLocaleDateString("en-CA", { year: "numeric", timeZone: "Asia/Manila" }).split("-")[0];
 
-    // Sales quota     monthly plan (filter by year + month to avoid summing the full year)
-    const quotaQ = fetchAllRows(
-      supabase
-        .from("sales_quota")
-        .select("referenceid, amount")
-        .in("referenceid", agentIds)
-        .eq("year", quotaYear)
-        .eq("month", quotaMonth)
-    );
+    const empty = Promise.resolve([] as any[]);
 
-    const quotationTargetQ = fetchAllRows(
-      supabase
-        .from("sales_quotation")
-        .select("referenceid, quotation_amount_target, quote_target")
-        .in("referenceid", agentIds)
-        .eq("month", quotaMonth)
-        .eq("year", quotaMonthYear)
-    );
+    // SI
+    const siQ = want("si_so") ? fetchAllRows(supabase.from("history")
+      .select("referenceid, actual_sales, activity_reference_number")
+      .in("referenceid", agentIds).eq("type_activity", "Delivered / Closed Transaction")
+      .gte("delivery_date", siStart).lte("delivery_date", siEnd)) : empty;
 
-    // Site visit target (from site_visit_target table, current month of the range)
-    const siteVisitTargetQ = fetchAllRows(
-      supabase
-        .from("site_visit_target")
-        .select("referenceid, target")
-        .in("referenceid", agentIds)
-        .eq("month", quotaMonth)
-        .eq("year", quotaMonthYear)
-    );
+    // SO
+    const soQ = want("si_so") ? fetchAllRows(supabase.from("history")
+      .select("referenceid, so_amount").in("referenceid", agentIds)
+      .eq("status", "SO-Done").gte("date_created", soStartISO).lte("date_created", soEndISO)) : empty;
 
-    // Account development target (from sales_account_development table, current month of the range)
-    const accountDevTargetQ = fetchAllRows(
-      supabase
-        .from("sales_account_development")
-        .select("referenceid, target")
-        .in("referenceid", agentIds)
-        .eq("month", quotaMonth)
-        .eq("year", quotaMonthYear)
-    );
+    // Sales quota (plan) — needed for si_so
+    const quotaQ = want("si_so") ? fetchAllRows(supabase.from("sales_quota")
+      .select("referenceid, amount").in("referenceid", agentIds)
+      .eq("year", quotaYear).eq("month", quotaMonth)) : empty;
 
-    // OB call target (from sales_ob table, current month of the range)
-    const obTargetQ = fetchAllRows(
-      supabase
-        .from("sales_ob")
-        .select("referenceid, ob_target")
-        .in("referenceid", agentIds)
-        .eq("month", quotaMonth)
-        .eq("year", quotaMonthYear)
-    );
+    // OB calls
+    const obQ = want("ob") ? fetchAllRows(supabase.from("history")
+      .select("referenceid").in("referenceid", agentIds)
+      .eq("source", "Outbound - Touchbase").eq("call_status", "Successful")
+      .gte("date_created", rangeStartTs).lte("date_created", rangeEndTs)) : empty;
 
-    // Conversion pipeline     single query for calls   quote, quote   SO, SO   SI per agent
-    const convQ = fetchAllRows(
-      supabase.from("history")
-        .select("referenceid, activity_reference_number, source, type_activity")
-        .in("referenceid", agentIds)
-        .gte("date_created", rangeStartTs)
-        .lte("date_created", rangeEndTs)
-    );
+    // OB target
+    const obTargetQ = want("ob") ? fetchAllRows(supabase.from("sales_ob")
+      .select("referenceid, ob_target").in("referenceid", agentIds)
+      .eq("month", quotaMonth).eq("year", quotaMonthYear)) : empty;
 
-    console.log("[tsm-agent-performance] Starting parallel queries");
+    // Conversion pipeline
+    const convQ = want("conversion") ? fetchAllRows(supabase.from("history")
+      .select("referenceid, activity_reference_number, source, type_activity")
+      .in("referenceid", agentIds)
+      .gte("date_created", rangeStartTs).lte("date_created", rangeEndTs)) : empty;
+
+    // Quotation amount + count
+    const qaQ = want("quotation") ? fetchAllRows(supabase.from("history")
+      .select("referenceid, quotation_amount").in("referenceid", agentIds)
+      .eq("type_activity", "Quotation Preparation").eq("status", "Quote-Done")
+      .gte("date_created", rangeStartDate).lte("date_created", rangeEndDate)) : empty;
+
+    // Quotation targets
+    const quotationTargetQ = want("quotation") ? fetchAllRows(supabase.from("sales_quotation")
+      .select("referenceid, quotation_amount_target, quote_target").in("referenceid", agentIds)
+      .eq("month", quotaMonth).eq("year", quotaMonthYear)) : empty;
+
+    // Site visits
+    const svQ = want("sitevisits") ? fetchAllRows(supabase.from("tasklog")
+      .select(`"ReferenceID", "Status", "SiteVisitAccount"`).in("ReferenceID", agentIds)
+      .gte("date_created", svStart).lte("date_created", svEnd)) : empty;
+
+    // Site visit target
+    const siteVisitTargetQ = want("sitevisits") ? fetchAllRows(supabase.from("site_visit_target")
+      .select("referenceid, target").in("referenceid", agentIds)
+      .eq("month", quotaMonth).eq("year", quotaMonthYear)) : empty;
+
+    // Account dev count
+    const naQ = want("accountdev") ? fetchAllRows(supabase.from("account_development_plans")
+      .select("referenceid").in("referenceid", agentIds)
+      .gte("created_at", naStart).lte("created_at", naEnd)) : empty;
+
+    // Account dev target
+    const accountDevTargetQ = want("accountdev") ? fetchAllRows(supabase.from("sales_account_development")
+      .select("referenceid, target").in("referenceid", agentIds)
+      .eq("month", quotaMonth).eq("year", quotaMonthYear)) : empty;
+
+    console.log("[tsm-agent-performance] Starting parallel queries for fields:", fieldsParam ?? "all");
     const [
-      siData,
-      soData,
-      obData,
-      qaData,
-      svData,
-      naData,
-      quotaData,
-      quotationTargetData,
-      siteVisitTargetData,
-      accountDevTargetData,
-      obTargetData,
-      convData,
-      csrMap,
-      timeSpentMap,
-      dbCoverageMap,
+      siData, soData, obData, qaData, svData, naData,
+      quotaData, quotationTargetData, siteVisitTargetData, accountDevTargetData,
+      obTargetData, convData,
+      csrMap, timeSpentMap, dbCoverageMap,
     ] = await Promise.all([
-      siQ, soQ, obQ, qaQ, svQ, naQ, quotaQ, quotationTargetQ, siteVisitTargetQ, accountDevTargetQ, obTargetQ, convQ,
-      calcCsrForAgents(agentIds, rangeStartDate, rangeEndDate, tsm),
-      calcTimeSpentForAgents(agentIds, rangeStartDate, rangeEndDate, rangeStartTs, rangeEndTs),
-      calcDbCoverageForAgents(agentIds, manilaMonthStart, manilaMonthEnd),
+      siQ, soQ, obQ, qaQ, svQ, naQ,
+      quotaQ, quotationTargetQ, siteVisitTargetQ, accountDevTargetQ,
+      obTargetQ, convQ,
+      want("csr")       ? calcCsrForAgents(agentIds, rangeStartDate, rangeEndDate, tsm)                                     : Promise.resolve({} as Record<string, any>),
+      want("timespent") ? calcTimeSpentForAgents(agentIds, rangeStartDate, rangeEndDate, rangeStartTs, rangeEndTs)           : Promise.resolve({} as Record<string, any>),
+      want("dbcoverage")? calcDbCoverageForAgents(agentIds, rangeStartDate, rangeEndDate)                                   : Promise.resolve({} as Record<string, any>),
     ]);
     console.log("[tsm-agent-performance] Parallel queries complete");
 
@@ -829,7 +777,25 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json({ success: true, agents: result }, { status: 200 });
+    return NextResponse.json({ success: true, agents: result, teamTotals: result.reduce((acc, a) => ({
+      obCalls:             acc.obCalls             + a.obCalls,
+      obCallsTarget:       acc.obCallsTarget        + a.obCallsTarget,
+      callsToQuote:        acc.callsToQuote         + a.callsToQuote,
+      quoteToSOQuotation:  acc.quoteToSOQuotation   + a.quoteToSOQuotation,
+      quoteToSOSalesOrder: acc.quoteToSOSalesOrder  + a.quoteToSOSalesOrder,
+      soToSISalesOrder:    acc.soToSISalesOrder      + a.soToSISalesOrder,
+      soToSIDelivered:     acc.soToSIDelivered       + a.soToSIDelivered,
+      quotesCount:         acc.quotesCount           + a.quotesCount,
+      quotesTarget:        acc.quotesTarget          + a.quotesTarget,
+      newAccountCount:     acc.newAccountCount       + a.accountDevelopment,
+      newAccountTarget:    acc.newAccountTarget      + a.accountDevelopmentTarget,
+    }), {
+      obCalls: 0, obCallsTarget: 0, callsToQuote: 0,
+      quoteToSOQuotation: 0, quoteToSOSalesOrder: 0,
+      soToSISalesOrder: 0, soToSIDelivered: 0,
+      quotesCount: 0, quotesTarget: 0,
+      newAccountCount: 0, newAccountTarget: 0,
+    }) }, { status: 200 });
   } catch (err: any) {
     console.error("tsm-agent-performance error:", err);
     return NextResponse.json(
