@@ -109,6 +109,9 @@ const StatusBadge = ({ status }: { status?: string }) => {
             "approved by procurement": "Ready for Quotation",
             "for revision": "Revised by Sales",
             "processed by pd": "Pending for Procurement",
+            "approved by tsm": "Pending on PD",
+            "approved by sales head": "Pending on PD",
+            "endorsed to sales head": "Endorsed to Sales Head",
             // else
             "approved": "Approved",
             "pending": "Pending",
@@ -120,9 +123,10 @@ const StatusBadge = ({ status }: { status?: string }) => {
 
     const cls =
         s === "approved" || s === "approved by procurement" ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-            : s === "pending" || s === "pending for procurement" ? "bg-amber-50 text-amber-700 border-amber-100"
+            : s === "pending" || s === "pending for procurement" || s === "approved by tsm" || s === "approved by sales head" ? "bg-amber-50 text-amber-700 border-amber-100"
                 : s === "processed by pd" || s === "declined" ? "bg-red-50 text-red-700 border-red-100"
                     : s === "for revision" ? "bg-blue-50 text-blue-700 border-blue-100"
+                        : s === "endorsed to sales head" ? "bg-indigo-50 text-indigo-700 border-indigo-100"
                         : "bg-zinc-100 text-zinc-600 border-zinc-200";
 
     return (
@@ -132,114 +136,16 @@ const StatusBadge = ({ status }: { status?: string }) => {
     );
 };
 
-
-
-// ─── Creation Status Badge (spf_creation.status, realtime) ────────────────────
-
-const CreationStatusBadge = ({ spfNumber }: { spfNumber: string }) => {
-    const [status, setStatus] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        let isMounted = true;
-
-        const fetchStatus = async () => {
-            const { data, error } = await supabase
-                .from("spf_creation")
-                .select("status")
-                .eq("spf_number", spfNumber)
-                .order("date_updated", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            if (isMounted) {
-                if (!error) setStatus(data?.status || null);
-                setLoading(false);
-            }
-        };
-
-        fetchStatus();
-
-        const channel = supabase
-            .channel(`spf-creation-status-${spfNumber}`)
-            .on(
-                "postgres_changes",
-                { event: "*", schema: "public", table: "spf_creation", filter: `spf_number=eq.${spfNumber}` },
-                () => fetchStatus()
-            )
-            .subscribe();
-
-        return () => {
-            isMounted = false;
-            supabase.removeChannel(channel);
-        };
-    }, [spfNumber]);
-
-    if (loading || !status) return <span className="text-[10px] text-zinc-400">—</span>;
-
-    const s = status.toLowerCase();
-    const cls =
-        s.includes("approved") ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-            : s.includes("pending") ? "bg-amber-50 text-amber-700 border-amber-100"
-                : s.includes("declined") || s.includes("rejected") ? "bg-red-50 text-red-700 border-red-100"
-                    : s.includes("revision") ? "bg-blue-50 text-blue-700 border-blue-100"
-                        : "bg-zinc-100 text-zinc-600 border-zinc-200";
-
-    return (
-        <span className={`inline-block text-[10px] font-bold uppercase tracking-tighter px-2 py-0.5 border-transparent ${cls} rounded-none`}>
-            {status}
-        </span>
-    );
-};
-
 // ─── Latest Revision Result Badge (spf_request_revision_history, realtime) ────
 
-const LatestRevisionResultBadge = ({ spfNumber }: { spfNumber: string }) => {
-    const [revisionResult, setRevisionResult] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        let isMounted = true;
-
-        const fetchLatestRevision = async () => {
-            const { data, error } = await supabase
-                .from("spf_request_revision_history")
-                .select("revision_result, revision_date")
-                .eq("spf_number", spfNumber)
-                .order("revision_date", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            if (isMounted) {
-                if (!error) setRevisionResult(data?.revision_result || null);
-                setLoading(false);
-            }
-        };
-
-        fetchLatestRevision();
-
-        const channel = supabase
-            .channel(`spf-revision-result-${spfNumber}`)
-            .on(
-                "postgres_changes",
-                { event: "*", schema: "public", table: "spf_request_revision_history", filter: `spf_number=eq.${spfNumber}` },
-                () => fetchLatestRevision()
-            )
-            .subscribe();
-
-        return () => {
-            isMounted = false;
-            supabase.removeChannel(channel);
-        };
-    }, [spfNumber]);
-
-    if (loading || !revisionResult) return <span className="text-[10px] text-zinc-400">—</span>;
+const LatestRevisionResultBadge = ({ revisionResult }: { revisionResult?: string | null }) => {
+    if (!revisionResult) return <span className="text-[10px] text-zinc-400">—</span>;
 
     const s = revisionResult.toLowerCase();
     const cls =
-        s === "approved" ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-            : s === "rejected" ? "bg-red-50 text-red-700 border-red-100"
-                : s === "requested" ? "bg-amber-50 text-amber-700 border-amber-100"
+        s.includes("approved") ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+            : s.includes("rejected") ? "bg-red-50 text-red-700 border-red-100"
+                : s.includes("requested") ? "bg-amber-50 text-amber-700 border-amber-100"
                     : "bg-zinc-100 text-zinc-600 border-zinc-200";
 
     return (
@@ -1095,10 +1001,10 @@ const SPF: React.FC<SPFProps> = ({ referenceid, tsm, manager, prepared_by, userD
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="px-6 py-4">
-                                                    <CreationStatusBadge spfNumber={item.spf_number} />
+                                                    <StatusBadge status={item.status || item.spf_request_status} />
                                                 </TableCell>
                                                 <TableCell className="px-6 py-4">
-                                                    <LatestRevisionResultBadge spfNumber={item.spf_number} />
+                                                    <LatestRevisionResultBadge revisionResult={latestRevisionResults[item.spf_number]} />
                                                 </TableCell>
                                                 <TableCell className="px-6 py-4 font-black text-[11px] text-zinc-900 whitespace-nowrap tracking-tight uppercase">
                                                     {item.spf_number}
