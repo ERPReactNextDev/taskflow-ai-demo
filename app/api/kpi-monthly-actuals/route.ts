@@ -56,14 +56,13 @@ export async function GET(req: Request) {
       );
     }
 
-    const now        = new Date();
-    const year       = now.getFullYear();
-    const month      = String(now.getMonth() + 1).padStart(2, "0");
-    const monthStart = `${year}-${month}-01T00:00:00Z`;
-    // Last moment of today (not end-of-month) — gives current progress
-    const todayEnd   = `${year}-${month}-${String(now.getDate()).padStart(2, "0")}T23:59:59Z`;
-    // For SI/sales quota the target is annual, so fetch YTD
-    const yearStart  = `${year}-01-01T00:00:00Z`;
+    const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const [yearStr, monthStr, dayStr] = manilaToday.split("-");
+    const year       = Number(yearStr);
+    const month      = monthStr;
+    const monthStart = `${yearStr}-${month}-01T00:00:00+08:00`;
+    const todayEnd   = `${yearStr}-${month}-${dayStr}T23:59:59+08:00`;
+    const yearStart  = `${yearStr}-01-01T00:00:00+08:00`;
 
     // Run all queries in parallel — single round-trip to Supabase
     const siQuery = supabase
