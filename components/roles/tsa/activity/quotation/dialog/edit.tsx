@@ -1943,7 +1943,9 @@ export default function TaskListEditDialog({
         return Math.abs(hash).toString(36);
       };
 
-      const totalStr = payload.totalPrice.toFixed(2);
+      // Use netAmountToCollect — this matches quotation_amount saved to DB
+      // totalPrice (gross) would mismatch when WHT is applied
+      const totalStr = payload.netAmountToCollect.toFixed(2);
       let token: string;
       let verificationUrl: string;
       let qrDataUrl: string | null;
