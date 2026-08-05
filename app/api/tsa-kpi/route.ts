@@ -96,11 +96,14 @@ export async function GET(req: Request) {
       );
     }
 
+    // ── Base URL for internal fetches (Vercel-safe) ──────────────────────────
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+      url.origin;
+
     // ── Date scoping (all times in Asia/Manila = UTC+8) ───────────────────────
-    const now      = new Date();
-    const year     = from
-      ? new Date(`${from}T00:00:00+08:00`).getFullYear().toString()
-      : now.getFullYear().toString();
+    const now = new Date();
 
     // Derive current month bounds in Manila time
     const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
@@ -144,25 +147,26 @@ export async function GET(req: Request) {
       csrMetrics,
     ] = await Promise.all([
       // 1. Sales
-      fetch(`${url.origin}/api/sales-quota?referenceid=${encodeURIComponent(referenceid)}&year=${svtYear}&month=${encodeURIComponent(svtMonth)}`) ,
-      fetch(`${url.origin}/api/history?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
-      fetch(`${url.origin}/api/history-so?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
+      fetch(`${baseUrl}/api/sales-quota?referenceid=${encodeURIComponent(referenceid)}&year=${svtYear}&month=${encodeURIComponent(svtMonth)}`),
+      fetch(`${baseUrl}/api/history?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
+      fetch(`${baseUrl}/api/history-so?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       // 2. OB
-      fetch(`${url.origin}/api/history-outbound?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
-      fetch(`${url.origin}/api/sales-ob?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
+      fetch(`${baseUrl}/api/history-outbound?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
+      fetch(`${baseUrl}/api/sales-ob?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       // 3. Quotes
-      fetch(`${url.origin}/api/history-quotations?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
-      fetch(`${url.origin}/api/sales-quotation?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),      // 4. Conversion
-      fetch(`${url.origin}/api/history-calls-to-quotes?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
-      fetch(`${url.origin}/api/history-quote-to-so?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
-      fetch(`${url.origin}/api/history-so-to-si?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
+      fetch(`${baseUrl}/api/history-quotations?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
+      fetch(`${baseUrl}/api/sales-quotation?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
+      // 4. Conversion
+      fetch(`${baseUrl}/api/history-calls-to-quotes?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
+      fetch(`${baseUrl}/api/history-quote-to-so?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
+      fetch(`${baseUrl}/api/history-so-to-si?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       // 5. Client Visits
-      fetch(`${url.origin}/api/fetch-tasklog-supabase?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
+      fetch(`${baseUrl}/api/fetch-tasklog-supabase?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       // 7. New Account Dev
-      fetch(`${url.origin}/api/account-development-plan/count?referenceid=${encodeURIComponent(referenceid)}&from=${naFrom}&to=${naTo}`),
-      fetch(`${url.origin}/api/sales-account-development?referenceid=${encodeURIComponent(referenceid)}&from=${naFrom}&to=${naTo}`),
+      fetch(`${baseUrl}/api/account-development-plan/count?referenceid=${encodeURIComponent(referenceid)}&from=${naFrom}&to=${naTo}`),
+      fetch(`${baseUrl}/api/sales-account-development?referenceid=${encodeURIComponent(referenceid)}&from=${naFrom}&to=${naTo}`),
       // 5b. Site Visit Target — use from-date month
-      fetch(`${url.origin}/api/site-visit-target?referenceid=${encodeURIComponent(referenceid)}&year=${svtYear}&month=${encodeURIComponent(svtMonth)}`),
+      fetch(`${baseUrl}/api/site-visit-target?referenceid=${encodeURIComponent(referenceid)}&year=${svtYear}&month=${encodeURIComponent(svtMonth)}`),
       // 6. CSR Metrics — computed from MongoDB activity collection
       calcCsrMetrics(referenceid, rangeStart, rangeEnd),
     ]);

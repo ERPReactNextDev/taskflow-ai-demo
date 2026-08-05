@@ -18,8 +18,11 @@ export async function GET(req: Request) {
     if (from) params.append("from", from);
     if (to)   params.append("to",   to);
 
-    const origin = new URL(req.url).origin;
-    const res    = await fetch(`${origin}/api/manager-agent-performance?${params.toString()}`);
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+      new URL(req.url).origin;
+    const res    = await fetch(`${baseUrl}/api/manager-agent-performance?${params.toString()}`);
     const data   = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err: any) {
