@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Spinner } from "@/components/ui/spinner";
-import { Info, X, Settings, Eye, EyeOff } from "lucide-react";
+import { Info, X, Settings, ChevronLeft, BarChart2 } from "lucide-react";
+import { TsmDrilldown } from "@/components/roles/manager/dashboard/drilldown/tsm-drilldown";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -27,16 +28,32 @@ function fmtHours(h: number): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type KpiViewMode = "team" | "tsm" | "agent";
+
 interface DateRange { from?: Date; to?: Date; }
 
 interface ManagerKpiWeightedScoresProps {
   manager: string;
   dateRange?: DateRange;
+  tsm?: string;
+  referenceid?: string;
+  mode?: KpiViewMode;
+  title?: string;
+  showBack?: boolean;
+  onBack?: () => void;
+  hideGenerate?: boolean;
+  autoFetch?: boolean;
+  onDataLoaded?: (agents: AgentKpiData[]) => void;
+  onAgentClick?: (agent: AgentKpiData) => void;
 }
 
-interface AgentKpiData {
+export interface AgentKpiData {
   referenceid: string;
   name: string;
+  tsm: string;
+  tsm_code: string;
+  tsm_full_name: string;
+  manager: string;
   runningTarget: number;
   totalActualSales: number;
   obCallsCount: number;
@@ -104,7 +121,7 @@ function nonQuotationHTRating(hours: number): number {
   if (hours <= 35) return 3; if (hours <= 40) return 2; return 1;
 }
 
-function scoreLabel(score: number): { label: string; color: string; bg: string } {
+export function scoreLabel(score: number): { label: string; color: string; bg: string } {
   if (score >= 5)   return { label: "Always Demonstrated",      color: "text-yellow-700", bg: "bg-yellow-50"  };
   if (score >= 4.5) return { label: "Often Demonstrated",       color: "text-green-700",  bg: "bg-green-50"   };
   if (score >= 3.5) return { label: "Regularly Demonstrated",   color: "text-emerald-700",bg: "bg-emerald-50" };
@@ -113,7 +130,7 @@ function scoreLabel(score: number): { label: string; color: string; bg: string }
   return                    { label: "Seldom Demonstrated",      color: "text-red-700",    bg: "bg-red-50"     };
 }
 
-function barColor(score: number): string {
+export function barColor(score: number): string {
   if (score >= 4.5) return "#16a34a"; if (score >= 3.5) return "#10b981";
   if (score >= 2.5) return "#3b82f6"; if (score >= 1.5) return "#f59e0b";
   return "#ef4444";
@@ -125,7 +142,7 @@ function ratingColor(r: number): string {
 
 // ── KPI computation ───────────────────────────────────────────────────────────
 
-function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
+export function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
   const salesPct  = Math.min(100, d.runningTarget > 0   ? (d.totalActualSales / d.runningTarget) * 100 : 0);
   const salesR    = standardRating(salesPct);
   const obPct     = Math.min(100, d.obCallsTarget > 0   ? (d.obCallsCount / d.obCallsTarget) * 100 : 0);
@@ -196,7 +213,9 @@ const DetailModal: React.FC<{ agent: AgentKpiData; onClose: () => void }> = ({ a
         <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-900 text-white shrink-0">
           <div>
             <p className="font-black text-base tracking-tight">{agent.name}</p>
-            <p className="text-[11px] text-gray-400 mt-0.5 uppercase tracking-widest">KPI Weighted Score Detail</p>
+            <p className="text-[11px] text-gray-400 mt-0.5 uppercase tracking-widest">
+              KPI Weighted Score Detail{agent.tsm ? ` · TSM: ${agent.tsm}` : ""}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex flex-col items-end">
@@ -294,7 +313,7 @@ const DetailModal: React.FC<{ agent: AgentKpiData; onClose: () => void }> = ({ a
 
 // ── Compact summary card ──────────────────────────────────────────────────────
 
-const AgentSummaryCard: React.FC<{ agent: AgentKpiData; onHide: () => void }> = ({ agent, onHide }) => {
+const AgentSummaryCard: React.FC<{ agent: AgentKpiData; onHide: () => void; onAgentClick?: (a: AgentKpiData) => void }> = ({ agent, onHide, onAgentClick }) => {
   const [showDetail, setShowDetail] = useState(false);
   const { totalScore } = computeKpi(agent);
   const { label: statusLabel, color: statusColor } = scoreLabel(totalScore);
@@ -303,7 +322,10 @@ const AgentSummaryCard: React.FC<{ agent: AgentKpiData; onHide: () => void }> = 
 
   return (
     <>
-      <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-3 flex flex-col gap-2 hover:shadow-md hover:border-gray-200 transition-all group relative">
+      <div
+        className={`bg-white border border-gray-100 rounded-xl shadow-sm p-3 flex flex-col gap-2 hover:shadow-md hover:border-gray-200 transition-all group relative ${onAgentClick ? "cursor-pointer" : ""}`}
+        onClick={onAgentClick ? () => onAgentClick(agent) : undefined}
+      >
         {/* Hide button — top-right, visible on hover */}
         <button
           onClick={onHide}
@@ -359,7 +381,11 @@ function saveHiddenAgents(set: Set<string>) {
   } catch {}
 }
 
-export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> = ({ manager, dateRange }) => {
+export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> = ({
+  manager, dateRange,
+  tsm, referenceid, mode = "team", title,
+  showBack, onBack, hideGenerate, autoFetch, onDataLoaded, onAgentClick,
+}) => {
   const [loading,      setLoading]      = useState(false);
   const [agents,       setAgents]       = useState<AgentKpiData[]>([]);
   const [error,        setError]        = useState<string | null>(null);
@@ -369,6 +395,7 @@ export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> =
   // Track which agents are still being fetched
   const [loadingAgents, setLoadingAgents] = useState<Set<string>>(new Set());
   const fetchIdRef = useRef(0);
+  const [showDrilldown, setShowDrilldown] = useState(false);
 
   // Load hidden agents from localStorage on mount
   useEffect(() => { setHiddenAgents(loadHiddenAgents()); }, []);
@@ -405,6 +432,8 @@ export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> =
     const baseParams = new URLSearchParams({ manager });
     if (dateRange?.from) baseParams.append("from", toDateStr(dateRange.from));
     if (dateRange?.to)   baseParams.append("to",   toDateStr(dateRange.to));
+    if (tsm)         baseParams.append("tsm",         tsm);
+    if (referenceid) baseParams.append("referenceid", referenceid);
 
     try {
       // Step 1: get the agent list only (fast — no KPI computation)
@@ -465,35 +494,75 @@ export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> =
       setLoading(false);
       setLoadingAgents(new Set());
     }
-  }, [manager, dateRange]);
+    // fire callback once all agents are done
+    if (fetchId === fetchIdRef.current) {
+      setAgents((current) => { onDataLoaded?.(current); return current; });
+    }
+  }, [manager, tsm, referenceid, dateRange, onDataLoaded]);
+
+  // auto-fetch when mounted in drilldown mode
+  useEffect(() => {
+    if (autoFetch && manager) fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manager, tsm, referenceid, dateRange, autoFetch]);
+
+  const headerTitle = title
+    ?? (mode === "tsm"   ? `KPI Weighted Scores — TSM: ${tsm ?? ""}`
+      : mode === "agent" ? "KPI Weighted Scores — Agent View"
+      :                    "KPI Weighted Scores — Team View (out of 5.0)");
+
+  const avgScore = agents.length > 0
+    ? agents.reduce((s, a) => s + computeKpi(a).totalScore, 0) / agents.length
+    : 0;
+
+  // Team mode: delegate entirely to TsmDrilldown
+  if (mode === "team") {
+    return <TsmDrilldown manager={manager} dateRange={dateRange} />;
+  }
 
   return (
+    <>
     <div className="flex flex-col gap-3 rounded-lg border px-6 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-widest text-gray-600">
-          KPI Weighted Scores — Team View (out of 5.0)
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {showBack && onBack && (
+            <button onClick={onBack} className="p-1 rounded-md hover:bg-gray-100 transition-colors text-gray-500 shrink-0">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-600 truncate">{headerTitle}</p>
+            {mode !== "agent" && agents.length > 0 && (
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                {agents.length} agent{agents.length !== 1 ? "s" : ""} ·{" "}
+                <span className="font-bold" style={{ color: barColor(avgScore) }}>
+                  Avg Score: {avgScore.toFixed(2)}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
-          {/* Settings — toggle per-agent visibility */}
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
-            title="Show/hide agents"
-            aria-label="Agent visibility settings"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-          <button
-            onClick={fetchData}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase rounded-md transition-colors"
-          >
-            Generate Data
-          </button>
+          {/* Settings — tsm mode only */}
+          {mode === "tsm" && (
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="p-1.5 rounded-md hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+              title="Show/hide agents"
+              aria-label="Agent visibility settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          )}
+          {!hideGenerate && (
+            <button onClick={fetchData} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase rounded-md transition-colors">
+              Generate Data
+            </button>
+          )}
           {loading && (
             <div className="flex items-center gap-1.5 text-xs text-gray-400">
-              <Spinner className="w-3.5 h-3.5" />
-              <span>Loading…</span>
+              <Spinner className="w-3.5 h-3.5" /><span>Loading…</span>
             </div>
           )}
           {!loading && loadingAgents.size > 0 && (
@@ -505,8 +574,8 @@ export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> =
         </div>
       </div>
 
-      {/* Settings panel — per-agent visibility */}
-      {settingsOpen && agents.length > 0 && (
+      {/* Settings panel — tsm mode only */}
+      {mode === "tsm" && settingsOpen && agents.length > 0 && (
         <div className="fixed inset-0 z-[200] flex justify-end">
           <div className="absolute inset-0 bg-black/20" onClick={() => setSettingsOpen(false)} />
           <div className="relative w-72 h-full bg-white shadow-2xl flex flex-col z-10">
@@ -520,25 +589,14 @@ export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> =
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1">
-              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-3">
-                Toggle to show / hide each agent
-              </p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold mb-3">Toggle to show / hide each agent</p>
               {agents.map((agent) => {
                 const hidden = hiddenAgents.has(agent.referenceid);
                 return (
-                  <div key={agent.referenceid}
-                    className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                    <span className={`text-xs flex-1 pr-2 truncate ${hidden ? "text-gray-400 line-through" : "text-gray-700"}`}>
-                      {agent.name}
-                    </span>
-                    <button
-                      onClick={() => toggleAgent(agent.referenceid)}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-colors ${
-                        hidden
-                          ? "bg-gray-100 text-gray-400 hover:bg-blue-50 hover:text-blue-600"
-                          : "bg-green-50 text-green-600 hover:bg-red-50 hover:text-red-500"
-                      }`}
-                    >
+                  <div key={agent.referenceid} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                    <span className={`text-xs flex-1 pr-2 truncate ${hidden ? "text-gray-400 line-through" : "text-gray-700"}`}>{agent.name}</span>
+                    <button onClick={() => toggleAgent(agent.referenceid)}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-colors ${hidden ? "bg-gray-100 text-gray-400 hover:bg-blue-50 hover:text-blue-600" : "bg-green-50 text-green-600 hover:bg-red-50 hover:text-red-500"}`}>
                       {hidden ? "Show" : "Hide"}
                     </button>
                   </div>
@@ -546,10 +604,8 @@ export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> =
               })}
             </div>
             <div className="px-5 py-3 border-t">
-              <button
-                onClick={() => { setHiddenAgents(new Set()); saveHiddenAgents(new Set()); }}
-                className="w-full text-xs text-gray-500 hover:text-gray-700 py-1.5 rounded border border-gray-200 hover:bg-gray-50 transition-colors"
-              >
+              <button onClick={() => { setHiddenAgents(new Set()); saveHiddenAgents(new Set()); }}
+                className="w-full text-xs text-gray-500 hover:text-gray-700 py-1.5 rounded border border-gray-200 hover:bg-gray-50 transition-colors">
                 Show all agents
               </button>
             </div>
@@ -557,14 +613,10 @@ export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> =
         </div>
       )}
 
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>
-      )}
+      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>}
 
-      {!hasFetched && !error && (
-        <p className="text-xs text-gray-400 text-center py-8">
-          Click "Generate Data" to load KPI data.
-        </p>
+      {!hasFetched && !error && !autoFetch && (
+        <p className="text-xs text-gray-400 text-center py-8">Click "Generate Data" to load KPI data.</p>
       )}
 
       {hasFetched && (
@@ -572,54 +624,47 @@ export const ManagerKpiWeightedScores: React.FC<ManagerKpiWeightedScoresProps> =
           {loading && (
             <div className="flex items-center justify-center py-8">
               <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Spinner className="w-5 h-5" />
-                <span>Loading data…</span>
+                <Spinner className="w-5 h-5" /><span>Loading data…</span>
               </div>
             </div>
           )}
           {!loading && !error && agents.length === 0 && loadingAgents.size === 0 && (
             <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-8 text-center text-xs text-gray-400">
-              No active agents found under your team.
+              No active agents found.
             </div>
           )}
           {(agents.length > 0 || loadingAgents.size > 0) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {agents
-                .filter((a) => !hiddenAgents.has(a.referenceid))
-                .map((agent) => (
-                  <AgentSummaryCard
-                    key={agent.referenceid}
-                    agent={agent}
-                    onHide={() => hideAgent(agent.referenceid)}
-                  />
-                ))}
-              {/* Skeleton placeholders for agents still being fetched */}
+            <div className={mode === "agent"
+              ? "flex flex-col gap-3 max-w-sm"
+              : "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3"}>
+              {agents.map((agent) => (
+                <AgentSummaryCard
+                  key={agent.referenceid}
+                  agent={agent}
+                  onHide={() => hideAgent(agent.referenceid)}
+                  onAgentClick={onAgentClick}
+                />
+              ))}
               {[...loadingAgents].map((ref) => (
                 <div key={ref} className="rounded-xl border border-gray-100 bg-gray-50 p-4 flex flex-col gap-2 animate-pulse">
                   <div className="h-3 bg-gray-200 rounded w-3/4" />
                   <div className="h-6 bg-gray-200 rounded w-1/2 mt-1" />
                   <div className="space-y-1.5 mt-2">
-                    {[...Array(5)].map((_, i) => (
-                      <div key={i} className="h-2 bg-gray-200 rounded w-full" />
-                    ))}
+                    {[...Array(5)].map((_, i) => <div key={i} className="h-2 bg-gray-200 rounded w-full" />)}
                   </div>
                 </div>
               ))}
             </div>
           )}
-          {hiddenAgents.size > 0 && agents.length > 0 && (
+          {mode === "tsm" && hiddenAgents.size > 0 && agents.length > 0 && (
             <p className="text-[10px] text-gray-400 mt-2 text-right">
               {hiddenAgents.size} agent{hiddenAgents.size !== 1 ? "s" : ""} hidden —{" "}
-              <button
-                onClick={() => { setHiddenAgents(new Set()); saveHiddenAgents(new Set()); }}
-                className="underline hover:text-gray-600"
-              >
-                show all
-              </button>
+              <button onClick={() => { setHiddenAgents(new Set()); saveHiddenAgents(new Set()); }} className="underline hover:text-gray-600">show all</button>
             </p>
           )}
         </div>
       )}
     </div>
+    </>
   );
 };

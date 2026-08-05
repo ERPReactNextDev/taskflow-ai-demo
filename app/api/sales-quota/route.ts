@@ -11,6 +11,8 @@ export async function GET(req: Request) {
     const Xchire_url = new URL(req.url);
     const referenceId = Xchire_url.searchParams.get("referenceid");
     const now = new Date();
+    const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const [manilaYear, manilaMonthNum] = manilaToday.split("-");
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
     if (!referenceId) {
@@ -20,10 +22,9 @@ export async function GET(req: Request) {
       );
     }
 
-    // Use year param if provided, otherwise fall back to current year
-    const year  = Xchire_url.searchParams.get("year")  ?? now.getFullYear().toString();
-    // Use month param if provided, otherwise fall back to current month
-    const month = Xchire_url.searchParams.get("month") ?? monthNames[now.getMonth()];
+    // Use year/month params if provided, otherwise fall back to current Manila time
+    const year  = Xchire_url.searchParams.get("year")  ?? manilaYear;
+    const month = Xchire_url.searchParams.get("month") ?? monthNames[Number(manilaMonthNum) - 1];
 
     let query = supabase
       .from("sales_quota")

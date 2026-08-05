@@ -117,7 +117,7 @@ const data = {
         { name: "Activity Planner", url: "/roles/tsm/activity/planner", icon: Target },
         { name: "Pending Quotations", url: "/roles/tsm/activity/quotation/pending", icon: CalendarDays },
         { name: "Approved Quotations", url: "/roles/tsm/activity/quotation/approved", icon: CalendarDays },
-        //{ name: "Quotation Aging Tracker", url: "/roles/tsm/activity/quotation/aging", icon: ClipboardList },
+        { name: "Quotation Aging Tracker", url: "/roles/tsm/activity/quotation/aging", icon: ClipboardList },
         { name: "Decline Quotations", url: "/roles/tsm/activity/quotation/declined", icon: XCircle },
         { name: "SPF Request", url: "/roles/tsm/activity/spf", icon: Mail },
         { name: "Daily Activity Logs", url: "/roles/tsm/activity/ccg", icon: Compass },
