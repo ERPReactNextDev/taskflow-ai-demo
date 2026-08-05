@@ -28,9 +28,10 @@ async function calculateRangedTarget(
 ): Promise<number> {
   // No range → return the current month's target without proration
   if (!fromDate || !toDate) {
-    const now = new Date();
-    const year = now.getFullYear().toString();
-    const month = monthNames[now.getMonth()];
+    const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const [mYear, mMonthNum] = manilaToday.split("-");
+    const year  = mYear;
+    const month = monthNames[Number(mMonthNum) - 1];
     const { data } = await supabase
       .from("sales_quotation")
       .select("quote_target")
