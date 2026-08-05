@@ -312,21 +312,25 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
     if (!referenceid) return;
     
     try {
-      const now = new Date();
-      const year = now.getFullYear().toString();
-      const monthNames = ["January", "February", "March", "April", "May", "June",
-                          "July", "August", "September", "October", "November", "December"];
-      const month = monthNames[now.getMonth()];
-      const targetUrl = `/api/site-visit-target?referenceid=${encodeURIComponent(referenceid)}&year=${year}&month=${month}`;
+      // Always derive year/month in Manila time — Vercel runs UTC
+      const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+      const refDate = dateCreatedFilterRange?.from ?? new Date();
+      const manilaRef = refDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+      const [refYear, refMonthNum] = manilaRef.split("-");
+      const monthNames = ["January","February","March","April","May","June",
+                          "July","August","September","October","November","December"];
+      const month = monthNames[Number(refMonthNum) - 1];
+      const year  = refYear;
+
+      const targetUrl = `/api/site-visit-target?referenceid=${encodeURIComponent(referenceid)}&year=${year}&month=${encodeURIComponent(month)}`;
       
       const res = await fetch(targetUrl);
       if (!res.ok) throw new Error("Failed to fetch site visit target");
       const data = await res.json();
-      const parsedTarget = parseInt(data.target?.target ?? "0") || 10; // Default to 10
+      const parsedTarget = parseInt(data.target?.target ?? "0") || 10;
       setSiteVisitTarget(parsedTarget);
     } catch (err) {
       console.error("Error fetching site visit target:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch site visit target");
     }
   };
 
@@ -424,9 +428,10 @@ export const KpiWeightedScores: React.FC<KpiWeightedScoresProps> = ({
         "Threats/Extortion/Intimidation", "Prank Call",
       ];
 
-      const now = new Date();
-      const fromStr = dateCreatedFilterRange?.from ? toDateStr(dateCreatedFilterRange.from) : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-      const toStr   = dateCreatedFilterRange?.to   ? toDateStr(dateCreatedFilterRange.to)   : now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+      const manilaToday2 = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+      const manilaMonthStart = `${manilaToday2.slice(0, 7)}-01`;
+      const fromStr = dateCreatedFilterRange?.from ? toDateStr(dateCreatedFilterRange.from) : manilaMonthStart;
+      const toStr   = dateCreatedFilterRange?.to   ? toDateStr(dateCreatedFilterRange.to)   : manilaToday2;
 
       const fromTs = new Date(`${fromStr}T00:00:00+08:00`).getTime();
       const toDateObj = new Date(`${toStr}T23:59:59+08:00`);
