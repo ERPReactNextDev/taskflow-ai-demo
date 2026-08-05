@@ -369,7 +369,20 @@ function DashboardContent() {
       if (dateCreatedFilterRange?.from) quotationParams.append("from", toDateStr(dateCreatedFilterRange.from));
 
       const [quotaRes, quotationRes] = await Promise.all([
-        fetch(`/api/sales-quota?referenceid=${encodeURIComponent(referenceid)}${dateCreatedFilterRange?.from ? `&month=${new Date(dateCreatedFilterRange.from).toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" })}` : ""}`),
+        (() => {
+          // Derive month/year from from-date in Manila timezone — safe on Vercel (UTC server)
+          const u = new URL("/api/sales-quota", window.location.origin);
+          u.searchParams.set("referenceid", referenceid);
+          if (dateCreatedFilterRange?.from) {
+            const manilaDateStr = toDateStr(dateCreatedFilterRange.from); // YYYY-MM-DD in Manila tz
+            const [yr, mo] = manilaDateStr.split("-");
+            const monthNames = ["January","February","March","April","May","June",
+                                "July","August","September","October","November","December"];
+            u.searchParams.set("year",  yr);
+            u.searchParams.set("month", monthNames[Number(mo) - 1]);
+          }
+          return fetch(u.toString());
+        })(),
         fetch(`/api/sales-quotation?${quotationParams.toString()}`),
       ]);
 
