@@ -174,17 +174,23 @@ async function calcCsrForAgents(
 }
 
 /** Get all active TSAs under a manager (via TSMs) */
-async function getAgents(manager: string): Promise<{ referenceid: string; name: string; tsm: string }[]> {
-  // 1. Get all active TSMs under this manager
+async function getAgents(manager: string): Promise<{ referenceid: string; name: string; tsm: string; tsm_code: string; tsm_full_name: string }[]> {
+  // 1. Get all active TSMs under this manager (with their names)
   const { data: tsms } = await supabase
     .from("users")
-    .select("ReferenceID")
+    .select("ReferenceID, Firstname, Lastname")
     .eq("Manager", manager)
     .eq("Role", "Territory Sales Manager")
     .not("Status", "in", '("Resigned","Terminated","Inactive")');
 
   if (!tsms || tsms.length === 0) return [];
   const tsmIds = tsms.map((t) => t.ReferenceID);
+
+  // Build TSM name map: ReferenceID → "Firstname Lastname"
+  const tsmNameMap: Record<string, string> = {};
+  for (const t of tsms) {
+    tsmNameMap[t.ReferenceID] = `${t.Firstname ?? ""} ${t.Lastname ?? ""}`.trim();
+  }
 
   // 2. Get all active TSAs under those TSMs
   const data = await fetchAllRows(
@@ -198,9 +204,11 @@ async function getAgents(manager: string): Promise<{ referenceid: string; name: 
   );
 
   return (data ?? []).map((a) => ({
-    referenceid: a.ReferenceID,
-    name: `${a.Firstname ?? ""} ${a.Lastname ?? ""}`.trim(),
-    tsm: a.TSM ?? "",
+    referenceid:    a.ReferenceID,
+    name:           `${a.Firstname ?? ""} ${a.Lastname ?? ""}`.trim(),
+    tsm:            a.TSM ?? "",
+    tsm_code:       a.TSM ?? "",
+    tsm_full_name:  tsmNameMap[a.TSM] ?? a.TSM ?? "",
   }));
 }
 
@@ -212,47 +220,49 @@ export async function GET(req: Request) {
     const manager    = url.searchParams.get("manager");
     const from       = url.searchParams.get("from");
     const to         = url.searchParams.get("to");
-    // Optional: scope to a single agent for per-agent sequential fetching
     const agentParam = url.searchParams.get("referenceid");
+    const tsmParam   = url.searchParams.get("tsm"); // NEW: filter by TSM
 
     if (!manager) {
       return NextResponse.json({ success: false, error: "Missing manager." }, { status: 400 });
     }
 
-    // ── Date scoping (identical logic to tsm-kpi) ─────────────────────────────
+    // ── Date scoping — 100% driven by from/to params ─────────────────────────
     const now         = new Date();
-    const year        = now.getFullYear().toString();
+    const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+
+    // Ref date for deriving month/year of targets — use from param if provided
+    const refDate     = from ? new Date(`${from}T00:00:00+08:00`) : now;
+    const refDateStr  = refDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const [refYear, refMonthNum] = refDateStr.split("-");
+    const refMonthStart = `${refYear}-${refMonthNum}-01`;
+    const refMonthLabel = monthLabel(refDate);
+    const refMonthDays  = getDaysInMonth(Number(refYear), refDate.getMonth());
+
+    // Actuals date range — exactly the from/to window passed in
+    const fromStr = from ?? refMonthStart;
+    const toStr   = to   ?? manilaToday;
+
+    const siStart = `${fromStr}T00:00:00+08:00`;
+    const siEnd   = `${toStr}T23:59:59.999+08:00`;
+    const obStart = siStart;
+    const obEnd   = siEnd;
+    const quotesStart   = siStart;
+    const quotesEnd     = siEnd;
+    const pipelineStart = siStart;
+    const pipelineEnd   = siEnd;
+    const clientVisitsStart = siStart;
+    const clientVisitsEnd   = `${toStr}T23:59:59+08:00`;
+
+    // New account dev — same range
+    const naFrom = fromStr;
+    const naTo   = toStr;
+
+    // monthSlices for target calculation (always the ref month, not prorated)
     const monthSlices = [{
-      year:        now.getFullYear().toString(),
-      month:       monthLabel(now),
-      daysInMonth: getDaysInMonth(now.getFullYear(), now.getMonth()),
-      coveredDays: getDaysInMonth(now.getFullYear(), now.getMonth()),
+      year: refYear, month: refMonthLabel,
+      daysInMonth: refMonthDays, coveredDays: refMonthDays,
     }];
-
-    const manilaToday   = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-    const [manilaYear, manilaMonthNum] = manilaToday.split("-");
-    const monthStartDate = `${manilaYear}-${manilaMonthNum}-01`;
-    const todayDate      = manilaToday;
-
-    const naRefDate    = from ? new Date(`${from}T00:00:00+08:00`) : now;
-    const naRefStr     = naRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-    const [naYear, naMonth] = naRefStr.split("-");
-    const naDaysInMonth = new Date(Number(naYear), Number(naMonth), 0).getDate();
-    const naFrom = from ?? `${naYear}-${naMonth}-01`;
-    const naTo   = to   ?? `${naYear}-${naMonth}-${String(naDaysInMonth).padStart(2, "0")}`;
-
-    const siStart = from ? `${from}T00:00:00+08:00` : `${now.getFullYear()}-01-01T00:00:00+08:00`;
-    const siEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
-
-    const obStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
-    const obEnd   = to   ? `${to}T23:59:59.999+08:00` : `${todayDate}T23:59:59.999+08:00`;
-
-    const quotesStart    = obStart;
-    const quotesEnd      = obEnd;
-    const pipelineStart  = obStart;
-    const pipelineEnd    = obEnd;
-    const clientVisitsStart = from ? `${from}T00:00:00+08:00` : `${monthStartDate}T00:00:00+08:00`;
-    const clientVisitsEnd   = to   ? `${to}T23:59:59+08:00`   : `${todayDate}T23:59:59+08:00`;
 
     // ── Agents ────────────────────────────────────────────────────────────────
     let agents = await getAgents(manager);
@@ -266,6 +276,13 @@ export async function GET(req: Request) {
         return NextResponse.json({ success: true, agents: [], tsmNames: {} }, { status: 200 });
       }
     }
+    // Filter by TSM if requested
+    if (tsmParam) {
+      agents = agents.filter((a) => a.tsm === tsmParam);
+      if (agents.length === 0) {
+        return NextResponse.json({ success: true, agents: [], tsmNames: {} }, { status: 200 });
+      }
+    }
     const agentIds = agents.map((a) => a.referenceid);
 
     // listOnly=true: just return agent stubs so the component can queue per-agent fetches
@@ -274,7 +291,7 @@ export async function GET(req: Request) {
         .eq("Manager", manager).eq("Role", "Territory Sales Manager").not("Status", "in", '("Resigned","Terminated","Inactive")');
       const tsmNamesMap: Record<string, string> = {};
       for (const t of tsmUD ?? []) tsmNamesMap[t.ReferenceID] = `${t.Firstname ?? ""} ${t.Lastname ?? ""}`.trim();
-      return NextResponse.json({ success: true, agents: agents.map((a) => ({ referenceid: a.referenceid, name: a.name, tsm: a.tsm })), tsmNames: tsmNamesMap }, { status: 200 });
+      return NextResponse.json({ success: true, agents: agents.map((a) => ({ referenceid: a.referenceid, name: a.name, tsm: a.tsm, tsm_code: a.tsm_code, tsm_full_name: a.tsm_full_name })), tsmNames: tsmNamesMap }, { status: 200 });
     }
 
     // ── TSM name map for grouping ─────────────────────────────────────────────
@@ -295,16 +312,16 @@ export async function GET(req: Request) {
       quotesData, quoteTargetData, pipelineData,
       naCountData, naTargetData, siteVisitTargetData, clientVisitsData,
     ] = await Promise.all([
-      fetchAllRows(supabase.from("sales_quota").select("referenceid, amount").in("referenceid", agentIds).eq("year", year).eq("month", monthLabel(now))),
-      fetchAllRows(supabase.from("history").select("referenceid, actual_sales, activity_reference_number").in("referenceid", agentIds).eq("type_activity", "Delivered / Closed Transaction").gte("delivery_date", siStart.split('T')[0]).lte("delivery_date", siEnd.split('T')[0])),
+      fetchAllRows(supabase.from("sales_quota").select("referenceid, amount").in("referenceid", agentIds).eq("year", refYear).eq("month", refMonthLabel)),
+      fetchAllRows(supabase.from("history").select("referenceid, actual_sales, activity_reference_number").in("referenceid", agentIds).eq("type_activity", "Delivered / Closed Transaction").gte("delivery_date", fromStr).lte("delivery_date", toStr)),
       fetchAllRows(supabase.from("history").select("referenceid").in("referenceid", agentIds).eq("source", "Outbound - Touchbase").eq("call_status", "Successful").gte("date_created", obStart).lte("date_created", obEnd)),
-      fetchAllRows(supabase.from("sales_ob").select("id, referenceid, ob_target, month, year").in("referenceid", agentIds).eq("month", monthLabel(now)).eq("year", now.getFullYear().toString()).order("date_created", { ascending: false, nullsFirst: false }).order("id", { ascending: false })),
+      fetchAllRows(supabase.from("sales_ob").select("id, referenceid, ob_target, month, year").in("referenceid", agentIds).eq("month", refMonthLabel).eq("year", refYear).order("date_created", { ascending: false, nullsFirst: false }).order("id", { ascending: false })),
       fetchAllRows(supabase.from("history").select("referenceid, quotation_number, quotation_amount").in("referenceid", agentIds).eq("type_activity", "Quotation Preparation").eq("status", "Quote-Done").gte("date_created", quotesStart).lte("date_created", quotesEnd)),
-      fetchAllRows(supabase.from("sales_quotation").select("id, referenceid, quote_target, quotation_amount_target, month, year").in("referenceid", agentIds).eq("month", monthLabel(now)).eq("year", now.getFullYear().toString()).order("date_created", { ascending: false, nullsFirst: false }).order("id", { ascending: false })),
+      fetchAllRows(supabase.from("sales_quotation").select("id, referenceid, quote_target, quotation_amount_target, month, year").in("referenceid", agentIds).eq("month", refMonthLabel).eq("year", refYear).order("date_created", { ascending: false, nullsFirst: false }).order("id", { ascending: false })),
       fetchAllRows(supabase.from("history").select("referenceid, activity_reference_number, source, type_activity").in("referenceid", agentIds).gte("date_created", pipelineStart).lte("date_created", pipelineEnd)),
       fetchAllRows(supabase.from("account_development_plans").select("referenceid").in("referenceid", agentIds).gte("created_at", `${naFrom}T00:00:00+08:00`).lte("created_at", `${naTo}T23:59:59.999+08:00`)),
-      fetchAllRows(supabase.from("sales_account_development").select("referenceid, target").in("referenceid", agentIds).eq("month", monthLabel(naRefDate)).eq("year", naRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4))),
-      fetchAllRows(supabase.from("site_visit_target").select("referenceid, target").in("referenceid", agentIds).eq("month", monthLabel(now)).eq("year", now.getFullYear().toString())),
+      fetchAllRows(supabase.from("sales_account_development").select("referenceid, target").in("referenceid", agentIds).eq("month", refMonthLabel).eq("year", refYear)),
+      fetchAllRows(supabase.from("site_visit_target").select("referenceid, target").in("referenceid", agentIds).eq("month", refMonthLabel).eq("year", refYear)),
       fetchAllRows(supabase.from("tasklog").select(`"ReferenceID", "Status", "SiteVisitAccount"`).in("ReferenceID", agentIds).gte("date_created", clientVisitsStart).lte("date_created", clientVisitsEnd)),
     ]);
 
@@ -399,17 +416,14 @@ export async function GET(req: Request) {
     const clientVisitsCountMap: Record<string, number> = {};
     for (const ref of agentIds) clientVisitsCountMap[ref] = clientVisitsSetMap[ref]?.size ?? 0;
 
-    // ── CSR metrics ───────────────────────────────────────────────────────────
-    const [mYear, mMonth] = manilaToday.split("-");
-    const manilaMonthStart = `${mYear}-${mMonth}-01`;
-    const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
-    const csrFrom = from || manilaMonthStart;
-    const csrTo   = to   || manilaMonthEnd;
+    // ── CSR metrics — use exact from/to range ────────────────────────────────
+    const csrFrom = fromStr;
+    const csrTo   = toStr;
 
     const csrMetricsMap = await calcCsrForAgents(agentIds, csrFrom, csrTo, manager);
 
     // ── Assemble per-agent result ─────────────────────────────────────────────
-    const result = agents.map(({ referenceid, name, tsm }) => {
+    const result = agents.map(({ referenceid, name, tsm, tsm_code, tsm_full_name }) => {
       const groups     = pipelineMap[referenceid];
       const csrMetrics = csrMetricsMap[referenceid] || { avgResponseTime:0, avgQuotationHT:0, avgNonQuotationHT:0, avgSpfHT:0 };
 
@@ -428,6 +442,9 @@ export async function GET(req: Request) {
         referenceid,
         name,
         tsm,
+        tsm_code:   tsm_code   ?? tsm ?? "",
+        tsm_full_name: tsm_full_name ?? "",
+        manager: "",
         runningTarget:            quotaMap[referenceid]           ?? 0,
         totalActualSales:         siMap[referenceid]              ?? 0,
         obCallsCount:             obMap[referenceid]              ?? 0,

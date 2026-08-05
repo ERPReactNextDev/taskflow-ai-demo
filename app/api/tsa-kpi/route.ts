@@ -120,6 +120,12 @@ export async function GET(req: Request) {
     const naTo      = to   ?? `${naYear}-${naMonth}-${String(naDays).padStart(2, "0")}`;
 
     // ── Parallel fetches ──────────────────────────────────────────────────────
+    // Derive month name for site-visit-target lookup from the from date
+    const svtMonthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const svtRefDate  = from ? new Date(`${from}T00:00:00+08:00`) : new Date();
+    const svtYear     = svtRefDate.getFullYear().toString();
+    const svtMonth    = svtMonthNames[svtRefDate.getMonth()];
+
     const [
       salesQuotaRes,
       historySiRes,
@@ -134,18 +140,19 @@ export async function GET(req: Request) {
       fetchTasklogRes,
       newAccCountRes,
       newAccTargetRes,
+      siteVisitTargetRes,
       csrMetrics,
     ] = await Promise.all([
       // 1. Sales
-      fetch(`${url.origin}/api/sales-quota?referenceid=${encodeURIComponent(referenceid)}&year=${year}`),
+      fetch(`${url.origin}/api/sales-quota?referenceid=${encodeURIComponent(referenceid)}&year=${svtYear}&month=${encodeURIComponent(svtMonth)}`) ,
       fetch(`${url.origin}/api/history?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       fetch(`${url.origin}/api/history-so?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       // 2. OB
       fetch(`${url.origin}/api/history-outbound?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
-      fetch(`${url.origin}/api/sales-ob?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}`),
+      fetch(`${url.origin}/api/sales-ob?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       // 3. Quotes
       fetch(`${url.origin}/api/history-quotations?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
-      fetch(`${url.origin}/api/sales-quotation?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}`),      // 4. Conversion
+      fetch(`${url.origin}/api/sales-quotation?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),      // 4. Conversion
       fetch(`${url.origin}/api/history-calls-to-quotes?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       fetch(`${url.origin}/api/history-quote-to-so?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       fetch(`${url.origin}/api/history-so-to-si?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
@@ -153,7 +160,9 @@ export async function GET(req: Request) {
       fetch(`${url.origin}/api/fetch-tasklog-supabase?referenceid=${encodeURIComponent(referenceid)}${from ? `&from=${from}` : ""}${to ? `&to=${to}` : ""}`),
       // 7. New Account Dev
       fetch(`${url.origin}/api/account-development-plan/count?referenceid=${encodeURIComponent(referenceid)}&from=${naFrom}&to=${naTo}`),
-      fetch(`${url.origin}/api/sales-account-development?referenceid=${encodeURIComponent(referenceid)}&from=${naFrom}`),
+      fetch(`${url.origin}/api/sales-account-development?referenceid=${encodeURIComponent(referenceid)}&from=${naFrom}&to=${naTo}`),
+      // 5b. Site Visit Target — use from-date month
+      fetch(`${url.origin}/api/site-visit-target?referenceid=${encodeURIComponent(referenceid)}&year=${svtYear}&month=${encodeURIComponent(svtMonth)}`),
       // 6. CSR Metrics — computed from MongoDB activity collection
       calcCsrMetrics(referenceid, rangeStart, rangeEnd),
     ]);
@@ -172,6 +181,7 @@ export async function GET(req: Request) {
       fetchTasklogData,
       newAccCountData,
       newAccTargetData,
+      siteVisitTargetData,
     ] = await Promise.all([
       salesQuotaRes.json(),
       historySiRes.json(),
@@ -186,6 +196,7 @@ export async function GET(req: Request) {
       fetchTasklogRes.json(),
       newAccCountRes.json(),
       newAccTargetRes.json(),
+      siteVisitTargetRes.json(),
     ]);
 
     return NextResponse.json({
@@ -213,7 +224,7 @@ export async function GET(req: Request) {
         soToSISalesOrderCount:    Number(historySoToSiData.soToSISalesOrderCount)     || 0,
         // 5. Client Visits
         clientVisitsCount:        Number(fetchTasklogData.count)                      || 0,
-        clientVisitsTarget:       80,
+        clientVisitsTarget:       Number(siteVisitTargetData?.target?.target)         || Number(siteVisitTargetData?.target) || 10,
         // 6. CSR Metrics — live from MongoDB
         avgResponseTime:          csrMetrics.avgResponseTime,
         avgQuotationHT:           csrMetrics.avgQuotationHT,

@@ -1460,12 +1460,12 @@ function DashboardContent() {
     if (rows.length === 0) return;
 
     const headers = [
-      "Account Reference Number",
       "Company Name",
       "Contact Person",
       "Contact Number",
       "Email Address",
       "Address",
+      "Last Touch",
     ];
 
     const escape = (val: unknown): string => {
@@ -1477,12 +1477,13 @@ function DashboardContent() {
       headers.map(escape).join(","),
       ...rows.map((a) =>
         [
-          a.account_reference_number,
           a.company_name,
           a.contact_person,
           a.contact_number,
           a.email_address,
           a.address ?? "",
+          fmtDate(lastActivityDateMap[a.account_reference_number?.toLowerCase() ?? ""])
+            ?? (fmtDate(a.date_created) ? `${fmtDate(a.date_created)} (created)` : "-"),
         ]
           .map(escape)
           .join(",")

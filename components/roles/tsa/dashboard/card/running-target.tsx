@@ -29,7 +29,7 @@ export const RunningTargetCard: React.FC<RunningTargetCardProps> = ({
     <Card className="bg-white z-10 text-black flex flex-col">
       <CardContent className="flex-1 flex flex-col items-start justify-start p-6 gap-2">
         <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
-          {currentMonth} {currentYear} RUNNING TARGET
+          RUNNING TARGET
         </div>
         <div className="text-4xl font-extrabold text-gray-900">
           {loading ? <Spinner className="w-8 h-8" /> : formatAmount(total)}

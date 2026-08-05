@@ -1069,6 +1069,7 @@ function DashboardContent() {
                 target={outboundCallsTarget}
                 loading={loadingOutboundCalls}
                 loadingTarget={loadingOutboundCallsTarget}
+                dateRange={dateCreatedFilterRange}
               />
             </div>
           )}
@@ -1101,6 +1102,15 @@ function DashboardContent() {
               newAccountCount={newAccountCount}
               newAccountTarget={newAccountTarget}
               loadingNewAccount={loadingNewAccount}
+              onRefresh={() => {
+                fetchOutboundCalls();
+                fetchOutboundCallsTarget();
+                fetchApprovedQuotes();
+                fetchCallsToQuotes();
+                fetchQuoteToSO();
+                fetchSoToSI();
+                fetchNewAccount();
+              }}
             />
           )}
 
@@ -1169,6 +1179,7 @@ function DashboardContent() {
                   target={outboundCallsTarget}
                   loading={loadingOutboundCalls}
                   loadingTarget={loadingOutboundCallsTarget}
+                  dateRange={dateCreatedFilterRange}
                 />
               </div>
             )}

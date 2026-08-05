@@ -1938,12 +1938,14 @@ export default function TaskListEditDialog({
         for (let i = 0; i < raw.length; i++) {
           const char = raw.charCodeAt(i);
           hash = ((hash << 5) - hash) + char;
-          hash = hash & hash; // Convert to 32-bit integer
+          hash |= 0; // Convert to 32-bit integer (matches verify page)
         }
-        return Math.abs(hash).toString(36);
+        return Math.abs(hash).toString(36).toUpperCase(); // uppercase — matches verify page
       };
 
-      const totalStr = payload.totalPrice.toFixed(2);
+      // Use netAmountToCollect — this matches quotation_amount saved to DB
+      // totalPrice (gross) would mismatch when WHT is applied
+      const totalStr = payload.netAmountToCollect.toFixed(2);
       let token: string;
       let verificationUrl: string;
       let qrDataUrl: string | null;

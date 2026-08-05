@@ -3,12 +3,99 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, } from "@/components/ui/dropdown-menu";
-import { AlertCircleIcon, CheckCircle2Icon, Eye, FileSpreadsheet, FileText, MoreVertical, LoaderPinwheel} from "lucide-react";
+import { AlertCircleIcon, CheckCircle2Icon, Eye, FileSpreadsheet, FileText, MoreVertical, LoaderPinwheel, Plus } from "lucide-react";
 import { supabase } from "@/utils/supabase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import TaskListEditDialog from "./dialog/edit";
+
+// ── Aging Tracker Dialog ──────────────────────────────────────────────────────
+
+interface AgingDialogProps {
+  item: Completed;
+  onClose: () => void;
+  onSaved: () => void;
+  trackedIds: Set<number>;
+}
+
+function AddToAgingDialog({ item, onClose, onSaved, trackedIds }: AgingDialogProps) {
+  const [days,     setDays]     = React.useState(7);
+  const [note,     setNote]     = React.useState("");
+  const [followDt, setFollowDt] = React.useState("");
+  const [saving,   setSaving]   = React.useState(false);
+  const [error,    setError]    = React.useState<string | null>(null);
+
+  const handleSave = async () => {
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch("/api/quotation-aging", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activity_id:        item.id,
+          quotation_number:   item.quotation_number ?? "",
+          referenceid:        item.referenceid,
+          tsm:                item.tsm,
+          manager:            item.manager,
+          company_name:       item.company_name,
+          quotation_amount:   Number(item.quotation_amount) || 0,
+          tsm_approval_date:  item.tsm_approval_date || item.date_created || new Date().toISOString(),
+          agent_name:         item.agent_name ?? null,
+          tsm_name:           item.tsm_name ?? null,
+          aging_days:         days,
+          reminder_note:      note || null,
+          follow_up_date:     followDt || null,
+          created_by:         item.tsm,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      onSaved();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-none border shadow-xl w-full max-w-md p-5 space-y-4">
+        <h2 className="text-sm font-black uppercase">Add to Aging Tracker</h2>
+        <div className="grid grid-cols-2 gap-2 bg-gray-50 border p-3 text-xs text-gray-600">
+          <div><p className="font-bold uppercase text-[10px]">Quote #</p><p className="font-mono">{item.quotation_number}</p></div>
+          <div><p className="font-bold uppercase text-[10px]">Company</p><p>{item.company_name}</p></div>
+          <div><p className="font-bold uppercase text-[10px]">Amount</p><p className="tabular-nums">₱{Number(item.quotation_amount||0).toLocaleString(undefined,{minimumFractionDigits:2})}</p></div>
+          <div><p className="font-bold uppercase text-[10px]">Approved</p><p>{(item.tsm_approval_date || item.date_created) ? new Date(item.tsm_approval_date || item.date_created).toLocaleDateString("en-PH",{timeZone:"Asia/Manila"}) : "-"}{!item.tsm_approval_date && item.date_created ? " (created)" : ""}</p></div>
+        </div>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <div>
+          <label className="text-[10px] font-bold uppercase">Aging Threshold (days)</label>
+          <input type="number" min={1} value={days} onChange={e => setDays(Number(e.target.value))}
+            className="w-full mt-1 border text-xs p-2 rounded-none" />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold uppercase">Reminder Note</label>
+          <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+            className="w-full mt-1 border text-xs p-2 rounded-none resize-none" placeholder="Optional…" />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold uppercase">Next Follow-Up Date</label>
+          <input type="datetime-local" value={followDt} onChange={e => setFollowDt(e.target.value)}
+            className="w-full mt-1 border text-xs p-2 rounded-none" />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-xs border rounded-none hover:bg-gray-50">Cancel</button>
+          <button onClick={handleSave} disabled={saving}
+            className="px-4 py-2 text-xs bg-zinc-900 hover:bg-zinc-800 text-white rounded-none">
+            {saving ? "Saving…" : "Add to Aging Tracker"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface SupervisorDetails {
     firstname: string;
@@ -110,6 +197,22 @@ export const ApprovedQuotation: React.FC<CompletedProps> = ({
 
     const [editItem, setEditItem] = useState<Completed | null>(null);
     const [editOpen, setEditOpen] = useState(false);
+
+    // Aging tracker state
+    const [agingItem,  setAgingItem]  = useState<Completed | null>(null);
+    const [agingOpen,  setAgingOpen]  = useState(false);
+    const [trackedIds, setTrackedIds] = useState<Set<number>>(new Set());
+
+    const fetchTrackedIds = useCallback(async () => {
+        if (!referenceid) return;
+        try {
+            const res  = await fetch(`/api/quotation-aging?referenceid=${encodeURIComponent(referenceid)}`);
+            const data = await res.json();
+            if (data.success) setTrackedIds(new Set((data.data ?? []).map((r: any) => Number(r.activity_id))));
+        } catch { /* silent */ }
+    }, [referenceid]);
+
+    useEffect(() => { fetchTrackedIds(); }, [fetchTrackedIds]);
 
     const [tsmDetails, setTsmDetails] = useState<SupervisorDetails | null>(null);
     const [managerDetails, setManagerDetails] = useState<SupervisorDetails | null>(null);
@@ -427,6 +530,14 @@ export const ApprovedQuotation: React.FC<CompletedProps> = ({
                                                         <Eye className="w-4 h-4" />
                                                         View
                                                     </DropdownMenuItem>
+                                                    {/* Add to Aging Tracker */}
+                                                    <DropdownMenuItem
+                                                        onClick={() => { setAgingItem(item); setAgingOpen(true); }}
+                                                        className="flex items-center gap-2 cursor-pointer"
+                                                    >
+                                                        <Plus className="w-4 h-4" />
+                                                        {trackedIds.has(item.id) ? "Edit Aging Tracker" : "Add to Aging Tracker"}
+                                                    </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </TableCell>
@@ -451,7 +562,12 @@ export const ApprovedQuotation: React.FC<CompletedProps> = ({
                                             </div>
                                         </TableCell>
 
-                                        <TableCell className="uppercase">{displayValue(item.quotation_number)}</TableCell>
+                                        <TableCell className="uppercase">
+                                            {displayValue(item.quotation_number)}
+                                            {trackedIds.has(item.id) && (
+                                                <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold bg-blue-100 text-blue-700">📋 Tracked</span>
+                                            )}
+                                        </TableCell>
 
                                         <TableCell>
                                             {displayValue(item.quotation_amount) !== "-"
@@ -597,6 +713,16 @@ export const ApprovedQuotation: React.FC<CompletedProps> = ({
                     managerName={editItem.manager_name}
                     vatType={editItem.vat_type}
                     whtType={editItem.quotation_vatable}
+                />
+            )}
+
+            {/* Aging Tracker Dialog */}
+            {agingOpen && agingItem && (
+                <AddToAgingDialog
+                    item={agingItem}
+                    trackedIds={trackedIds}
+                    onClose={() => { setAgingOpen(false); setAgingItem(null); }}
+                    onSaved={() => { setAgingOpen(false); setAgingItem(null); fetchTrackedIds(); }}
                 />
             )}
         </>

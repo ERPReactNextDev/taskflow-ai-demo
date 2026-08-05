@@ -455,8 +455,9 @@ function AccountListDialog({
 
 /* ─── Terminal Export Dialog ──────────────────────────────────────── */
 
-function ExportDialog({ open, onClose, rows, agentMap }: {
+function ExportDialog({ open, onClose, rows, agentMap, lastTouchMap }: {
   open: boolean; onClose: () => void; rows: Account[]; agentMap: Record<string, string>;
+  lastTouchMap: Record<string, string>;
 }) {
   const [lines, setLines] = useState<{ text: string; color: string }[]>([]);
   const [progress, setProgress] = useState(0);
@@ -477,9 +478,9 @@ function ExportDialog({ open, onClose, rows, agentMap }: {
       push("> Initializing export...", "text-slate-500"); await sleep(250);
       push(`> Total records queued: ${rows.length}`, "text-cyan-400"); await sleep(180);
       push("> Building CSV headers...", "text-slate-500"); await sleep(120);
-      push('  OK ["Agent","Company","Contact","Phone","Email","Region","Type","Industry","Status","Created"]', "text-emerald-400"); await sleep(180);
+      push('  OK ["Agent","Company","Contact","Phone","Email","Region","Type","Industry","Status","Created","Last Touch"]', "text-emerald-400"); await sleep(180);
       push("> Processing rows...", "text-slate-500"); await sleep(100);
-      const headers = ["Agent", "Company", "Contact", "Phone", "Email", "Address", "Delivery", "Region", "Type", "Industry", "Status", "Created"];
+      const headers = ["Agent", "Company", "Contact", "Phone", "Email", "Address", "Delivery", "Region", "Type", "Industry", "Status", "Created", "Last Touch"];
       const csvLines: string[] = [headers.map((h) => `"${h}"`).join(",")];
       const logEvery = Math.max(1, Math.floor(rows.length / 25));
       for (let i = 0; i < rows.length; i++) {
@@ -490,6 +491,8 @@ function ExportDialog({ open, onClose, rows, agentMap }: {
           a.company_name, a.contact_person, a.contact_number, a.email_address,
           a.address ?? "", a.delivery_address ?? "", a.region, a.type_client,
           a.industry, a.status ?? "-", fmtDate(a.date_created) ?? "",
+          lastTouchMap[a.company_name?.toLowerCase() ?? ""]
+            ?? (fmtDate(a.date_created) ? `${fmtDate(a.date_created)} (created)` : "-"),
         ].map((f) => `"${String(f ?? "").replace(/"/g, '""')}"`).join(","));
         if (i % logEvery === 0) {
           setProgress(Math.round(((i + 1) / rows.length) * 100));
@@ -513,7 +516,7 @@ function ExportDialog({ open, onClose, rows, agentMap }: {
     };
     run();
     return () => { cancelledRef.current = true; };
-  }, [open]);
+  }, [open, rows, agentMap, lastTouchMap]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) { cancelledRef.current = true; onClose(); } }}>
@@ -1436,12 +1439,32 @@ export function AccountsTable({ posts, userDetails, dateCreatedFilterRange, setD
   const handleHistoryBack = historySource ? () => setActiveListOpen(historySource) : null;
   const accentColors = ["#6366f1", "#f59e0b", "#10b981", "#ef4444", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6"];
 
+  // Pre-compute last touch map: company_name (lowercase) → formatted date of latest activity
+  const lastTouchMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const act of effectiveActivities) {
+      if (!act.company_name || !act.date_created) continue;
+      const key = act.company_name.toLowerCase();
+      const existing = map[key];
+      if (!existing || new Date(act.date_created) > new Date(existing)) {
+        map[key] = act.date_created;
+      }
+    }
+    // Format all dates
+    const formatted: Record<string, string> = {};
+    for (const [k, v] of Object.entries(map)) {
+      formatted[k] = fmtDate(v) ?? "-";
+    }
+    return formatted;
+  }, [effectiveActivities]);
+
   return (
     <>
       <ExportDialog
         open={exportOpen} onClose={() => setExportOpen(false)}
         rows={drillLevel === "accounts" ? filteredAccounts : allActiveAccounts}
         agentMap={agentMap}
+        lastTouchMap={lastTouchMap}
       />
 
       <HistoryDialog

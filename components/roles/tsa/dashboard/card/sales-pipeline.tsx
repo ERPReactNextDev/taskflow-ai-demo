@@ -42,6 +42,7 @@ interface SalesPipelineCardProps {
   newAccountCount?: number;
   newAccountTarget?: number;
   loadingNewAccount?: boolean;
+  onRefresh?: () => void;
 }
 
 // ── Rating scale helper (shared by OB Calls, Quotes, New Account Dev) ────────
@@ -371,6 +372,7 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
   newAccountCount = 0,
   newAccountTarget = 3,
   loadingNewAccount = false,
+  onRefresh,
 }) => {
   const [explainOpen, setExplainOpen] = useState(false);
 
@@ -451,15 +453,27 @@ export const SalesPipelineCard: React.FC<SalesPipelineCardProps> = ({
             <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
               Sales pipeline — conversion metrics
             </div>
-            <button
-              type="button"
-              onClick={() => setExplainOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest bg-gray-900 hover:bg-gray-700 text-white rounded-lg transition-colors shadow-sm"
-              title="Paano kinukwenta ang bawat metric?"
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              Explain
-            </button>
+            <div className="flex items-center gap-2">
+              {onRefresh && (
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={loadingObCalls || loadingQuotes || loadingCallsToQuotes || loadingQuoteToSO || loadingNewAccount}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors shadow-sm"
+                >
+                  Generate Data
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setExplainOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest bg-gray-900 hover:bg-gray-700 text-white rounded-lg transition-colors shadow-sm"
+                title="Paano kinukwenta ang bawat metric?"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                Explain
+              </button>
+            </div>
           </div>
 
           {/* Metric tiles */}

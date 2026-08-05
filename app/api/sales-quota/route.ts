@@ -11,11 +11,7 @@ export async function GET(req: Request) {
     const Xchire_url = new URL(req.url);
     const referenceId = Xchire_url.searchParams.get("referenceid");
     const now = new Date();
-    const currentYear = now.getFullYear().toString();
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    const currentMonth = monthNames[now.getMonth()];
-
-    console.log("Received referenceid:", referenceId, "Year:", currentYear, "Month:", currentMonth);
 
     if (!referenceId) {
       return NextResponse.json(
@@ -24,14 +20,16 @@ export async function GET(req: Request) {
       );
     }
 
-    // Fetch total amount for the year — filtered by month if provided
-    const month = Xchire_url.searchParams.get("month") ?? currentMonth;
+    // Use year param if provided, otherwise fall back to current year
+    const year  = Xchire_url.searchParams.get("year")  ?? now.getFullYear().toString();
+    // Use month param if provided, otherwise fall back to current month
+    const month = Xchire_url.searchParams.get("month") ?? monthNames[now.getMonth()];
 
     let query = supabase
       .from("sales_quota")
       .select("amount")
       .eq("referenceid", referenceId)
-      .eq("year", currentYear)
+      .eq("year", year)
       .eq("month", month);
 
     const { data: amountData, error: amountError } = await query;
