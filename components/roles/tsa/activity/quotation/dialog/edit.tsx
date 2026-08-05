@@ -1938,9 +1938,9 @@ export default function TaskListEditDialog({
         for (let i = 0; i < raw.length; i++) {
           const char = raw.charCodeAt(i);
           hash = ((hash << 5) - hash) + char;
-          hash = hash & hash; // Convert to 32-bit integer
+          hash |= 0; // Convert to 32-bit integer (matches verify page)
         }
-        return Math.abs(hash).toString(36);
+        return Math.abs(hash).toString(36).toUpperCase(); // uppercase — matches verify page
       };
 
       // Use netAmountToCollect — this matches quotation_amount saved to DB
