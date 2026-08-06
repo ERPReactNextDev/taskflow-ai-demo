@@ -198,7 +198,7 @@ function DashboardContent() {
                 posts={posts}
                 userDetails={userDetails}
                 dateCreatedFilterRange={dateCreatedFilterRange}
-                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
               />
             </>
           )}

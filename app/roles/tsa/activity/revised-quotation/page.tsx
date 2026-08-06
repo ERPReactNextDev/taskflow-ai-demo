@@ -217,7 +217,7 @@ function DashboardContent() {
                 dateCreatedFilterRange={dateCreatedFilterRange}
                 setDateCreatedFilterRangeAction={
                   setDateCreatedFilterRangeAction
-                }
+                 as any}
               />
             ) : loadingUser ? (
               <div className="flex items-center justify-center p-8 text-muted-foreground text-sm">

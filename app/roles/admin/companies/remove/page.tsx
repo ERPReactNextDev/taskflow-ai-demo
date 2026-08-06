@@ -247,7 +247,7 @@ function DashboardContent() {
                             <AccountsTable
                                 posts={filteredData}
                                 dateCreatedFilterRange={dateCreatedFilterRange}
-                                setDateCreatedFilterRangeAction={setDateRange as any}
+                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                                 userDetails={userDetails}
                                 onSaveAccountAction={handleSaveAccount}
                                 onRefreshAccountsAction={refreshAccounts}

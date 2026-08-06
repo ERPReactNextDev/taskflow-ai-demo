@@ -147,7 +147,7 @@ function DashboardContent() {
                             <Summary
                                 referenceid={userDetails.referenceid}
                                 dateCreatedFilterRange={dateCreatedFilterRange}
-                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                                 userDetails={userDetails}
                             />
                         </div>

@@ -133,7 +133,7 @@ function DashboardContent() {
 
           <NationalRanking
             dateCreatedFilterRange={dateCreatedFilterRange}
-            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
           />
         </SidebarInset>
       </ProtectedPageWrapper>

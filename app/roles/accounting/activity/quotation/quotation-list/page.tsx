@@ -155,7 +155,7 @@ function DashboardContent() {
                                     contact={userDetails.contact}
                                     signature={userDetails.signature}
                                     dateCreatedFilterRange={dateCreatedFilterRange}
-                                    setDateCreatedFilterRangeAction={setDateRange as any}
+                                    setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                                 />
                             </CardContent>
                         </Card>

@@ -122,7 +122,7 @@ function DashboardContent() {
                     <AgentList
                         referenceid={userDetails.referenceid}
                         dateCreatedFilterRange={dateCreatedFilterRange}
-                        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                     />
                 </SidebarInset>
             </ProtectedPageWrapper>

@@ -145,7 +145,7 @@ function DashboardContent() {
                                 managername={userDetails.managername}
                                 target_quota={userDetails.target_quota}
                                 dateCreatedFilterRange={dateCreatedFilterRange}
-                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction} />
+                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any} />
                         </div>
                     </main>
                 </SidebarInset>

@@ -150,7 +150,7 @@ function DashboardContent() {
                         <div>
                             <SPF 
                                 dateCreatedFilterRange={dateCreatedFilterRange}
-                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                             />
                         </div>
                     </main>

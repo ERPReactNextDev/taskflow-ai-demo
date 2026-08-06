@@ -608,21 +608,21 @@ const filteredHistory = useMemo(() => {
                             history={filteredHistory}
                             agents={agents}
                             dateCreatedFilterRange={dateCreatedFilterRange}
-                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                         />
 
                         <QuotationTableCard
                             history={filteredHistory}
                             agents={agents}
                             dateCreatedFilterRange={dateCreatedFilterRange}
-                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                         />
 
                         <SalesOrderTableCard
                             history={filteredHistory}
                             agents={agents}
                             dateCreatedFilterRange={dateCreatedFilterRange}
-                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                         />
 
                         {/* OTHER CARDS */}

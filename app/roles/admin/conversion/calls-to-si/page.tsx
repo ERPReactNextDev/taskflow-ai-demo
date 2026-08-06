@@ -103,7 +103,7 @@ function DashboardContent() {
                             <CallSI
                                 referenceid={userDetails.referenceid}
                                 dateCreatedFilterRange={dateCreatedFilterRange}
-                                setDateCreatedFilterRangeAction={setDateRange as any}
+                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                                 userDetails={userDetails}
                             />
                         </div>

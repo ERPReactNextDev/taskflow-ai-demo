@@ -142,7 +142,7 @@ function DashboardContent() {
                                 referenceid={userDetails.referenceid}
                                 target_quota={userDetails.target_quota}
                                 dateCreatedFilterRange={dateCreatedFilterRange}
-                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction} />
+                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any} />
                         </div>
                     </main>
                 </SidebarInset>

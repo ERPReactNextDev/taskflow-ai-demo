@@ -854,7 +854,7 @@ function DashboardContent() {
                                         contact={userDetails.contact}
                                         signature={userDetails.signature}
                                         dateCreatedFilterRange={dateCreatedFilterRange}
-                                        setDateCreatedFilterRangeAction={setDateRange as any}
+                                        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                                     />
                                 </CardContent>
                             </Card>
@@ -877,7 +877,7 @@ function DashboardContent() {
                                         contact={userDetails.contact}
                                         signature={userDetails.signature}
                                         dateCreatedFilterRange={dateCreatedFilterRange}
-                                        setDateCreatedFilterRangeAction={setDateRange as any}
+                                        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                                     />
                                 </CardContent>
                             </Card>
@@ -897,7 +897,7 @@ function DashboardContent() {
                                     <AccountsCards
                                         posts={filteredData}
                                         dateCreatedFilterRange={dateCreatedFilterRange}
-                                        setDateCreatedFilterRangeAction={setDateRange as any}
+                                        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                                         userDetails={userDetails}
                                         onRefreshAccountsAction={refreshAccounts}
                                     />
@@ -919,7 +919,7 @@ function DashboardContent() {
                                     <RequestTable
                                         posts={filteredDeletionData}
                                         dateCreatedFilterRange={dateCreatedFilterRange}
-                                        setDateCreatedFilterRangeAction={setDateRange as any}
+                                        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                                         userDetails={userDetails}
                                         onRefreshAccountsAction={refreshDeletionRequests}
                                     />
