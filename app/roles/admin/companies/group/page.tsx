@@ -187,7 +187,7 @@ function DashboardContent() {
                                 <AccountsTable
                                     posts={filteredData}
                                     dateCreatedFilterRange={dateCreatedFilterRange}
-                                    setDateRange={setDateRange}
+                                    setDateCreatedFilterRangeAction={setDateRange as any}
                                 />
                             </>
                         )}
