@@ -231,13 +231,20 @@ export async function GET(req: Request) {
     const now         = new Date();
     const manilaToday = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
 
-    // Ref date for deriving month/year of targets — use from param if provided
-    const refDate     = from ? new Date(`${from}T00:00:00+08:00`) : now;
-    const refDateStr  = refDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-    const [refYear, refMonthNum] = refDateStr.split("-");
+    // Ref date for deriving month/year of targets — parse from string directly
+    // to avoid server-timezone issues (Vercel runs UTC, getMonth() would be wrong)
+    let refYear: string;
+    let refMonthNum: string; // "01"–"12"
+    if (from) {
+      [refYear, refMonthNum] = from.split("-");
+    } else {
+      const [ty, tm] = manilaToday.split("-");
+      refYear = ty; refMonthNum = tm;
+    }
+    const refMonthLabel = ["January","February","March","April","May","June",
+      "July","August","September","October","November","December"][Number(refMonthNum) - 1];
     const refMonthStart = `${refYear}-${refMonthNum}-01`;
-    const refMonthLabel = monthLabel(refDate);
-    const refMonthDays  = getDaysInMonth(Number(refYear), refDate.getMonth());
+    const refMonthDays  = new Date(Number(refYear), Number(refMonthNum), 0).getDate();
 
     // Actuals date range — exactly the from/to window passed in
     const fromStr = from ?? refMonthStart;

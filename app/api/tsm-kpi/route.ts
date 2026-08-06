@@ -275,30 +275,40 @@ export async function GET(req: Request) {
     const manilaMonthEnd = `${mYear}-${mMonth}-${String(monthDays).padStart(2, "0")}`;
     
     const year = mYear;
+
+    // Current Manila month name — derived from mMonth string, never from getMonth()
+    const MONTH_NAMES_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const currentManilaMontLabel = MONTH_NAMES_FULL[Number(mMonth) - 1];
     
     // Targets (OB, Quote, Site Visit) always use current month, date range only affects actuals
     const monthSlices = [
       {
         year: mYear,
-        month: monthLabel(now),
+        month: currentManilaMontLabel,
         daysInMonth: monthDays,
         coveredDays: monthDays,
       },
     ];
     const shouldProrateMonthlyTargets = false; // Targets are always full monthly values — never prorate
 
-    // New Account Dev scoped to the selected month (or current month in Manila time)
-    const naRefDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
-    const naRefStr  = naRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
-    const [naYear, naMonth] = naRefStr.split("-");
+    // New Account Dev scoped to the selected month — parse from string, no Date.getMonth()
+    let naYear: string, naMonth: string;
+    if (from) {
+      [naYear, naMonth] = from.split("-");
+    } else {
+      naYear = mYear; naMonth = mMonth;
+    }
     const naDaysInMonth = new Date(Number(naYear), Number(naMonth), 0).getDate();
     const naFrom = from ?? `${naYear}-${naMonth}-01`;
     const naTo   = to   ?? `${naYear}-${naMonth}-${String(naDaysInMonth).padStart(2, "0")}`;
 
-    // SI always uses full month boundaries derived from the 'from' date (or current month if not provided).
-    const siRefDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
-    const siYear    = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
-    const siMonth   = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(5, 7);
+    // SI always uses full month boundaries derived from the 'from' date — parse from string
+    let siYear: string, siMonth: string;
+    if (from) {
+      [siYear, siMonth] = from.split("-");
+    } else {
+      siYear = mYear; siMonth = mMonth;
+    }
     const siMonthDays = new Date(Number(siYear), Number(siMonth), 0).getDate();
     const siStart   = `${siYear}-${siMonth}-01T00:00:00+08:00`;
     const siEnd     = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}T23:59:59.999+08:00`;
@@ -336,7 +346,7 @@ export async function GET(req: Request) {
     // ── Parallel data fetches ─────────────────────────────────────────────────
 
     // 1. Sales quotas per agent for the current month (derived from SI query month)
-    const quotaMonth = siRefDate.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" });
+    const quotaMonth = MONTH_NAMES_FULL[Number(siMonth) - 1];
     const quotasQuery = supabase
       .from("sales_quota")
       .select("referenceid, amount")
@@ -373,8 +383,8 @@ export async function GET(req: Request) {
       .from("sales_ob")
       .select("id, referenceid, ob_target, month, year")
       .in("referenceid", agentIds)
-      .eq("month", monthLabel(now))         // always current calendar month
-      .eq("year", now.getFullYear().toString())
+      .eq("month", currentManilaMontLabel)  // always current calendar month
+      .eq("year", mYear)
       .order("date_created", { ascending: false, nullsFirst: false })
       .order("id", { ascending: false }); // ✅ FIX: deterministic tie-breaker
 
@@ -420,8 +430,8 @@ export async function GET(req: Request) {
       .from("sales_account_development")
       .select("referenceid, target")
       .in("referenceid", agentIds)
-      .eq("month", monthLabel(naRefDate))
-      .eq("year", naRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4));
+      .eq("month", MONTH_NAMES_FULL[Number(naMonth) - 1])
+      .eq("year", naYear);
 
     // 10. Site visit targets per agent — deduplicated: take highest target per agent
     //     (multiple rows per agent can exist if target was updated; highest wins)
@@ -429,8 +439,8 @@ export async function GET(req: Request) {
       .from("site_visit_target")
       .select("referenceid, target")
       .in("referenceid", agentIds)
-      .eq("month", monthLabel(now))         // always current calendar month
-      .eq("year", now.getFullYear().toString());
+      .eq("month", currentManilaMontLabel)  // always current calendar month
+      .eq("year", mYear);
 
     // 11. Client visits — scoped to the selected date range (or current month if no range)
     const clientVisitsQuery = supabase

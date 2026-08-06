@@ -124,10 +124,20 @@ export async function GET(req: Request) {
 
     // ── Parallel fetches ──────────────────────────────────────────────────────
     // Derive month name for site-visit-target lookup from the from date
+    // Always extract month from the date STRING directly to avoid server-timezone issues
     const svtMonthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    const svtRefDate  = from ? new Date(`${from}T00:00:00+08:00`) : new Date();
-    const svtYear     = svtRefDate.getFullYear().toString();
-    const svtMonth    = svtMonthNames[svtRefDate.getMonth()];
+    let svtYear: string;
+    let svtMonth: string;
+    if (from) {
+      // Parse YYYY-MM-DD string directly — no Date object needed, no TZ ambiguity
+      const [fyStr, fmStr] = from.split("-");
+      svtYear  = fyStr;
+      svtMonth = svtMonthNames[Number(fmStr) - 1];
+    } else {
+      // No from param — derive from Manila "today" string (already TZ-safe)
+      svtYear  = mYear;
+      svtMonth = svtMonthNames[Number(mMonth) - 1];
+    }
 
     const [
       salesQuotaRes,
