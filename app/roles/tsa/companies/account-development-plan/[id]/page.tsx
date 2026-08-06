@@ -465,7 +465,7 @@ function DetailContent() {
         <SidebarLeft />
         <SidebarInset className="overflow-hidden">
 
-          <GlobalTopBar title="{isNew ? "New" : planId}" />
+          <GlobalTopBar title={isNew ? "New Account Plan" : "Account Plan"} />
 
           <main className="flex flex-1 overflow-hidden">
             {loading ? (
