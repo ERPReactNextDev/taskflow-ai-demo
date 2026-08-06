@@ -1,11 +1,13 @@
 "use client";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 
 import React, { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -72,6 +74,7 @@ function SoBreakdownContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const { userId, setUserId } = useUser();
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
   const queryUserId = searchParams?.get("id") ?? "";
   useEffect(() => {
@@ -173,76 +176,65 @@ function SoBreakdownContent() {
       <SidebarInset className="overflow-hidden">
 
         {/* Header */}
-        <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b z-10">
-          <div className="flex flex-1 items-center gap-2 px-3">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+        <GlobalTopBar
+          title="SO Breakdown"
+          extra={
             <button
               onClick={() => router.back()}
               className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
-            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                    SO Breakdown
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-
-          {/* Controls — context-aware per tab */}
-          <div className="flex items-center gap-2 px-3">
-            {activeTab === "yearly" && (
-              <>
-                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                  {(["total", "regular", "spf"] as const).map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => setView(v)}
-                      className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wide rounded-md transition-all ${
-                        view === v ? "bg-white text-gray-800 shadow-sm" : "text-gray-400 hover:text-gray-600"
-                      }`}
-                    >
-                      {v === "spf" ? "SPF" : v}
-                    </button>
-                  ))}
-                </div>
-                <select
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
-                >
-                  {[2024, 2025, 2026, 2027].map((y) => (
-                    <option key={y} value={String(y)}>{y}</option>
-                  ))}
-                </select>
-              </>
-            )}
-            {activeTab === "detail" && (
-              <>
-                <label className="text-xs text-gray-500 font-medium">From:</label>
-                <input
-                  type="date"
-                  value={detailDateRange.from.toLocaleDateString("en-CA")}
-                  onChange={(e) => setDetailDateRange((p) => ({ ...p, from: new Date(e.target.value + "T00:00:00") }))}
-                  className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
-                />
-                <label className="text-xs text-gray-500 font-medium">To:</label>
-                <input
-                  type="date"
-                  value={detailDateRange.to.toLocaleDateString("en-CA")}
-                  onChange={(e) => setDetailDateRange((p) => ({ ...p, to: new Date(e.target.value + "T23:59:59") }))}
-                  className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
-                />
-              </>
-            )}
-          </div>
-        </header>
+          }
+          rightExtra={
+            <div className="flex items-center gap-2">
+              {activeTab === "yearly" && (
+                <>
+                  <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                    {(["total", "regular", "spf"] as const).map((v) => (
+                      <button
+                        key={v}
+                        onClick={() => setView(v)}
+                        className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wide rounded-md transition-all ${
+                          view === v ? "bg-white text-gray-800 shadow-sm" : "text-gray-400 hover:text-gray-600"
+                        }`}
+                      >
+                        {v === "spf" ? "SPF" : v}
+                      </button>
+                    ))}
+                  </div>
+                  <select
+                    value={year}
+                    onChange={(e) => setYear(e.target.value)}
+                    className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
+                  >
+                    {[2024, 2025, 2026, 2027].map((y) => (
+                      <option key={y} value={String(y)}>{y}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+              {activeTab === "detail" && (
+                <>
+                  <label className="text-xs text-gray-500 font-medium">From:</label>
+                  <input
+                    type="date"
+                    value={detailDateRange.from.toLocaleDateString("en-CA")}
+                    onChange={(e) => setDetailDateRange((p) => ({ ...p, from: new Date(e.target.value + "T00:00:00") }))}
+                    className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
+                  />
+                  <label className="text-xs text-gray-500 font-medium">To:</label>
+                  <input
+                    type="date"
+                    value={detailDateRange.to.toLocaleDateString("en-CA")}
+                    onChange={(e) => setDetailDateRange((p) => ({ ...p, to: new Date(e.target.value + "T23:59:59") }))}
+                    className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
+                  />
+                </>
+              )}
+            </div>
+          }
+        />
 
         {/* Tab bar */}
         <TabBar active={activeTab} onChange={setActiveTab} />

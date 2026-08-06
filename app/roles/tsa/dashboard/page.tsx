@@ -4,9 +4,9 @@ import React, { useEffect, useState, useCallback, useMemo, Suspense } from "reac
 import { useSearchParams } from "next/navigation";
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
 import {
   SidebarInset,
   SidebarProvider,
@@ -54,6 +54,7 @@ import { TotalTimeSpentCard } from "@/components/roles/tsa/dashboard/card/total-
 import { AgentPerformanceDetailSingle } from "@/components/roles/tsa/dashboard/card/agent-performance-detail-single";
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
 import { UnifiedNotificationBellLazy } from "@/components/unified-notification-bell-lazy";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 /* ================= TYPES ================= */
 
@@ -231,11 +232,10 @@ function saveVisibility(v: CardVisibility) {
 /* ================= MAIN CONTENT ================= */
 
 function DashboardContent() {
-  const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] =
-    React.useState<DateRange | undefined>(undefined);
 
   const searchParams = useSearchParams();
   const { userId, setUserId } = useUser();
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
   /* ---- Card visibility ---- */
   const [visibility, setVisibility] = useState<CardVisibility>(DEFAULT_VISIBILITY);
@@ -916,25 +916,9 @@ function DashboardContent() {
       <SidebarLeft />
       <SidebarInset>
         {/* Top bar */}
-        <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 z-[50]">
-          <div className="flex flex-1 items-center gap-2 px-3">
-            <SidebarTrigger />
-            <Separator
-              orientation="vertical"
-              className="mr-2 data-[orientation=vertical]:h-4"
-            />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                    KPI Dashboard
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-          <div className="flex items-center gap-2 px-3">
-            <UnifiedNotificationBellLazy />
+        <GlobalTopBar
+          title="KPI Dashboard"
+          rightExtra={
             <button
               onClick={() => setSettingsOpen(true)}
               className="p-2 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
@@ -942,8 +926,8 @@ function DashboardContent() {
             >
               <Settings className="w-4 h-4" />
             </button>
-          </div>
-        </header>
+          }
+        />
 
         <div className="flex flex-col gap-4 p-4">
 
@@ -1287,11 +1271,6 @@ function DashboardContent() {
 
         </div>
       </SidebarInset>
-
-      <SidebarRight
-        dateCreatedFilterRange={dateCreatedFilterRange}
-        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-      />
     </ProtectedPageWrapper>
   );
 }

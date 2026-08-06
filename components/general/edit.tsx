@@ -4,8 +4,9 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { sileo } from "sileo";
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 import Image from "next/image";
 import SignatureCanvas from "react-signature-canvas";
 
@@ -198,8 +199,7 @@ export default function ProfileClient() {
   const [otpToken, setOtpToken] = useState("");
   const [verifying2FA, setVerifying2FA] = useState(false);
 
-  const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] =
-    useState<DateRange | undefined>(undefined);
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
   // ─── Fetch user ───────────────────────────────────────────────────────────
 
@@ -586,30 +586,16 @@ export default function ProfileClient() {
 
             <SidebarInset>
               {/* ── Page header ─────────────────────────────────────── */}
-              <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-gray-100">
-                <div className="flex flex-1 items-center gap-2 px-3">
-                  <SidebarTrigger />
-                  <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-                  <Breadcrumb>
-                    <BreadcrumbList>
-                      <BreadcrumbItem>
-                        <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                          Profile Settings
-                        </BreadcrumbPage>
-                      </BreadcrumbItem>
-                    </BreadcrumbList>
-                  </Breadcrumb>
-                </div>
-
-                {/* Role badge */}
-                {userDetails.Role && (
-                  <div className="pr-4">
+              <GlobalTopBar
+                title="Profile Settings"
+                rightExtra={
+                  userDetails.Role ? (
                     <span className="text-[10px] font-black uppercase tracking-widest bg-gray-900 text-white px-2.5 py-1">
                       {userDetails.Role}
                     </span>
-                  </div>
-                )}
-              </header>
+                  ) : undefined
+                }
+              />
 
               {/* ── Content ─────────────────────────────────────────── */}
               <div className="flex flex-col gap-6 p-5 w-full mx-auto w-full">
@@ -1204,12 +1190,6 @@ export default function ProfileClient() {
                 </div>
               </div>
             </SidebarInset>
-
-            <SidebarRight
-              
-              dateCreatedFilterRange={dateCreatedFilterRange}
-              setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-            />
           </SidebarProvider>
 
           {/* Numeric Keypad Dialog */}

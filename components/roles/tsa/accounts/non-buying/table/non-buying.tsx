@@ -1,5 +1,6 @@
 "use client";
 
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 import React, { useMemo, useState, useEffect } from "react";
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, ColumnDef, flexRender, } from "@tanstack/react-table";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, } from "@/components/ui/table";

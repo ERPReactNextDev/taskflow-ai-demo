@@ -5,8 +5,9 @@ import { useSearchParams } from "next/navigation";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 import {
   Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage,
@@ -125,8 +126,7 @@ function AllActivitiesContent() {
 
   const [loadingUser, setLoadingUser] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] =
-    React.useState<DateRange | undefined>(undefined);
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
   const [isOpen, setIsOpen] = useState(true);
   const [allActivitiesCount, setAllActivitiesCount] = useState(0);
@@ -198,42 +198,8 @@ function AllActivitiesContent() {
       <ProtectedPageWrapper>
         <SidebarLeft />
         <SidebarInset className="overflow-hidden">
-          <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b">
-            <div className="flex flex-1 items-center gap-2 px-3">
-              <SidebarTrigger />
-              <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                      Activity Planners
-                    </BreadcrumbPage>
-                  </BreadcrumbItem>
-                  <BreadcrumbItem>
-                    <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      /
-                    </BreadcrumbPage>
-                  </BreadcrumbItem>
-                  <BreadcrumbItem>
-                    <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide text-blue-600">
-                      All Activities
-                    </BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-            </div>
-            <div className="flex items-center gap-2 px-3">
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-none text-xs"
-                onClick={() => window.location.href = `/roles/tsa/activity/planner?id=${userId}`}
-              >
-                <Calendar className="w-4 h-4 mr-2" />
-                Back to Planner
-              </Button>
-            </div>
-          </header>
+
+          <GlobalTopBar title="Activity Planners" />
 
           <main className="flex flex-1 flex-col gap-4 p-4 overflow-auto">
             {loadingUser ? (
@@ -262,10 +228,6 @@ function AllActivitiesContent() {
             )}
           </main>
         </SidebarInset>
-        <SidebarRight
-          dateCreatedFilterRange={dateCreatedFilterRange}
-          setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-        />
       </ProtectedPageWrapper>
     </SidebarProvider>
   );

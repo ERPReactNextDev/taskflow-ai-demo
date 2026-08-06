@@ -4,9 +4,10 @@ import React, { useEffect, useState, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -48,6 +49,7 @@ interface UserDetails {
 function DashboardContent() {
     const searchParams = useSearchParams();
     const { userId, setUserId } = useUser();
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
     const [userDetails, setUserDetails] = useState<UserDetails>({
         referenceid: "",
@@ -59,7 +61,6 @@ function DashboardContent() {
     const [loadingUser, setLoadingUser] = useState(true);
     const [loadingAccounts, setLoadingAccounts] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] = React.useState<DateRange | undefined>(undefined);
 
     const queryUserId = searchParams?.get("id") ?? "";
 
@@ -213,24 +214,8 @@ function DashboardContent() {
             <ProtectedPageWrapper>
             <SidebarLeft />
             <SidebarInset className="overflow-hidden">
-                <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b">
-                    <div className="flex flex-1 items-center gap-2 px-3">
-                        <SidebarTrigger />
-                        <Separator
-                            orientation="vertical"
-                            className="mr-2 data-[orientation=vertical]:h-4"
-                        />
-                        <Breadcrumb>
-                            <BreadcrumbList>
-                                <BreadcrumbItem>
-                                    <BreadcrumbPage className="line-clamp-1">
-                                        Customer Database - Deletion / Remove
-                                    </BreadcrumbPage>
-                                </BreadcrumbItem>
-                            </BreadcrumbList>
-                        </Breadcrumb>
-                    </div>
-                </header>
+
+                <GlobalTopBar title="Customer Database - Deletion / Remove" />
 
                 <main className="flex flex-1 flex-col gap-4 p-4 overflow-auto">
                     {loadingUser ? (
@@ -262,7 +247,7 @@ function DashboardContent() {
                             <AccountsTable
                                 posts={filteredData}
                                 dateCreatedFilterRange={dateCreatedFilterRange}
-                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                                setDateRange={setDateRange}
                                 userDetails={userDetails}
                                 onSaveAccountAction={handleSaveAccount}
                                 onRefreshAccountsAction={refreshAccounts}
@@ -272,11 +257,6 @@ function DashboardContent() {
                 </main>
 
             </SidebarInset>
-
-            <SidebarRight
-                dateCreatedFilterRange={dateCreatedFilterRange}
-                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-            />
 
         </ProtectedPageWrapper >
         </>

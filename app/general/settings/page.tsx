@@ -1,13 +1,13 @@
 "use client";
 
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider, useFormat } from "@/contexts/FormatContext";
 
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
 
 import {
   Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage,
@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { Palette, Clock3, Settings2 } from "lucide-react";
 
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
@@ -90,8 +91,7 @@ function SettingsContent() {
   const { userId, setUserId } = useUser();
 
   const queryUserId = searchParams?.get("id") ?? "";
-  const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] =
-    useState<DateRange | undefined>(undefined);
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
   useEffect(() => {
     if (queryUserId && queryUserId !== userId) {
@@ -127,22 +127,7 @@ function SettingsContent() {
       <SidebarLeft />
 
       <SidebarInset>
-        {/* Header */}
-        <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b">
-          <div className="flex flex-1 items-center gap-2 px-3">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                    Settings
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-        </header>
+        <GlobalTopBar title="Settings" />
 
         {/* Main content */}
         <div className="flex flex-1 flex-col gap-4 p-6">
@@ -223,12 +208,6 @@ function SettingsContent() {
           </div>
         </div>
       </SidebarInset>
-
-      <SidebarRight
-        
-        dateCreatedFilterRange={dateCreatedFilterRange}
-        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-      />
     </ProtectedPageWrapper>
   );
 }

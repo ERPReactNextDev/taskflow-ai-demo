@@ -5,9 +5,10 @@ import { useSearchParams } from "next/navigation";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 import { Alert, AlertTitle } from "@/components/ui/alert"
 import { AlertCircleIcon } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -71,8 +72,7 @@ function DashboardContent() {
     const [error, setError] = useState<string | null>(null);
     const [agentFilter, setAgentFilter] = useState<string>("all");
 
-    const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] =
-        useState<DateRange | undefined>(undefined);
+    const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
     const queryUserId = searchParams?.get("id") ?? "";
 
@@ -268,24 +268,8 @@ function DashboardContent() {
             <ProtectedPageWrapper>
                 <SidebarLeft />
                 <SidebarInset className="overflow-hidden">
-                    <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b">
-                        <div className="flex flex-1 items-center gap-2 px-3">
-                            <SidebarTrigger />
-                            <Separator orientation="vertical" className="mr-2 h-4" />
-                            <Breadcrumb>
-                                <BreadcrumbList>
-                                    <BreadcrumbItem>
-                                        <BreadcrumbPage className="line-clamp-1">
-                                            Customer Database - Pending Accounts for Transfer
-                                        </BreadcrumbPage>
-                                    </BreadcrumbItem>
-                                </BreadcrumbList>
-                            </Breadcrumb>
-                        </div>
-                        <div className="flex items-center px-3">
-                            <UnifiedNotificationBellLazy />
-                        </div>
-                    </header>
+
+                    <GlobalTopBar title="Customer Database - Pending Accounts for Transfer" />
 
                     <main className="flex flex-1 flex-col gap-4 p-4 overflow-auto">
                         {loadingUser ? (
@@ -325,11 +309,6 @@ function DashboardContent() {
                         )}
                     </main>
                 </SidebarInset>
-
-                <SidebarRight
-                    dateCreatedFilterRange={dateCreatedFilterRange}
-                    setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-                />
             </ProtectedPageWrapper>
         </>
     );

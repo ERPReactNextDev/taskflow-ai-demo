@@ -30,11 +30,11 @@ interface RankedItem {
   rank: number;
 }
 
+import { type DateRange } from "react-day-picker";
+
 interface NationalRankingProps {
-  dateCreatedFilterRange: [Date | null, Date | null];
-  setDateCreatedFilterRangeAction: React.Dispatch<
-    React.SetStateAction<[Date | null, Date | null]>
-  >;
+  dateCreatedFilterRange: DateRange | undefined;
+  setDateCreatedFilterRangeAction: (range: DateRange | undefined) => void;
 }
 
 const MEDAL_COLORS: Record<number, string> = {
@@ -60,7 +60,8 @@ export function NationalRanking({
   const [error, setError] = useState<string | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
 
-  const [startDate, endDate] = dateCreatedFilterRange;
+  const startDate = dateCreatedFilterRange?.from ?? null;
+  const endDate   = dateCreatedFilterRange?.to   ?? null;
 
   const formatDate = (date: Date) => {
     const pad = (n: number) => n.toString().padStart(2, "0");

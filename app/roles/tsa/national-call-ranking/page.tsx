@@ -1,4 +1,5 @@
 "use client";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -6,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
-import { SidebarLeft } from "@/components/sidebar-left";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
 
 import {
   Breadcrumb,
@@ -22,6 +23,7 @@ import { NationalRanking } from "@/components/national-ranking";
 
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
 import { UnifiedNotificationBellLazy } from "@/components/unified-notification-bell-lazy";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 interface UserDetails {
   referenceid: string;
@@ -46,9 +48,7 @@ function DashboardContent() {
 
   // Default date range: today to today
   const today = new Date();
-  const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] = React.useState<
-    [Date | null, Date | null]
-  >([today, today]);
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
   const queryUserId = searchParams?.get("id") ?? "";
 
@@ -129,24 +129,7 @@ function DashboardContent() {
           <div
             className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] z-10 pointer-events-none"
           />
-          <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b z-50">
-            <div className="flex flex-1 items-center gap-2 px-3">
-              <SidebarTrigger />
-              <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                      National Call Ranking (Outbound - Touchbase)
-                    </BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-            </div>
-            <div className="flex items-center px-3">
-              <UnifiedNotificationBellLazy />
-            </div>
-          </header>
+          <GlobalTopBar title="National Call Ranking (Outbound - Touchbase)" />
 
           <NationalRanking
             dateCreatedFilterRange={dateCreatedFilterRange}

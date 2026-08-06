@@ -1,11 +1,13 @@
 "use client";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -320,6 +322,7 @@ function ObBreakdownContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const { userId, setUserId } = useUser();
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
   const queryUserId = searchParams?.get("id") ?? "";
   useEffect(() => {
@@ -467,64 +470,34 @@ function ObBreakdownContent() {
       <SidebarInset className="overflow-hidden">
 
         {/* Header */}
-        <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b z-10">
-          <div className="flex flex-1 items-center gap-2 px-3">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <button
-              onClick={() => router.back()}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-            >
+        <GlobalTopBar
+          title="OB Calls Breakdown"
+          extra={
+            <button onClick={() => router.back()} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors">
               <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
-            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                    OB Calls Breakdown
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-
-          {/* Year selector (OB Calls / Target tabs) or Date range (Touchbase / Outbound History) */}
-          <div className="flex items-center gap-2 px-3">
-            {(activeTab === "ob_calls" || activeTab === "target") && (
-              <>
-                <label className="text-xs text-gray-500 font-medium">Year:</label>
-                <select
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
-                >
-                  {[2024, 2025, 2026, 2027].map((y) => (
-                    <option key={y} value={String(y)}>{y}</option>
-                  ))}
-                </select>
-              </>
-            )}
-            {(activeTab === "touchbase" || activeTab === "outbound_history") && (
-              <>
-                <label className="text-xs text-gray-500 font-medium">From:</label>
-                <input
-                  type="date"
-                  value={outboundDateRange.from.toLocaleDateString("en-CA")}
-                  onChange={(e) => setOutboundDateRange((prev) => ({ ...prev, from: new Date(e.target.value + "T00:00:00") }))}
-                  className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
-                />
-                <label className="text-xs text-gray-500 font-medium">To:</label>
-                <input
-                  type="date"
-                  value={outboundDateRange.to.toLocaleDateString("en-CA")}
-                  onChange={(e) => setOutboundDateRange((prev) => ({ ...prev, to: new Date(e.target.value + "T23:59:59") }))}
-                  className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
-                />
-              </>
-            )}
-          </div>
-        </header>
+          }
+          rightExtra={
+            <div className="flex items-center gap-2">
+              {(activeTab === "ob_calls" || activeTab === "target") && (
+                <>
+                  <label className="text-xs text-gray-500 font-medium">Year:</label>
+                  <select value={year} onChange={(e) => setYear(e.target.value)} className="h-7 text-xs border border-gray-200 rounded px-2 bg-white">
+                    {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={String(y)}>{y}</option>)}
+                  </select>
+                </>
+              )}
+              {(activeTab === "touchbase" || activeTab === "outbound_history") && (
+                <>
+                  <label className="text-xs text-gray-500 font-medium">From:</label>
+                  <input type="date" value={outboundDateRange.from.toLocaleDateString("en-CA")} onChange={(e) => setOutboundDateRange((prev) => ({ ...prev, from: new Date(e.target.value + "T00:00:00") }))} className="h-7 text-xs border border-gray-200 rounded px-2 bg-white" />
+                  <label className="text-xs text-gray-500 font-medium">To:</label>
+                  <input type="date" value={outboundDateRange.to.toLocaleDateString("en-CA")} onChange={(e) => setOutboundDateRange((prev) => ({ ...prev, to: new Date(e.target.value + "T23:59:59") }))} className="h-7 text-xs border border-gray-200 rounded px-2 bg-white" />
+                </>
+              )}
+            </div>
+          }
+        />
 
         {/* Tab bar */}
         <TabBar active={activeTab} onChange={setActiveTab} />

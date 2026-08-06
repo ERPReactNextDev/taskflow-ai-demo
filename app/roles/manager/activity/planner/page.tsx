@@ -5,9 +5,10 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, } from "@/components/ui/breadcrumb";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -78,6 +79,7 @@ interface SPFRequest {
 function DashboardContent() {
     const searchParams = useSearchParams();
     const { userId, setUserId } = useUser();
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
     const [userDetails, setUserDetails] = useState<UserDetails>({
         referenceid: "",
@@ -113,7 +115,6 @@ function DashboardContent() {
         audioRef.current.volume = 0.5;
     }, []);
 
-    const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] = React.useState<DateRange | undefined>(undefined);
 
     const queryUserId = searchParams?.get("id") ?? "";
 
@@ -276,100 +277,8 @@ function DashboardContent() {
             <ProtectedPageWrapper>
                 <SidebarLeft />
                 <SidebarInset className="overflow-hidden">
-                    <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b">
-                        <div className="flex flex-1 items-center gap-2 px-3">
-                            <SidebarTrigger />
-                            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-                            <Breadcrumb>
-                                <BreadcrumbList>
-                                    <BreadcrumbItem>
-                                        <BreadcrumbPage className="line-clamp-1">Activity Planner</BreadcrumbPage>
-                                    </BreadcrumbItem>
-                                </BreadcrumbList>
-                            </Breadcrumb>
-                        </div>
 
-                        {/* SPF Notification Bell */}
-                        <div className="flex items-center px-3">
-                            <Popover open={spfNotificationOpen} onOpenChange={setSpfNotificationOpen}>
-                                <PopoverTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="relative"
-                                        aria-label="SPF Notifications"
-                                    >
-                                        <Bell className="h-5 w-5" />
-                                        {spfRequests.length > 0 && (
-                                            <Badge
-                                                variant="destructive"
-                                                className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
-                                            >
-                                                {spfRequests.length > 99 ? "99+" : spfRequests.length}
-                                            </Badge>
-                                        )}
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-80 p-0" align="end">
-                                    <div className="flex items-center justify-between p-3 border-b">
-                                        <h4 className="font-semibold text-sm">SPF Requests - Endorsed to Sales Head</h4>
-                                        <Badge variant="secondary" className="text-xs">
-                                            {spfRequests.length} pending
-                                        </Badge>
-                                    </div>
-                                    <ScrollArea className="h-64">
-                                        {loadingSpf ? (
-                                            <div className="p-4 text-center text-sm text-muted-foreground">
-                                                Loading...
-                                            </div>
-                                        ) : spfRequests.length === 0 ? (
-                                            <div className="p-4 text-center text-sm text-muted-foreground">
-                                                No pending SPF requests
-                                            </div>
-                                        ) : (
-                                            <div className="divide-y">
-                                                {spfRequests.map((request) => (
-                                                    <Link
-                                                        key={request.id}
-                                                        href={`/roles/manager/activity/spf?highlight=${encodeURIComponent(request.spf_number)}`}
-                                                        onClick={() => setSpfNotificationOpen(false)}
-                                                    >
-                                                        <div className="p-3 hover:bg-muted transition-colors cursor-pointer">
-                                                            <div className="flex items-start gap-2">
-                                                                <FileText className="h-4 w-4 mt-0.5 text-blue-500" />
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="text-sm font-medium truncate">
-                                                                        {request.customer_name || "Unknown Customer"}
-                                                                    </p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        SPF: {request.spf_number}
-                                                                    </p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        Prepared by: {request.prepared_by || "N/A"}
-                                                                    </p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        {request.date_created ? new Date(request.date_created).toLocaleDateString() : "—"}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </Link>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </ScrollArea>
-                                    <div className="p-2 border-t">
-                                        <Link href="/roles/manager/activity/spf">
-                                            <Button variant="ghost" className="w-full justify-between text-xs" size="sm">
-                                                View all SPF requests
-                                                <ExternalLink className="h-3 w-3" />
-                                            </Button>
-                                        </Link>
-                                    </div>
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                    </header>
+                    <GlobalTopBar title="Activity Planner" />
 
                     <main className="flex flex-1 flex-col gap-4 p-4 overflow-auto">
                         {/* 4-card grid */}
@@ -393,7 +302,7 @@ function DashboardContent() {
                                         contact={userDetails.contact}
                                         signature={userDetails.signature}
                                         dateCreatedFilterRange={dateCreatedFilterRange}
-                                        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                                        setDateRange={setDateRange}
                                     />
                                 </CardContent>
                             </Card>
@@ -416,7 +325,7 @@ function DashboardContent() {
                                         contact={userDetails.contact}
                                         signature={userDetails.signature}
                                         dateCreatedFilterRange={dateCreatedFilterRange}
-                                        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                                        setDateRange={setDateRange}
                                     />
                                 </CardContent>
                             </Card>
@@ -436,7 +345,7 @@ function DashboardContent() {
                                     <AccountsCards
                                         posts={filteredData}
                                         dateCreatedFilterRange={dateCreatedFilterRange}
-                                        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                                        setDateRange={setDateRange}
                                         userDetails={userDetails}
                                         onRefreshAccountsAction={refreshAccounts}
                                     />
@@ -458,7 +367,7 @@ function DashboardContent() {
                                     <RequestTable
                                         posts={filteredData}
                                         dateCreatedFilterRange={dateCreatedFilterRange}
-                                        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                                        setDateRange={setDateRange}
                                         userDetails={userDetails}
                                         onRefreshAccountsAction={refreshAccounts}
                                     />
@@ -469,11 +378,6 @@ function DashboardContent() {
                         {/* Existing content or other cards can go below */}
                     </main>
                 </SidebarInset>
-
-                <SidebarRight
-                    dateCreatedFilterRange={dateCreatedFilterRange}
-                    setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-                />
             </ProtectedPageWrapper>
         </>
     );

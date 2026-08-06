@@ -5,9 +5,9 @@ import { useSearchParams } from "next/navigation";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
 
 import {
   Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage,
@@ -23,6 +23,7 @@ import {
 
 import { type DateRange } from "react-day-picker";
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 import {
   Laptop, Smartphone, Monitor, Globe, AlertCircle,
@@ -226,8 +227,7 @@ function SettingsContent() {
   const { userId, setUserId } = useUser();
   const queryUserId = searchParams?.get("id") ?? "";
 
-  const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] =
-    useState<DateRange | undefined>(undefined);
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
   const [securityAlerts, setSecurityAlerts] = useState<SecurityAlert[]>([]);
   const [userEmail, setUserEmail] = useState("");
@@ -340,33 +340,17 @@ function SettingsContent() {
 
       <SidebarInset>
         {/* Header */}
-        <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-gray-100">
-          <div className="flex flex-1 items-center gap-2 px-3">
-            <SidebarTrigger />
-            <Separator
-              orientation="vertical"
-              className="mr-2 data-[orientation=vertical]:h-4"
-            />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                    Security
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-
-          {securityAlerts.length > 0 && (
-            <div className="pr-4">
+        <GlobalTopBar
+          title="Security"
+          rightExtra={
+            securityAlerts.length > 0 ? (
               <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest bg-red-600 text-white px-2.5 py-1">
                 <ShieldAlert className="w-3 h-3" />
                 {securityAlerts.length} Alert{securityAlerts.length !== 1 ? "s" : ""}
               </span>
-            </div>
-          )}
-        </header>
+            ) : undefined
+          }
+        />
 
         {/* Content */}
         <div className="flex flex-col gap-5 p-5 w-full mx-auto">
@@ -498,11 +482,6 @@ function SettingsContent() {
           </SectionCard>
         </div>
       </SidebarInset>
-
-      <SidebarRight
-        dateCreatedFilterRange={dateCreatedFilterRange}
-        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-      />
     </ProtectedPageWrapper>
   );
 }
