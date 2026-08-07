@@ -3,7 +3,8 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, ChevronsUpDown, LogOut, Loader2 } from "lucide-react";
+import { BadgeCheck, ChevronsUpDown, LogOut, Loader2, MessageCircle } from "lucide-react";
+import { VIBER_COLOR } from "@/utils/viber";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -182,6 +183,13 @@ export function NavUserTopbar({ user, userId }: NavUserTopbarProps) {
               <Link href="/auth/profile">
                 <BadgeCheck size={15} className="mr-2 text-indigo-400" />
                 <span className="text-xs font-medium">Account</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className="rounded-lg cursor-pointer mx-1 px-3 py-2.5 transition-colors"
+              style={{ ["--tw-ring-color" as string]: VIBER_COLOR }}>
+              <Link href="/general/viber-setup">
+                <MessageCircle size={15} className="mr-2" style={{ color: VIBER_COLOR }} />
+                <span className="text-xs font-medium" style={{ color: VIBER_COLOR }}>My Viber Setup</span>
               </Link>
             </DropdownMenuItem>
           </DropdownMenuGroup>

@@ -11,6 +11,8 @@ import type { ConversationListItem, ChatUser, PinnedMessage, Message } from "@/t
 import { ChatAvatar } from "./chat-avatar";
 import { fetchPinnedMessages } from "@/lib/supabase-chat";
 import { formatInTimeZone } from "date-fns-tz";
+import { ViberButton, ViberDropdown } from "@/components/viber-button";
+import { extractFirstPhone } from "@/utils/viber";
 
 const TZ = "Asia/Manila";
 type PanelTab = "info" | "members" | "media" | "settings";
@@ -47,6 +49,19 @@ export function ChatInfoPanel({ conversation, currentUserId, onClose, onConvUpda
   const [addSearch, setAddSearch] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+
+  // Viber: agent's own viber number for templates
+  const [agentViber, setAgentViber] = useState("");
+  const [agentName, setAgentName] = useState("");
+
+  // Phone number for Viber — from linked account or DM contact
+  const contactPhone = extractFirstPhone(
+    (conversation.other_participant as { ContactNumber?: string; contact_number?: string } | undefined)
+      ?.ContactNumber ||
+    (conversation.other_participant as { ContactNumber?: string; contact_number?: string } | undefined)
+      ?.contact_number ||
+    null
+  );
 
   const isGroup = conversation.conversation_type === "group";
   const myParticipant = participants.find((p) => p.user_id === currentUserId);
@@ -104,7 +119,17 @@ export function ChatInfoPanel({ conversation, currentUserId, onClose, onConvUpda
   useEffect(() => {
     loadParticipants();
     loadAllUsers();
-  }, [loadParticipants, loadAllUsers]);
+    // Load current user's viber number for templates
+    fetch(`/api/viber/number?user_id=${encodeURIComponent(currentUserId)}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.viber_number) setAgentViber(d.viber_number); })
+      .catch(() => {});
+    // Load current user's name for templates
+    fetch(`/api/user?id=${encodeURIComponent(currentUserId)}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.Firstname) setAgentName(`${d.Firstname || ""} ${d.Lastname || ""}`.trim()); })
+      .catch(() => {});
+  }, [loadParticipants, loadAllUsers, currentUserId]);
 
   useEffect(() => {
     if (tab === "info") loadPinned();
@@ -225,6 +250,24 @@ export function ChatInfoPanel({ conversation, currentUserId, onClose, onConvUpda
           ? <p className="text-xs text-gray-400">{participants.length} member{participants.length !== 1 ? "s" : ""}</p>
           : otherUser && <p className="text-xs text-gray-400">{(otherUser as { Position?: string }).Position || ""}</p>
         }
+
+        {/* Viber buttons — only show if there's a valid phone */}
+        {contactPhone && (
+          <div className="w-full mt-2 space-y-2">
+            <ViberButton
+              phone={contactPhone}
+              label="Open Viber Chat"
+              variant="full"
+              size="sm"
+            />
+            <ViberDropdown
+              phone={contactPhone}
+              clientName={displayName}
+              agentName={agentName}
+              agentViber={agentViber}
+            />
+          </div>
+        )}
       </div>
 
       {/* Tab strip */}
