@@ -856,7 +856,7 @@ function DashboardContent() {
     managername: userDetails.managername,
     target_quota: userDetails.target_quota,
     dateCreatedFilterRange,
-    setDateCreatedFilterRangeAction,
+    setDateCreatedFilterRangeAction: setDateCreatedFilterRangeAction as any,
     managerDetails: userDetails.managerDetails ?? null,
     tsmDetails: userDetails.tsmDetails ?? null,
     signature: userDetails.signature,
