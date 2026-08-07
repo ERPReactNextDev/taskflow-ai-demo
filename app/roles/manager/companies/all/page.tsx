@@ -1948,11 +1948,11 @@ function DashboardContent() {
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
                         📅 {dateCreatedFilterRange.from.toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
                         {dateCreatedFilterRange.to && dateCreatedFilterRange.to !== dateCreatedFilterRange.from && ` to ${dateCreatedFilterRange.to.toLocaleDateString("en-PH", { month: "short", day: "numeric" })}`}
-                        <button onClick={() => setDateRange(undefined)} className="text-amber-400 hover:text-amber-700"><X size={10} /></button>
+                        <button onClick={() => setDateCreatedFilterRangeAction(undefined)} className="text-amber-400 hover:text-amber-700"><X size={10} /></button>
                       </span>
                     )}
                     <button
-                      onClick={() => { setActivityFilter("all"); setTypeFilter(null); setDateRange(undefined); }}
+                      onClick={() => { setActivityFilter("all"); setTypeFilter(null); setDateCreatedFilterRangeAction(undefined); }}
                       className="text-[11px] text-gray-400 hover:text-gray-600 underline"
                     >
                       Clear all
