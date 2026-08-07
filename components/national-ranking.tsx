@@ -233,17 +233,23 @@ export function NationalRanking({
     [tsmRank]
   );
 
-  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) =>
-    setDateCreatedFilterRangeAction([
-      e.target.value ? new Date(e.target.value) : null,
-      endDate,
-    ]);
+  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newFrom = e.target.value ? new Date(e.target.value) : undefined;
+    setDateCreatedFilterRangeAction(
+      newFrom || endDate
+        ? { from: newFrom ?? undefined, to: endDate ?? undefined }
+        : undefined
+    );
+  };
 
-  const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) =>
-    setDateCreatedFilterRangeAction([
-      startDate,
-      e.target.value ? new Date(e.target.value) : null,
-    ]);
+  const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTo = e.target.value ? new Date(e.target.value) : undefined;
+    setDateCreatedFilterRangeAction(
+      startDate || newTo
+        ? { from: startDate ?? undefined, to: newTo ?? undefined }
+        : undefined
+    );
+  };
 
   const renderTable = (data: RankedItem[], overallTotal: number) => (
     <>
