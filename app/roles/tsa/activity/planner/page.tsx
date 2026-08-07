@@ -39,8 +39,14 @@ import ProtectedPageWrapper from "@/components/protected-page-wrapper";
 import {
   PlusCircle, Loader2, Calendar, CheckCircle,
   AlertCircle, ChevronDown, ChevronRight, Bell, CheckCircle2,
-  XCircle, Trash2, AlertTriangle, Search,
+  XCircle, Trash2, AlertTriangle, Search, Clock, MessageSquare,
 } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogFooter, DialogDescription,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -93,6 +99,23 @@ interface SPFNotification {
   date_updated?: string;
   status: string;
   referenceid: string;
+}
+
+// ── Quotation Aging Reminder (agent view) ─────────────────────────────────────
+interface AgingReminder {
+  id: number;
+  quotation_number: string;
+  company_name: string;
+  quotation_amount: number;
+  tsm_approval_date: string;
+  aging_days: number;
+  daysAging: number;
+  daysRemaining: number;
+  agingStatus: "ON_TRACK" | "DUE_SOON" | "OVERDUE" | "FOLLOWED_UP" | "CONVERTED" | "DISMISSED";
+  reminder_note?: string;
+  follow_up_date?: string;
+  last_follow_up_note?: string;
+  tsm_name: string;
 }
 
 const REVISED_QUOTATION_ROUTE = "/roles/tsa/activity/revised-quotation";
@@ -465,6 +488,14 @@ function DashboardContent() {
 
   const [clearCacheOpen, setClearCacheOpen] = useState(false);
 
+  // ── Quotation Aging Reminders ─────────────────────────────────────────────
+  const [agingReminders,  setAgingReminders]  = useState<AgingReminder[]>([]);
+  const [loadingAging,    setLoadingAging]    = useState(false);
+  const [fuDialogOpen,    setFuDialogOpen]    = useState(false);
+  const [selectedAging,   setSelectedAging]   = useState<AgingReminder | null>(null);
+  const [fuNote,          setFuNote]          = useState("");
+  const [savingFu,        setSavingFu]        = useState(false);
+
   // ─── No Activity Accounts State ────────────────────────────────────────────
   const [lastTouchMap, setLastTouchMap] = useState<Record<string, string>>({});
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -760,6 +791,60 @@ function DashboardContent() {
   const remainingItemsCount = (allNoTouchForCount.length - displayedNoActivityCount) + (allLastTouchForCount.length - displayedLastTouchCount);
   const hasMoreNoActivity = remainingItemsCount > 0;
 
+  // ── Fetch Aging Reminders for current agent ──────────────────────────────
+  const fetchAgingReminders = useCallback(async () => {
+    if (!userDetails.referenceid) return;
+    setLoadingAging(true);
+    try {
+      const res  = await fetch(`/api/quotation-aging/agent?referenceid=${encodeURIComponent(userDetails.referenceid)}`);
+      if (!res.ok) throw new Error("Failed to load reminders");
+      const json = await res.json();
+      setAgingReminders(json.data || []);
+    } catch (err) {
+      console.error("fetchAgingReminders error:", err);
+    } finally {
+      setLoadingAging(false);
+    }
+  }, [userDetails.referenceid]);
+
+  const submitFollowUp = async () => {
+    if (!selectedAging || !fuNote.trim()) return;
+    setSavingFu(true);
+    try {
+      await fetch("/api/quotation-aging", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedAging.id,
+          status: "FOLLOWED_UP",
+          last_follow_up_date: new Date().toISOString(),
+          last_follow_up_note: fuNote.trim(),
+        }),
+      });
+      setFuDialogOpen(false);
+      setFuNote("");
+      fetchAgingReminders();
+    } catch (err) {
+      console.error("submitFollowUp error:", err);
+    } finally {
+      setSavingFu(false);
+    }
+  };
+
+  useEffect(() => { fetchAgingReminders(); }, [fetchAgingReminders]);
+
+  useEffect(() => {
+    if (!userDetails.referenceid) return;
+    const ch = supabase
+      .channel(`aging-agent-${userDetails.referenceid}`)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "quotation_aging", filter: `referenceid=eq.${userDetails.referenceid}` },
+        () => fetchAgingReminders()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [userDetails.referenceid, fetchAgingReminders]);
+
   // ── Shared props builder ──────────────────────────────────────────────────
   const sharedProps = {
     referenceid: userDetails.referenceid,
@@ -781,6 +866,46 @@ function DashboardContent() {
   return (
     <>
       <ClearCacheDialog open={clearCacheOpen} onClose={() => setClearCacheOpen(false)} onConfirm={handleClearCache} />
+
+      {/* ── Quotation Aging Follow-Up Dialog ────────────────────────────── */}
+      <Dialog open={fuDialogOpen} onOpenChange={setFuDialogOpen}>
+        <DialogContent className="rounded-none text-xs max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold uppercase">Send Update to TSM</DialogTitle>
+            <DialogDescription>
+              {selectedAging?.quotation_number} · {selectedAging?.company_name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label className="text-[10px] font-bold uppercase">
+              Status / Follow-up Details <span className="text-red-500">*</span>
+            </Label>
+            <Textarea
+              rows={4}
+              placeholder="e.g. Client requested revised quote / waiting for procurement approval / will follow up again on Monday..."
+              value={fuNote}
+              onChange={(e) => setFuNote(e.target.value)}
+              className="rounded-none text-xs resize-none"
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setFuDialogOpen(false)} className="rounded-none text-xs h-8">
+              Cancel
+            </Button>
+            <Button
+              disabled={savingFu || !fuNote.trim()}
+              onClick={submitFollowUp}
+              className="rounded-none h-8 text-xs bg-zinc-900 hover:bg-zinc-800 text-white"
+            >
+              {savingFu
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                : <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+              }
+              Submit Update
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ProtectedPageWrapper>
         <SidebarLeft />
@@ -829,9 +954,99 @@ function DashboardContent() {
               </div>
             ) : (
               <>
-                {/* ─── No Activity Sidebar ───────────────────────────────────── */}
-                {filteredNoActivityAccounts.length > 0 && (
+                {/* ─── No Activity + Aging Sidebar ──────────────────────── */}
+                {(filteredNoActivityAccounts.length > 0 || agingReminders.length > 0 || loadingAging) && (
                   <div className="w-[280px] shrink-0 flex flex-col border-r pr-4 overflow-hidden">
+
+                    {/* ⏳ Quotation Aging Reminders */}
+                    {(agingReminders.length > 0 || loadingAging) && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <h3 className="text-xs font-bold text-amber-700 uppercase tracking-wide">Quotation Aging</h3>
+                          <Badge className="text-[9px] bg-amber-100 text-amber-700 border-amber-200">{agingReminders.length}</Badge>
+                        </div>
+
+                        {loadingAging ? (
+                          <div className="flex items-center gap-1.5 py-2 text-[11px] text-gray-400">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {[...agingReminders]
+                              .sort((a, b) => {
+                                const order: Record<string, number> = { OVERDUE: 1, DUE_SOON: 2, ON_TRACK: 3, FOLLOWED_UP: 4, CONVERTED: 5, DISMISSED: 6 };
+                                return (order[a.agingStatus] ?? 99) - (order[b.agingStatus] ?? 99);
+                              })
+                              .map((item) => {
+                                const dimmed = item.agingStatus === "CONVERTED" || item.agingStatus === "DISMISSED";
+                                const cardBg: Record<string, string> = {
+                                  OVERDUE:    "bg-red-50 border-red-200",
+                                  DUE_SOON:   "bg-amber-50 border-amber-200",
+                                  ON_TRACK:   "bg-green-50 border-green-200",
+                                  FOLLOWED_UP:"bg-blue-50 border-blue-200",
+                                  CONVERTED:  "bg-emerald-50 border-emerald-200",
+                                  DISMISSED:  "bg-gray-50 border-gray-200",
+                                };
+                                const badgeCls: Record<string, string> = {
+                                  OVERDUE:    "bg-red-100 text-red-700",
+                                  DUE_SOON:   "bg-amber-100 text-amber-700",
+                                  ON_TRACK:   "bg-green-100 text-green-700",
+                                  FOLLOWED_UP:"bg-blue-100 text-blue-700",
+                                  CONVERTED:  "bg-emerald-100 text-emerald-700",
+                                  DISMISSED:  "bg-gray-100 text-gray-500",
+                                };
+                                const statusLabel: Record<string, string> = {
+                                  OVERDUE: "OVERDUE", DUE_SOON: "DUE SOON", ON_TRACK: "ON TRACK",
+                                  FOLLOWED_UP: "FOLLOWED UP", CONVERTED: "CONVERTED", DISMISSED: "DISMISSED",
+                                };
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className={`p-2 border rounded-none text-xs ${cardBg[item.agingStatus] ?? "bg-white border-gray-200"} ${dimmed ? "opacity-50" : ""}`}
+                                  >
+                                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                                      <span className="font-mono font-bold uppercase text-[10px] truncate flex-1">{item.quotation_number}</span>
+                                      <Badge className={`text-[8px] shrink-0 ${badgeCls[item.agingStatus] ?? ""}`}>
+                                        {statusLabel[item.agingStatus] ?? item.agingStatus}
+                                      </Badge>
+                                    </div>
+                                    <div className="font-semibold truncate text-[11px]">{item.company_name}</div>
+                                    <div className="flex items-center justify-between mt-1">
+                                      <span className={`text-sm font-black tabular-nums ${
+                                        item.agingStatus === "OVERDUE"  ? "text-red-600" :
+                                        item.agingStatus === "DUE_SOON" ? "text-amber-600" :
+                                        "text-green-700"
+                                      }`}>{item.daysAging}d</span>
+                                      <span className="text-[9px] text-gray-400">of {item.aging_days}d</span>
+                                      {!dimmed && (
+                                        <button
+                                          onClick={() => { setSelectedAging(item); setFuNote(""); setFuDialogOpen(true); }}
+                                          className="text-[9px] font-bold px-1.5 py-0.5 bg-zinc-900 hover:bg-zinc-700 text-white rounded-none flex items-center gap-1"
+                                        >
+                                          <MessageSquare className="w-2.5 h-2.5" /> Update
+                                        </button>
+                                      )}
+                                    </div>
+                                    {item.last_follow_up_note && (
+                                      <div className="text-[9px] text-blue-600 mt-1 truncate">💬 {item.last_follow_up_note}</div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        )}
+
+                        {/* Divider between aging and no-activity sections */}
+                        {filteredNoActivityAccounts.length > 0 && (
+                          <div className="flex items-center gap-2 my-3">
+                            <div className="flex-1 h-px bg-gray-200" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* No Activity section — only if accounts exist */}
+                    {filteredNoActivityAccounts.length > 0 && (<>
                     <div className="flex items-center gap-2 mb-3">
                       <AlertTriangle className="w-4 h-4 text-amber-600" />
                       <h3 className="text-xs font-bold text-amber-700">Activities of Client Last Touch or No Activity</h3>
@@ -973,12 +1188,14 @@ function DashboardContent() {
                           )}
                         </>
                       )}
-                    </div>
+                    </div>{/* end scrollable list */}
+                    </>)}{/* end filteredNoActivityAccounts conditional */}
                   </div>
-                )}
+                )}{/* end sidebar */}
 
                 {/* ─── Main Cards Grid ─────────────────────────────────────── */}
                 <div className="flex-1 overflow-y-auto">
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                     {/* ── New Task (full width) ── */}
@@ -1069,8 +1286,8 @@ function DashboardContent() {
                       <Overdue {...sharedProps} tsm={userDetails.tsm} onCountChange={setOverdueCount} />
                     </PlannerCard>
 
-                  </div>
-                </div>
+                  </div>{/* end grid */}
+                </div>{/* end flex-1 overflow-y-auto */}
               </>
             )}
           </main>
