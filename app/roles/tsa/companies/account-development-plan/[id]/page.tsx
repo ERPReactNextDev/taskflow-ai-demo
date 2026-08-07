@@ -4,9 +4,10 @@ import { useEffect, useState, Suspense, useMemo } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 import { type DateRange } from "react-day-picker";
 
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbLink, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
@@ -131,7 +132,6 @@ function DetailContent() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] = useState<DateRange | undefined>(undefined);
 
   // Helper function to capitalize first letter
   const capitalizeFirstLetter = (text: string): string => {
@@ -464,27 +464,8 @@ function DetailContent() {
       <ProtectedPageWrapper>
         <SidebarLeft />
         <SidebarInset className="overflow-hidden">
-          <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b z-10">
-            <div className="flex flex-1 items-center gap-2 px-3">
-              <SidebarTrigger />
-              <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbLink href="/roles/tsa/companies/account-development-plan" className="text-xs font-semibold uppercase tracking-wide">
-                      Account Development Plan
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                      {isNew ? "New" : planId}
-                    </BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-            </div>
-          </header>
+
+          <GlobalTopBar title={isNew ? "New Account Plan" : "Account Plan"} />
 
           <main className="flex flex-1 overflow-hidden">
             {loading ? (
@@ -1335,11 +1316,6 @@ function DetailContent() {
             )}
           </main>
         </SidebarInset>
-
-        <SidebarRight 
-          dateCreatedFilterRange={dateCreatedFilterRange}
-          setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-        />
       </ProtectedPageWrapper>
     </>
   );

@@ -17,9 +17,10 @@ import {
 } from "recharts";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
@@ -1013,6 +1014,7 @@ function HistoryDialog({ open, onClose, companyName, loading, records, account, 
 function DashboardContent() {
   const searchParams = useSearchParams();
   const { userId, setUserId } = useUser();
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
   const [userDetails, setUserDetails] = useState<UserDetails>({
     referenceid: "", tsm: "", manager: "",
@@ -1046,7 +1048,6 @@ function DashboardContent() {
   const [historyAccount, setHistoryAccount] = useState<Account | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyRecords, setHistoryRecords] = useState<Activity[]>([]);
-  const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] = useState<DateRange | undefined>(undefined);
   const [tsms, setTsms] = useState<TSM[]>([]);
   const [drillLevel, setDrillLevel] = useState<"tsms" | "agents" | "accounts">("tsms");
   const [selectedTsmId, setSelectedTsmId] = useState<string | null>(null);
@@ -1744,21 +1745,8 @@ function DashboardContent() {
       <ProtectedPageWrapper>
         <SidebarLeft />
         <SidebarInset className="overflow-hidden">
-          <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b">
-            <div className="flex flex-1 items-center gap-2 px-3">
-              <SidebarTrigger />
-              <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                      My Account Management
-                    </BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-            </div>
-          </header>
+
+          <GlobalTopBar title="My Account Management" />
 
           <main className="flex flex-1 flex-col gap-4 p-4 overflow-auto">
             <HistoryDialog open={historyOpen} onClose={() => setHistoryOpen(false)} companyName={historyCompany} loading={loadingHistory} records={historyRecords} account={historyAccount} onBackToSearch={historyFromSearch ? () => setCompanySearchOpen(true) : undefined} />
@@ -1960,11 +1948,11 @@ function DashboardContent() {
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
                         📅 {dateCreatedFilterRange.from.toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
                         {dateCreatedFilterRange.to && dateCreatedFilterRange.to !== dateCreatedFilterRange.from && ` to ${dateCreatedFilterRange.to.toLocaleDateString("en-PH", { month: "short", day: "numeric" })}`}
-                        <button onClick={() => setDateCreatedFilterRangeAction(undefined)} className="text-amber-400 hover:text-amber-700"><X size={10} /></button>
+                        <button onClick={() => setDateRange(undefined)} className="text-amber-400 hover:text-amber-700"><X size={10} /></button>
                       </span>
                     )}
                     <button
-                      onClick={() => { setActivityFilter("all"); setTypeFilter(null); setDateCreatedFilterRangeAction(undefined); }}
+                      onClick={() => { setActivityFilter("all"); setTypeFilter(null); setDateRange(undefined); }}
                       className="text-[11px] text-gray-400 hover:text-gray-600 underline"
                     >
                       Clear all
@@ -2259,10 +2247,6 @@ function DashboardContent() {
             )}
           </main>
         </SidebarInset>
-        <SidebarRight
-          dateCreatedFilterRange={dateCreatedFilterRange}
-          setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-        />
       </ProtectedPageWrapper>
     </>
   );

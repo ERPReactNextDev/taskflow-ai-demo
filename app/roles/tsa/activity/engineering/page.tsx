@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -54,21 +55,8 @@ function EngineeringPortalContent() {
       <SidebarLeft />
       <SidebarInset className="flex flex-col h-screen overflow-hidden bg-white">
         {/* SHARED HEADER - No Right Sidebar Trigger */}
-        <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b px-3 z-20">
-          <div className="flex flex-1 items-center gap-2">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="font-black text-[#E33636] tracking-tighter uppercase">
-                    Engiconnect Protocol
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-        </header>
+
+        <GlobalTopBar title="Engiconnect Protocol" />
 
         {/* ENGICONNECT CORE PORTAL - FULL WIDTH WORKSPACE */}
         <main className="flex-1 relative bg-slate-50">

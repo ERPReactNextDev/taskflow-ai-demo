@@ -1,5 +1,6 @@
 "use client";
 
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {

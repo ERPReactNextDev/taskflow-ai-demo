@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, ChevronDown, ChevronRight, Users } from "lucide-react";
 import { UserProvider } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -81,43 +82,31 @@ function SoBreakdownContent() {
       <SidebarLeft />
       <SidebarInset className="overflow-hidden">
 
-        <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b z-10">
-          <div className="flex flex-1 items-center gap-2 px-3">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+        <GlobalTopBar
+          title="SO Breakdown — System-wide"
+          extra={
             <button onClick={() => router.back()} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors">
               <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
-            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                    SO Breakdown — System-wide
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-          <div className="flex items-center gap-3 px-3">
-            {/* View toggle */}
-            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-              {(["total", "regular", "spf"] as const).map((v) => (
-                <button key={v} onClick={() => setView(v)}
-                  className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wide rounded-md transition-all ${
-                    view === v ? "bg-white text-gray-800 shadow-sm" : "text-gray-400 hover:text-gray-600"
-                  }`}
-                >
-                  {v === "spf" ? "SPF" : v}
-                </button>
-              ))}
+          }
+          rightExtra={
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                {(["total", "regular", "spf"] as const).map((v) => (
+                  <button key={v} onClick={() => setView(v)}
+                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wide rounded-md transition-all ${view === v ? "bg-white text-gray-800 shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
+                  >
+                    {v === "spf" ? "SPF" : v}
+                  </button>
+                ))}
+              </div>
+              <label className="text-xs text-gray-500 font-medium">Year:</label>
+              <select value={year} onChange={(e) => setYear(e.target.value)} className="h-7 text-xs border border-gray-200 rounded px-2 bg-white">
+                {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={String(y)}>{y}</option>)}
+              </select>
             </div>
-            <label className="text-xs text-gray-500 font-medium">Year:</label>
-            <select value={year} onChange={(e) => setYear(e.target.value)} className="h-7 text-xs border border-gray-200 rounded px-2 bg-white">
-              {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={String(y)}>{y}</option>)}
-            </select>
-          </div>
-        </header>
+          }
+        />
 
         <main className="flex flex-col gap-4 p-4 overflow-auto">
           <div className="flex items-center justify-between">

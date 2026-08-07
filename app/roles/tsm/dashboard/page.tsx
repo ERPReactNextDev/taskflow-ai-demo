@@ -1,4 +1,5 @@
 "use client";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 
 import React, { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -6,8 +7,8 @@ import { RefreshCw, Settings, X } from "lucide-react";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -125,24 +126,8 @@ function DashboardContent() {
   const todayStart = () => new Date(new Date().setHours(0, 0, 0, 0));
   const todayEnd = () => new Date(new Date().setHours(23, 59, 59, 999));
 
-  const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] =
-    React.useState<DateRange | undefined>({
-      from: todayStart(),
-      to: todayEnd(),
-    });
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
-  // When the user clears the date picker, reset back to today instead of undefined
-  useEffect(() => {
-    if (!dateCreatedFilterRange) {
-      setDateCreatedFilterRangeAction({
-        from: todayStart(),
-        to: todayEnd(),
-      });
-    }
-  }, [dateCreatedFilterRange]);
-
-  // ── Settings ────────────────────────────────────────────────────────────────
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [visibility, setVisibility] = useState<CardVisibility>(DEFAULT_VISIBILITY);
 
   useEffect(() => { setVisibility(loadVisibility()); }, []);
@@ -353,6 +338,7 @@ function DashboardContent() {
 
   // ── Refresh all ──────────────────────────────────────────────────────────────
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const handleRefreshAll = useCallback(async () => {
     if (isRefreshing) return;
@@ -380,39 +366,29 @@ function DashboardContent() {
       <SidebarInset className="overflow-hidden">
 
         {/* Header */}
-        <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b">
-          <div className="flex flex-1 items-center gap-2 px-3">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                    KPI Dashboard
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-          <div className="flex items-center gap-2 px-3">
-            <button
-              onClick={handleRefreshAll}
-              disabled={isRefreshing}
-              className="p-2 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
-              aria-label="Refresh dashboard"
-              title="Refresh all cards"
-            >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            </button>
-            <button
-              onClick={() => setSettingsOpen(true)}
-              className="p-2 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
-              aria-label="Dashboard settings"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-          </div>
-        </header>
+        <GlobalTopBar
+          title="KPI Dashboard"
+          rightExtra={
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleRefreshAll}
+                disabled={isRefreshing}
+                className="p-2 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Refresh dashboard"
+                title="Refresh all cards"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+              </button>
+              <button
+                onClick={() => setSettingsOpen(true)}
+                className="p-2 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+                aria-label="Dashboard settings"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            </div>
+          }
+        />
 
         {/* Settings panel */}
         {settingsOpen && (
@@ -619,11 +595,6 @@ function DashboardContent() {
         </div>
 
       </SidebarInset>
-
-      <SidebarRight
-        dateCreatedFilterRange={dateCreatedFilterRange}
-        setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-      />
     </ProtectedPageWrapper>
   );
 }

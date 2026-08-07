@@ -4,9 +4,10 @@ import { useEffect, useState, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -39,7 +40,6 @@ function DashboardContent() {
 
   const [loadingUser, setLoadingUser] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] = useState<DateRange | undefined>(undefined);
 
   const queryUserId = searchParams?.get("id") ?? "";
 
@@ -89,21 +89,8 @@ function DashboardContent() {
       <ProtectedPageWrapper>
         <SidebarLeft />
         <SidebarInset className="overflow-hidden">
-          <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b">
-            <div className="flex flex-1 items-center gap-2 px-3">
-              <SidebarTrigger />
-              <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                      Customer Database / Account Management Plan
-                    </BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-            </div>
-          </header>
+
+          <GlobalTopBar title="Customer Database / Account Management Plan" />
 
           <main className="flex flex-1 flex-col gap-4 p-4 overflow-auto">
             {loading ? (
@@ -143,11 +130,6 @@ function DashboardContent() {
             )}
           </main>
         </SidebarInset>
-
-        <SidebarRight 
-          dateCreatedFilterRange={dateCreatedFilterRange}
-          setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-        />
       </ProtectedPageWrapper>
     </>
   );

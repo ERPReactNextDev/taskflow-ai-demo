@@ -7,8 +7,8 @@ import { type DateRange } from "react-day-picker";
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
 import { supabase } from "@/utils/supabase";
 
 import {
@@ -18,7 +18,7 @@ import {
   Card, CardHeader, CardTitle, CardContent, CardDescription,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { sileo } from "sileo";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel,
@@ -35,6 +35,7 @@ import { Done } from "@/components/roles/tsa/activity/planner/done/done";
 import { Overdue } from "@/components/roles/tsa/activity/planner/overdue/overdue";
 import { UnifiedNotificationBellLazy } from "@/components/unified-notification-bell-lazy";
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 import {
   PlusCircle, Loader2, Calendar, CheckCircle,
@@ -471,8 +472,7 @@ function DashboardContent() {
   const [posts, setPosts] = useState<Account[]>([]);
   const [loadingUser, setLoadingUser] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] =
-    React.useState<DateRange | undefined>(undefined);
+  const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
   const [collapseState, setCollapseState] = useState({
     inProgress: true, scheduled: true, delivered: true,
@@ -910,37 +910,7 @@ function DashboardContent() {
       <ProtectedPageWrapper>
         <SidebarLeft />
         <SidebarInset className="overflow-hidden">
-          <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b">
-            <div className="flex flex-1 items-center gap-2 px-3">
-              <SidebarTrigger />
-              <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                      Activity Planners
-                    </BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-            </div>
-
-            <div className="flex items-center gap-2 px-3">
-              {/*<Button
-                variant="outline"
-                size="sm"
-                className="rounded-none text-xs"
-                onClick={() => window.location.href = `/roles/tsa/activity/planner/all?id=${userId}`}
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                View All
-              </Button>*/}
-
-              {userDetails.referenceid && (
-                <UnifiedNotificationBellLazy />
-              )}
-            </div>
-          </header>
+          <GlobalTopBar title="Activity Planners" />
 
           <main className="flex flex-1 gap-4 p-4 overflow-hidden">
             {loadingUser ? (
@@ -1292,11 +1262,6 @@ function DashboardContent() {
             )}
           </main>
         </SidebarInset>
-
-        <SidebarRight
-          dateCreatedFilterRange={dateCreatedFilterRange}
-          setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-        />
       </ProtectedPageWrapper>
     </>
   );

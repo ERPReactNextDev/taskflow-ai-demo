@@ -1,12 +1,12 @@
 "use client";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
 
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -17,6 +17,7 @@ import { FBTable } from "@/components/roles/tsa/reports/table/fb";
 
 import { type DateRange } from "react-day-picker";
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 interface Account {
     id: string;
@@ -55,9 +56,7 @@ function DashboardContent() {
     });
 
     const [loadingUser, setLoadingUser] = useState(true);
-    const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] = React.useState<
-        DateRange | undefined
-    >(undefined);
+    const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
     const queryUserId = searchParams?.get("id") ?? "";
 
@@ -136,19 +135,8 @@ function DashboardContent() {
             <ProtectedPageWrapper>
                 <SidebarLeft />
                 <SidebarInset className="overflow-hidden">
-                    <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b">
-                        <div className="flex flex-1 items-center gap-2 px-3">
-                            <SidebarTrigger />
-                            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-                            <Breadcrumb>
-                                <BreadcrumbList>
-                                    <BreadcrumbItem>
-                                        <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">Reports - FB Marketplace Summary</BreadcrumbPage>
-                                    </BreadcrumbItem>
-                                </BreadcrumbList>
-                            </Breadcrumb>
-                        </div>
-                    </header>
+
+                    <GlobalTopBar title="Reports - FB Marketplace Summary" />
 
                     <main className="flex flex-1 flex-col gap-4 p-4 overflow-auto">
                         <div>
@@ -156,15 +144,10 @@ function DashboardContent() {
                                 referenceid={userDetails.referenceid}
                                 target_quota={userDetails.target_quota}
                                 dateCreatedFilterRange={dateCreatedFilterRange}
-                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction} />
+                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any} />
                         </div>
                     </main>
                 </SidebarInset>
-
-                <SidebarRight
-                    dateCreatedFilterRange={dateCreatedFilterRange}
-                    setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-                />
             </ProtectedPageWrapper>
         </>
     );

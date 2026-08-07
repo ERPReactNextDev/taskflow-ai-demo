@@ -1,12 +1,13 @@
 "use client";
+import { useGlobalDate } from "@/contexts/GlobalDateContext";
 
 import React, { useEffect, useState, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
-import { SidebarRight } from "@/components/sidebar-right";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -59,9 +60,7 @@ function DashboardContent() {
     const [loadingUser, setLoadingUser] = useState(true);
     const [loadingAccounts, setLoadingAccounts] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [dateCreatedFilterRange, setDateCreatedFilterRangeAction] = React.useState<
-        DateRange | undefined
-    >(undefined);
+    const { dateRange: dateCreatedFilterRange, setDateRange: setDateCreatedFilterRangeAction } = useGlobalDate();
 
     // NEW: State to toggle completed card visibility
     const [showCompleted, setShowCompleted] = useState(false);
@@ -155,19 +154,8 @@ function DashboardContent() {
             <ProtectedPageWrapper>
                 <SidebarLeft />
                 <SidebarInset className="overflow-hidden">
-                    <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b">
-                        <div className="flex flex-1 items-center gap-2 px-3">
-                            <SidebarTrigger />
-                            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-                            <Breadcrumb>
-                                <BreadcrumbList>
-                                    <BreadcrumbItem>
-                                        <BreadcrumbPage className="line-clamp-1">Daily Activity Logs</BreadcrumbPage>
-                                    </BreadcrumbItem>
-                                </BreadcrumbList>
-                            </Breadcrumb>
-                        </div>
-                    </header>
+
+                    <GlobalTopBar title="Daily Activity Logs" />
 
                     <main className="flex flex-1 flex-col gap-4 p-4 overflow-auto">
                         <div>
@@ -175,15 +163,10 @@ function DashboardContent() {
                                 referenceid={userDetails.referenceid}
                                 target_quota={userDetails.target_quota}
                                 dateCreatedFilterRange={dateCreatedFilterRange}
-                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction} />
+                                setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any} />
                         </div>
                     </main>
                 </SidebarInset>
-
-                <SidebarRight
-                    dateCreatedFilterRange={dateCreatedFilterRange}
-                    setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
-                />
             </ProtectedPageWrapper>
         </>
     );

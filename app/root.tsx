@@ -22,6 +22,8 @@ import { MaintenanceDialog } from "@/components/popup/maintenance";
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { QuotationNotificationProvider } from "@/contexts/QuotationNotificationContext";
+import { GlobalDateProvider } from "@/contexts/GlobalDateContext";
+import { ActiveModuleProvider } from "@/contexts/ActiveModuleContext";
 
 // ─── Dynamic Page Titles ──────────────────────────────────────────────────────
 
@@ -154,11 +156,15 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
 export default function RootLayoutClient({ children }: { children: React.ReactNode }) {
   return (
     <UserProvider>
-      <NotificationProvider>
-        <QuotationNotificationProvider>
-          <LayoutContent>{children}</LayoutContent>
-        </QuotationNotificationProvider>
-      </NotificationProvider>
+      <GlobalDateProvider>
+        <ActiveModuleProvider>
+          <NotificationProvider>
+            <QuotationNotificationProvider>
+              <LayoutContent>{children}</LayoutContent>
+            </QuotationNotificationProvider>
+          </NotificationProvider>
+        </ActiveModuleProvider>
+      </GlobalDateProvider>
     </UserProvider>
   );
 }

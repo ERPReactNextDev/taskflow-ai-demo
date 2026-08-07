@@ -623,7 +623,7 @@ export function AgentList({
                             agents={agents}
                             selectedAgent={selectedAgent}
                             dateCreatedFilterRange={dateCreatedFilterRange}
-                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                         />
 
                         {/* TOTAL DATABASE + SCHEDULED */}
@@ -759,21 +759,21 @@ export function AgentList({
                             history={filteredHistory}
                             agents={agents}
                             dateCreatedFilterRange={dateCreatedFilterRange}
-                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                         />
 
                         <QuotationTableCard
                             history={filteredHistory}
                             agents={agents}
                             dateCreatedFilterRange={dateCreatedFilterRange}
-                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                         />
 
                         <SalesOrderTableCard
                             history={filteredHistory}
                             agents={agents}
                             dateCreatedFilterRange={dateCreatedFilterRange}
-                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction}
+                            setDateCreatedFilterRangeAction={setDateCreatedFilterRangeAction as any}
                         />
 
                         <OutboundCard history={filteredHistory} agents={agents} />

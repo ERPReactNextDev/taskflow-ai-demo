@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
 import {
   Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
@@ -13,6 +13,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
+import { GlobalTopBar } from "@/components/global-top-bar";
 import { HeadphonesIcon, Send, MessageSquare, BookOpen, AlertCircle, ChevronRight, Loader2, ChevronDown, RefreshCw, ArrowLeft, Paperclip, FileText, X } from "lucide-react";
 import KB, { getKnowledge } from "@/components/support/knowledge-base";
 import { supabase } from "@/utils/supabase";
@@ -744,20 +745,7 @@ function SupportContent() {
     <ProtectedPageWrapper>
       <SidebarLeft />
       <SidebarInset>
-        {/* Header */}
-        <header className="bg-background sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b">
-          <div className="flex flex-1 items-center gap-2 px-3">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">Support</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-        </header>
+        <GlobalTopBar title="Support" />
 
         {/* ── ROOT 3-col container: fixed height, no overflow ── */}
         <div className="flex overflow-hidden" style={{ height: "calc(100vh - 3.5rem)" }}>

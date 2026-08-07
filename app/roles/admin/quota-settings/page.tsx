@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, ChevronDown, ChevronRight, Users } from "lucide-react";
 import { UserProvider } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import { SidebarLeft } from "@/components/sidebar-left";
+import { SmartSidebarLeft as SidebarLeft } from "@/components/smart-sidebar-left";
+import { GlobalTopBar } from "@/components/global-top-bar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -150,40 +151,22 @@ function QuotaSettingsContent() {
       <SidebarLeft />
       <SidebarInset className="overflow-hidden">
 
-        <header className="bg-background sticky top-0 flex h-14 shrink-0 items-center gap-2 border-b z-10">
-          <div className="flex flex-1 items-center gap-2 px-3">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <button
-              onClick={() => router.back()}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-            >
+        <GlobalTopBar
+          title="Admin Quota Settings"
+          extra={
+            <button onClick={() => router.back()} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors">
               <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
-            <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-xs font-semibold uppercase tracking-wide">
-                    Admin Quota Settings
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-          <div className="flex items-center gap-2 px-3">
-            <label className="text-xs text-gray-500 font-medium">Year:</label>
-            <select
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              className="h-7 text-xs border border-gray-200 rounded px-2 bg-white"
-            >
-              {[2024, 2025, 2026, 2027].map((y) => (
-                <option key={y} value={String(y)}>{y}</option>
-              ))}
-            </select>
-          </div>
-        </header>
+          }
+          rightExtra={
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-500 font-medium">Year:</label>
+              <select value={year} onChange={(e) => setYear(e.target.value)} className="h-7 text-xs border border-gray-200 rounded px-2 bg-white">
+                {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={String(y)}>{y}</option>)}
+              </select>
+            </div>
+          }
+        />
 
         <main className="overflow-auto p-4">
           <div className="flex flex-col gap-4">
