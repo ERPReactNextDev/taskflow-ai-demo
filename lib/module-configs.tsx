@@ -10,6 +10,7 @@ import {
   Compass, Mail, ShoppingCart, XCircle, File, Phone,
   ClipboardPenLine, Leaf, ShoppingBag, PhoneCall, ShieldIcon,
   Briefcase, TrendingUp, GitGraph, UserCheck, Layers,
+  MessageSquare,
 } from "lucide-react";
 import { ModuleSidebarItem } from "@/components/module-sidebar";
 import { LucideIcon } from "lucide-react";
@@ -32,8 +33,20 @@ export const CLIENT_MEETINGS_CONFIG: ModuleConfig = {
   moduleIcon: CalendarClock,
   storageKey: "sidebar_client_meetings",
   itemsByRole: {
-    // All roles: single-page, no submenus
-    tsa: [], tsm: [], manager: [], admin: [], csr: [], accounting: [],
+    tsa: [
+      { label: "My Meetings",   url: "/roles/tsa/activity/meeting",  icon: CalendarClock },
+    ],
+    tsm: [
+      { label: "Team Meetings", url: "/roles/tsm/activity/meeting",  icon: CalendarClock },
+    ],
+    manager: [
+      { label: "Team Meetings", url: "/roles/manager/activity/meeting", icon: CalendarClock },
+    ],
+    admin: [
+      { label: "All Meetings",  url: "/roles/admin/activity/meeting",   icon: CalendarClock },
+    ],
+    csr:        [],
+    accounting: [],
   },
 };
 
@@ -45,7 +58,12 @@ export const FIELD_ATTENDANCE_CONFIG: ModuleConfig = {
   moduleIcon: Clock,
   storageKey: "sidebar_field_attendance",
   itemsByRole: {
-    tsa: [], tsm: [], manager: [], admin: [], csr: [], accounting: [],
+    tsa:        [{ label: "My Attendance Log", url: "/general/acculog", icon: Clock }],
+    tsm:        [{ label: "Team Attendance",   url: "/general/acculog", icon: Clock }],
+    manager:    [{ label: "Team Attendance",   url: "/general/acculog", icon: Clock }],
+    admin:      [{ label: "All Attendance",    url: "/general/acculog", icon: Clock }],
+    csr:        [],
+    accounting: [],
   },
 };
 
@@ -215,6 +233,8 @@ export const SALES_REPORTS_CONFIG: ModuleConfig = {
       { label: "Special Pricing",         url: "/roles/tsa/reports/spf",        icon: ClipboardPenLine },
       { label: "New Client Acquisition",  url: "/roles/tsa/reports/ncs",        icon: Leaf },
       { label: "Marketplace Leads",       url: "/roles/tsa/reports/fb",         icon: ShoppingBag },
+      { label: "Meeting Activity",        url: "/roles/tsa/reports/meetings",   icon: CalendarClock },
+      { label: "Field Attendance",        url: "/roles/tsa/reports/attendance",  icon: Clock },
       { label: "Calls to Quote",          url: "/roles/tsa/conversion/calls-to-quote", icon: PhoneCall },
       { label: "Quote to SO",             url: "/roles/tsa/conversion/quote-to-so",   icon: GitGraph },
       { label: "SO to SI",                url: "/roles/tsa/conversion/so-to-si",      icon: GitGraph },
@@ -230,6 +250,7 @@ export const SALES_REPORTS_CONFIG: ModuleConfig = {
       { label: "New Client Acquisition",  url: "/roles/tsm/reports/ncs",        icon: Leaf },
       { label: "Marketplace Leads",       url: "/roles/tsm/reports/fb",         icon: ShoppingBag },
       { label: "Account Sales",           url: "/roles/tsm/reports/am",         icon: BarChart2 },
+      { label: "Field Attendance",        url: "/roles/tsm/reports/attendance",  icon: Clock },
       { label: "Calls to Quote",          url: "/roles/tsm/conversion/calls-to-quote", icon: PhoneCall },
       { label: "Quote to SO",             url: "/roles/tsm/conversion/quote-to-so",   icon: GitGraph },
       { label: "SO to SI",                url: "/roles/tsm/conversion/so-to-si",      icon: GitGraph },
@@ -246,6 +267,7 @@ export const SALES_REPORTS_CONFIG: ModuleConfig = {
       { label: "Special Pricing",         url: "/roles/manager/reports/spf",        icon: ClipboardPenLine },
       { label: "New Client Acquisition",  url: "/roles/manager/reports/ncs",        icon: Leaf },
       { label: "Account Sales",           url: "/roles/manager/reports/am",         icon: BarChart2 },
+      { label: "Field Attendance",        url: "/roles/manager/reports/attendance",  icon: Clock },
       { label: "Calls to Quote",          url: "/roles/manager/conversion/calls-to-quote", icon: PhoneCall },
       { label: "Quote to SO",             url: "/roles/manager/conversion/quote-to-so",   icon: GitGraph },
       { label: "SO to SI",                url: "/roles/manager/conversion/so-to-si",      icon: GitGraph },
@@ -260,6 +282,7 @@ export const SALES_REPORTS_CONFIG: ModuleConfig = {
       { label: "Outbound Summary",        url: "/roles/admin/reports/ob",           icon: PhoneCall },
       { label: "Special Pricing",         url: "/roles/admin/reports/spf",          icon: ClipboardPenLine },
       { label: "New Client Acquisition",  url: "/roles/admin/reports/ncs",          icon: Leaf },
+      { label: "Field Attendance",        url: "/roles/admin/reports/attendance",    icon: Clock },
       { label: "Calls to Quote",          url: "/roles/admin/conversion/calls-to-quote", icon: PhoneCall },
       { label: "Quote to SO",             url: "/roles/admin/conversion/quote-to-so",   icon: GitGraph },
       { label: "SO to SI",                url: "/roles/admin/conversion/so-to-si",      icon: GitGraph },
@@ -311,6 +334,23 @@ export const HELP_SUPPORT_CONFIG: ModuleConfig = {
   },
 };
 
+// ─── 11. Team & Client Chat ───────────────────────────────────────────────────
+
+export const TEAM_CLIENT_CHAT_CONFIG: ModuleConfig = {
+  key: "team-client-chat",
+  moduleTitle: "Team & Client Chat",
+  moduleIcon: MessageSquare,
+  storageKey: "sidebar_team_client_chat",
+  itemsByRole: {
+    tsa:        [],
+    tsm:        [],
+    manager:    [],
+    admin:      [],
+    csr:        [],
+    accounting: [],
+  },
+};
+
 // ─── All configs in order ─────────────────────────────────────────────────────
 
 export const ALL_MODULE_CONFIGS: ModuleConfig[] = [
@@ -324,6 +364,7 @@ export const ALL_MODULE_CONFIGS: ModuleConfig[] = [
   SALES_CALENDAR_CONFIG,
   SYSTEM_SETTINGS_CONFIG,
   HELP_SUPPORT_CONFIG,
+  TEAM_CLIENT_CHAT_CONFIG,
 ];
 
 // ─── Helper: get items for a role ─────────────────────────────────────────────

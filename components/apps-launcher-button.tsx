@@ -3,10 +3,12 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useActiveModule, ModuleKey } from "@/contexts/ActiveModuleContext";
+import { useUser } from "@/contexts/UserContext";
+import { useChatUnread } from "@/hooks/use-chat-unread";
 import {
   CalendarClock, Clock, LayoutDashboard, Trophy,
   Database, ClipboardList, BarChart2, CalendarDays,
-  Settings, LifeBuoy, X, Grid3X3,
+  Settings, LifeBuoy, X, Grid3X3, MessageSquare,
 } from "lucide-react";
 
 // ─── Module routes — /modules/* pages handle role-based redirect internally ──
@@ -22,6 +24,7 @@ const MODULE_ROUTES: Record<string, string> = {
   "sales-calendar":         "/modules/sales-calendar",
   "system-settings":        "/modules/system-settings",
   "help-support":           "/modules/help-support",
+  "team-client-chat":       "/modules/team-client-chat",
 };
 
 function resolveRoute(moduleKey: string): string {
@@ -43,6 +46,13 @@ const APPS = [
     description: "Monitor real-time field sales attendance and check-ins",
     icon: <Clock className="w-5 h-5 text-emerald-600" />,
     iconBg: "bg-emerald-50",
+  },
+  {
+    key: "team-client-chat",
+    name: "Team & Client Chat",
+    description: "Real-time messaging for team collaboration and client communication",
+    icon: <MessageSquare className="w-5 h-5 text-purple-600" />,
+    iconBg: "bg-purple-50",
   },
   {
     key: "sales-dashboard",
@@ -109,6 +119,8 @@ export function AppsLauncherButton() {
   const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const { setActiveModule } = useActiveModule();
+  const { userId } = useUser();
+  const chatUnread = useChatUnread(userId);
 
   // Close on outside click
   useEffect(() => {
@@ -188,6 +200,7 @@ export function AppsLauncherButton() {
                   iconBg={app.iconBg}
                   name={app.name}
                   description={app.description}
+                  badge={app.key === "team-client-chat" && chatUnread > 0 ? chatUnread : undefined}
                   onClick={() => navigate(app.key)}
                 />
               ))}
@@ -206,10 +219,11 @@ interface AppCardProps {
   iconBg: string;
   name: string;
   description: string;
+  badge?: number;
   onClick: () => void;
 }
 
-function AppCard({ icon, iconBg, name, description, onClick }: AppCardProps) {
+function AppCard({ icon, iconBg, name, description, badge, onClick }: AppCardProps) {
   return (
     <button
       type="button"
@@ -220,7 +234,14 @@ function AppCard({ icon, iconBg, name, description, onClick }: AppCardProps) {
         {icon}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold text-gray-800 leading-tight">{name}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-bold text-gray-800 leading-tight">{name}</p>
+          {badge && badge > 0 && (
+            <span className="min-w-[18px] h-[18px] px-1 bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shrink-0">
+              {badge > 99 ? "99+" : badge}
+            </span>
+          )}
+        </div>
         <p className="text-xs text-gray-400 mt-0.5 leading-snug">{description}</p>
       </div>
     </button>

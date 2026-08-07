@@ -15,21 +15,32 @@ export type ModuleKey =
   | "sales-calendar"
   | "system-settings"
   | "help-support"
+  | "team-client-chat"
   | null;
 
 // ─── URL → module mapping ─────────────────────────────────────────────────────
 
 const URL_MODULE_MAP: Array<{ prefix: string; module: ModuleKey }> = [
   // ── Sales Operations ──────────────────────────────────────────────────────
-  { prefix: "/roles/tsa/activity",                      module: "sales-operations" },
-  { prefix: "/roles/tsm/activity",                      module: "sales-operations" },
+  { prefix: "/roles/tsa/activity/planner",              module: "sales-operations" },
+  { prefix: "/roles/tsa/activity/tasklist",             module: "sales-operations" },
+  { prefix: "/roles/tsa/activity/revised-quotation",    module: "sales-operations" },
+  { prefix: "/roles/tsa/activity/spf",                  module: "sales-operations" },
+  { prefix: "/roles/tsa/activity/notes",                module: "sales-operations" },
+  { prefix: "/roles/tsa/activity/ccg",                  module: "sales-operations" },
+  { prefix: "/roles/tsa/activity/engineering",          module: "sales-operations" },
+  { prefix: "/roles/tsm/activity/planner",              module: "sales-operations" },
+  { prefix: "/roles/tsm/activity/quotation",            module: "sales-operations" },
+  { prefix: "/roles/tsm/activity/spf",                  module: "sales-operations" },
+  { prefix: "/roles/tsm/activity/ccg",                  module: "sales-operations" },
   { prefix: "/roles/manager/activity",                  module: "sales-operations" },
   { prefix: "/roles/admin/activity",                    module: "sales-operations" },
   { prefix: "/roles/csr/activity",                      module: "sales-operations" },
   { prefix: "/roles/accounting/activity",               module: "sales-operations" },
 
   // ── Client Masterlist ─────────────────────────────────────────────────────
-  { prefix: "/roles/tsa/companies",                     module: "client-masterlist" },  { prefix: "/roles/tsm/companies",                     module: "client-masterlist" },
+  { prefix: "/roles/tsa/companies",                     module: "client-masterlist" },  
+  { prefix: "/roles/tsm/companies",                     module: "client-masterlist" },
   { prefix: "/roles/manager/companies",                 module: "client-masterlist" },
   { prefix: "/roles/admin/companies",                   module: "client-masterlist" },
 
@@ -38,7 +49,6 @@ const URL_MODULE_MAP: Array<{ prefix: string; module: ModuleKey }> = [
   { prefix: "/roles/tsm/reports",                       module: "sales-reports" },
   { prefix: "/roles/manager/reports",                   module: "sales-reports" },
   { prefix: "/roles/admin/reports",                     module: "sales-reports" },
-
   // ── Sales Dashboard ───────────────────────────────────────────────────────
   { prefix: "/roles/tsa/dashboard",                     module: "sales-dashboard" },
   { prefix: "/roles/tsm/dashboard",                     module: "sales-dashboard" },
@@ -76,9 +86,9 @@ const URL_MODULE_MAP: Array<{ prefix: string; module: ModuleKey }> = [
   { prefix: "/roles/admin/conversion",                  module: "sales-reports" },
 
   // ── Agent / Team lists (under Sales Dashboard module) ────────────────────
-  { prefix: "/roles/tsm/agent",                         module: "sales-dashboard" },
-  { prefix: "/roles/manager/agent",                     module: "sales-dashboard" },
-  { prefix: "/roles/admin/employee-list",               module: "sales-dashboard" },
+  //{ prefix: "/roles/tsm/agent",                         module: "sales-dashboard" },
+  //{ prefix: "/roles/manager/agent",                     module: "sales-dashboard" },
+  //{ prefix: "/roles/admin/employee-list",               module: "sales-dashboard" },
 
   // ── Sales Call Leaderboard ────────────────────────────────────────────────
   { prefix: "/roles/tsa/national-call-ranking",         module: "sales-call-leaderboard" },
@@ -99,9 +109,16 @@ const URL_MODULE_MAP: Array<{ prefix: string; module: ModuleKey }> = [
 
   // ── Client Meetings ───────────────────────────────────────────────────────
   { prefix: "/roles/tsa/activity/meeting",              module: "client-meetings" },
+  { prefix: "/roles/tsm/activity/meeting",              module: "client-meetings" },
+  { prefix: "/roles/manager/activity/meeting",          module: "client-meetings" },
+  { prefix: "/roles/admin/activity/meeting",            module: "client-meetings" },
 
   // ── Field Attendance Log ──────────────────────────────────────────────────
   { prefix: "/general/acculog",                         module: "field-attendance-log" },
+
+  // ── Team & Client Chat ────────────────────────────────────────────────────
+  { prefix: "/modules/team-client-chat",                module: "team-client-chat" },
+  { prefix: "/general/chat",                            module: "team-client-chat" },
 ];
 
 export function detectModuleFromPath(pathname: string): ModuleKey {

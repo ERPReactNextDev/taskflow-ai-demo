@@ -280,13 +280,21 @@ export async function GET(req: Request) {
     const MONTH_NAMES_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
     const currentManilaMontLabel = MONTH_NAMES_FULL[Number(mMonth) - 1];
     
-    // Targets (OB, Quote, Site Visit) always use current month, date range only affects actuals
+    // ── Target month resolution ───────────────────────────────────────────────
+    // When a date range is selected, use the FROM date's month for target lookups.
+    // This ensures targets match the month the user is analyzing (e.g. July targets
+    // when filtering July 1-31), not the current calendar month.
+    const targetYear  = from ? from.split("-")[0] : mYear;
+    const targetMonth = from ? from.split("-")[1] : mMonth;
+    const targetMonthLabel   = MONTH_NAMES_FULL[Number(targetMonth) - 1];
+    const targetMonthDays    = new Date(Number(targetYear), Number(targetMonth), 0).getDate();
+
     const monthSlices = [
       {
-        year: mYear,
-        month: currentManilaMontLabel,
-        daysInMonth: monthDays,
-        coveredDays: monthDays,
+        year:        targetYear,
+        month:       targetMonthLabel,
+        daysInMonth: targetMonthDays,
+        coveredDays: targetMonthDays,
       },
     ];
     const shouldProrateMonthlyTargets = false; // Targets are always full monthly values — never prorate
@@ -374,19 +382,15 @@ export async function GET(req: Request) {
       .gte("date_created", obStart)
       .lte("date_created", obEnd);
 
-    // 4. OB targets per agent — order by date_created DESC so latest row wins on duplicates.
-    //    Secondary order by id DESC is a deterministic tie-breaker: when duplicate rows share
-    //    the same (or null) date_created, Postgres does not guarantee row order on its own —
-    //    without this, the "latest wins" dedup below could non-deterministically pick a stale
-    //    row on one request and the fresh row on the next (same query, different result).
+    // 4. OB targets per agent — use target month (from selected date range)
     const obTargetQuery = supabase
       .from("sales_ob")
       .select("id, referenceid, ob_target, month, year")
       .in("referenceid", agentIds)
-      .eq("month", currentManilaMontLabel)  // always current calendar month
-      .eq("year", mYear)
+      .eq("month", targetMonthLabel)
+      .eq("year", targetYear)
       .order("date_created", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: false }); // ✅ FIX: deterministic tie-breaker
+      .order("id", { ascending: false });
 
     // 5. Quotations — approved only, scoped to the selected date range
     //    (or current month if no range — matches kpi-monthly-actuals)
@@ -433,14 +437,13 @@ export async function GET(req: Request) {
       .eq("month", MONTH_NAMES_FULL[Number(naMonth) - 1])
       .eq("year", naYear);
 
-    // 10. Site visit targets per agent — deduplicated: take highest target per agent
-    //     (multiple rows per agent can exist if target was updated; highest wins)
+    // 10. Site visit targets per agent — use target month
     const siteVisitTargetQuery = supabase
       .from("site_visit_target")
       .select("referenceid, target")
       .in("referenceid", agentIds)
-      .eq("month", currentManilaMontLabel)  // always current calendar month
-      .eq("year", mYear);
+      .eq("month", targetMonthLabel)
+      .eq("year", targetYear);
 
     // 11. Client visits — scoped to the selected date range (or current month if no range)
     const clientVisitsQuery = supabase
