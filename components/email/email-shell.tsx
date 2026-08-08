@@ -124,7 +124,7 @@ export function EmailShell() {
     const currentPage = reset ? 1 : page;
     try {
       const data = await emailProxy("list-messages", {
-        folder: activeFolder, page: currentPage, limit: 100,
+        folder: activeFolder, page: currentPage, limit: 15,
         filter: messageFilter, search: messageSearch,
       }, activeAccountId, userId);
       if (data.ok) {

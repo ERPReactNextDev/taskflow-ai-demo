@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useActiveModule, ModuleKey } from "@/contexts/ActiveModuleContext";
 import { useUser } from "@/contexts/UserContext";
 import { useChatUnread } from "@/hooks/use-chat-unread";
+import { useEmailUnread } from "@/hooks/use-email-unread";
 import {
   CalendarClock, Clock, LayoutDashboard, Trophy,
   Database, ClipboardList, BarChart2, CalendarDays,
@@ -43,22 +44,22 @@ const APPS = [
   },
   {
     key: "field-attendance-log",
-    name: "Field Attendance Log",
+    name: "Biolog",
     description: "Monitor real-time field sales attendance and check-ins",
     icon: <Clock className="w-5 h-5 text-emerald-600" />,
     iconBg: "bg-emerald-50",
   },
   {
     key: "team-client-chat",
-    name: "Team & Client Chat",
+    name: "Chats",
     description: "Real-time messaging for team collaboration and client communication",
     icon: <MessageSquare className="w-5 h-5 text-purple-600" />,
     iconBg: "bg-purple-50",
   },
   {
     key: "email",
-    name: "Email",
-    description: "Full Outlook-style email client connected to your cPanel mail server",
+    name: "Xend-Mail",
+    description: "Email client connected to your cPanel mail server",
     icon: <Mail className="w-5 h-5 text-sky-600" />,
     iconBg: "bg-sky-50",
   },
@@ -129,6 +130,7 @@ export function AppsLauncherButton() {
   const { setActiveModule } = useActiveModule();
   const { userId } = useUser();
   const chatUnread = useChatUnread(userId);
+  const emailUnread = useEmailUnread(userId);
 
   // Close on outside click
   useEffect(() => {
@@ -208,7 +210,7 @@ export function AppsLauncherButton() {
                   iconBg={app.iconBg}
                   name={app.name}
                   description={app.description}
-                  badge={app.key === "team-client-chat" && chatUnread > 0 ? chatUnread : undefined}
+                  badge={app.key === "team-client-chat" && chatUnread > 0 ? chatUnread : app.key === "email" && emailUnread > 0 ? emailUnread : undefined}
                   onClick={() => navigate(app.key)}
                 />
               ))}

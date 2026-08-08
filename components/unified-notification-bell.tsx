@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Bell, FileText, ClipboardList, Check, HeadphonesIcon } from "lucide-react";
+import { Bell, FileText, ClipboardList, Check, HeadphonesIcon, Mail } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -40,7 +40,15 @@ interface SupportTicketNotification {
   unseen_count: number;
 }
 
-type NotificationTab = "all" | "spf" | "quotations" | "support";
+interface EmailNotification {
+  uid: number;
+  subject: string;
+  from_name: string;
+  from_address: string;
+  date: string | null;
+}
+
+type NotificationTab = "all" | "spf" | "quotations" | "support" | "email";
 
 export function UnifiedNotificationBell() {
   const { userId, user } = useUser();
@@ -48,6 +56,7 @@ export function UnifiedNotificationBell() {
   const [spfRequests, setSpfRequests] = useState<SPFRequest[]>([]);
   const [quotations, setQuotations] = useState<QuotationNotification[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicketNotification[]>([]);
+  const [emailNotifs, setEmailNotifs] = useState<EmailNotification[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -74,8 +83,9 @@ export function UnifiedNotificationBell() {
   const unreadSPF = spfRequests.filter(s => !readIds.has(`spf-${s.id}`)).length;
   const unreadQuotations = quotations.filter(q => !readIds.has(`q-${q.id}`)).length;
   const unreadSupport = supportTickets.reduce((sum, t) => sum + (t.unseen_count ?? 0), 0);
-  const totalUnread = unreadSPF + unreadQuotations + unreadSupport;
-  const totalCount = spfRequests.length + quotations.length + (unreadSupport > 0 ? 1 : 0);
+  const unreadEmail = emailNotifs.filter(e => !readIds.has(`email-${e.uid}`)).length;
+  const totalUnread = unreadSPF + unreadQuotations + unreadSupport + unreadEmail;
+  const totalCount = spfRequests.length + quotations.length + (unreadSupport > 0 ? 1 : 0) + emailNotifs.length;
 
   // Track user interaction for audio
   useEffect(() => {
@@ -301,6 +311,63 @@ export function UnifiedNotificationBell() {
     fetchSupportTickets();
   }, [fetchSupportTickets]);
 
+  // ── Fetch unread emails (past 7 days) ─────────────────────────────────────
+  const fetchEmailNotifs = useCallback(async () => {
+    if (!userId) return;
+    try {
+      // Get the user's default email account
+      const accRes = await fetch(`/api/email/accounts?user_id=${encodeURIComponent(userId)}`);
+      if (!accRes.ok) return;
+      const accData = await accRes.json();
+      const accounts: { id: string; is_default: boolean }[] = accData.accounts || [];
+      if (accounts.length === 0) return;
+      const defaultAcc = accounts.find((a) => a.is_default) ?? accounts[0];
+
+      // Fetch unread messages — limit 20, filter=unread
+      const res = await fetch("/api/email/proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fn: "list-messages",
+          account_id: defaultAcc.id,
+          user_id: userId,
+          payload: { folder: "INBOX", page: 1, limit: 20, filter: "unread" },
+        }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.ok || !data.messages) return;
+
+      // Filter to past 7 days
+      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const recent = (data.messages as {
+        uid: number; subject: string;
+        from: { name?: string; address?: string } | null;
+        date: string | null; is_read: boolean;
+      }[])
+        .filter((m) => {
+          if (!m.date) return true; // include if no date
+          return new Date(m.date).getTime() >= sevenDaysAgo;
+        })
+        .map((m) => ({
+          uid: m.uid,
+          subject: m.subject || "(no subject)",
+          from_name: m.from?.name || m.from?.address || "Unknown",
+          from_address: m.from?.address || "",
+          date: m.date,
+        }));
+
+      setEmailNotifs(recent);
+    } catch { /* non-fatal */ }
+  }, [userId]);
+
+  useEffect(() => {
+    fetchEmailNotifs();
+    // Poll every 3 minutes
+    const interval = setInterval(fetchEmailNotifs, 3 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchEmailNotifs]);
+
   // Realtime: refresh support tickets when a new non-user message is inserted
   useEffect(() => {
     const channel = supabase
@@ -360,6 +427,14 @@ export function UnifiedNotificationBell() {
         // Clear local unseen counts immediately
         setSupportTickets(prev => prev.map(t => ({ ...t, unseen_count: 0 })));
       }
+
+      // Mark email notifications as read locally
+      if (emailNotifs.length > 0) {
+        const emailIds = emailNotifs.map(e => `email-${e.uid}`);
+        const newRead = new Set([...Array.from(allIds), ...emailIds]);
+        setReadIds(newRead);
+        try { localStorage.setItem(READ_KEY, JSON.stringify(Array.from(newRead))); } catch {}
+      }
     }
   };
 
@@ -383,17 +458,19 @@ export function UnifiedNotificationBell() {
   const filteredItems = () => {
     switch (activeTab) {
       case "spf":
-        return { spf: spfRequests, q: [], support: [] };
+        return { spf: spfRequests, q: [], support: [], email: [] };
       case "quotations":
-        return { spf: [], q: quotations, support: [] };
+        return { spf: [], q: quotations, support: [], email: [] };
       case "support":
-        return { spf: [], q: [], support: supportTickets };
+        return { spf: [], q: [], support: supportTickets, email: [] };
+      case "email":
+        return { spf: [], q: [], support: [], email: emailNotifs };
       default:
-        return { spf: spfRequests, q: quotations, support: supportTickets };
+        return { spf: spfRequests, q: quotations, support: supportTickets, email: emailNotifs };
     }
   };
 
-  const { spf: filteredSpf, q: filteredQ, support: filteredSupport } = filteredItems();
+  const { spf: filteredSpf, q: filteredQ, support: filteredSupport, email: filteredEmail } = filteredItems();
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -482,6 +559,20 @@ export function UnifiedNotificationBell() {
               Support
               {unreadSupport > 0 && (
                 <span className="ml-1 text-[10px] bg-red-100 text-red-600 px-1 rounded font-bold">{unreadSupport}</span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("email")}
+              className={`flex-1 py-2 text-xs font-medium transition-colors relative ${
+                activeTab === "email"
+                  ? "text-primary border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Mail className="inline h-3 w-3 mr-1" />
+              Email
+              {unreadEmail > 0 && (
+                <span className="ml-1 text-[10px] bg-blue-100 text-blue-600 px-1 rounded font-bold">{unreadEmail}</span>
               )}
             </button>
           </div>
@@ -649,6 +740,48 @@ export function UnifiedNotificationBell() {
                   ))}
                 </div>
               )}
+              {/* Email Section */}
+              {filteredEmail.length > 0 && (
+                <div>
+                  <div className="px-3 py-2 bg-muted/30">
+                    <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                      <Mail className="h-3 w-3" />
+                      Unread Emails (last 7 days)
+                    </span>
+                  </div>
+                  {filteredEmail.map((email) => {
+                    const id = `email-${email.uid}`;
+                    const isUnread = !readIds.has(id);
+                    return (
+                      <div
+                        key={email.uid}
+                        className={`p-3 hover:bg-muted transition-colors cursor-pointer ${isUnread ? "bg-blue-50/60" : ""}`}
+                        onClick={() => {
+                          setOpen(false);
+                          markAsRead(id);
+                          window.location.href = "/general/email";
+                        }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                            <Mail className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-semibold truncate text-gray-800">{email.from_name}</p>
+                              {isUnread && (
+                                <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-600 truncate mt-0.5">{email.subject}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(email.date ?? undefined)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </ScrollArea>
@@ -668,6 +801,11 @@ export function UnifiedNotificationBell() {
           <Link href={`/general/support?id=${encodeURIComponent(userId ?? "")}`} className="flex-1">
             <Button variant="ghost" className="w-full text-xs" size="sm" onClick={() => setOpen(false)}>
               Support
+            </Button>
+          </Link>
+          <Link href="/general/email" className="flex-1">
+            <Button variant="ghost" className="w-full text-xs" size="sm" onClick={() => setOpen(false)}>
+              Email
             </Button>
           </Link>
         </div>
