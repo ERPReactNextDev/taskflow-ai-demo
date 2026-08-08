@@ -11,8 +11,7 @@ import {
   ClipboardPenLine, Leaf, ShoppingBag, PhoneCall, ShieldIcon,
   Briefcase, TrendingUp, GitGraph, UserCheck, Layers,
   MessageSquare,
-} from "lucide-react";
-import { ModuleSidebarItem } from "@/components/module-sidebar";
+} from "lucide-react";import { ModuleSidebarItem } from "@/components/module-sidebar";
 import { LucideIcon } from "lucide-react";
 
 export type RoleKey = "tsa" | "tsm" | "manager" | "admin" | "csr" | "accounting";
@@ -351,6 +350,23 @@ export const TEAM_CLIENT_CHAT_CONFIG: ModuleConfig = {
   },
 };
 
+// ─── 12. Email ───────────────────────────────────────────────────────────────
+
+export const EMAIL_CONFIG: ModuleConfig = {
+  key: "email",
+  moduleTitle: "Email",
+  moduleIcon: Mail,
+  storageKey: "sidebar_email",
+  itemsByRole: {
+    tsa:        [],
+    tsm:        [],
+    manager:    [],
+    admin:      [],
+    csr:        [],
+    accounting: [],
+  },
+};
+
 // ─── All configs in order ─────────────────────────────────────────────────────
 
 export const ALL_MODULE_CONFIGS: ModuleConfig[] = [
@@ -365,6 +381,7 @@ export const ALL_MODULE_CONFIGS: ModuleConfig[] = [
   SYSTEM_SETTINGS_CONFIG,
   HELP_SUPPORT_CONFIG,
   TEAM_CLIENT_CHAT_CONFIG,
+  EMAIL_CONFIG,
 ];
 
 // ─── Helper: get items for a role ─────────────────────────────────────────────

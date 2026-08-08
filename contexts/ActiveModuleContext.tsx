@@ -16,6 +16,7 @@ export type ModuleKey =
   | "system-settings"
   | "help-support"
   | "team-client-chat"
+  | "email"
   | null;
 
 // ─── URL → module mapping ─────────────────────────────────────────────────────
@@ -119,6 +120,10 @@ const URL_MODULE_MAP: Array<{ prefix: string; module: ModuleKey }> = [
   // ── Team & Client Chat ────────────────────────────────────────────────────
   { prefix: "/modules/team-client-chat",                module: "team-client-chat" },
   { prefix: "/general/chat",                            module: "team-client-chat" },
+
+  // ── Email ─────────────────────────────────────────────────────────────────
+  { prefix: "/modules/email",                           module: "email" },
+  { prefix: "/general/email",                           module: "email" },
 ];
 
 export function detectModuleFromPath(pathname: string): ModuleKey {

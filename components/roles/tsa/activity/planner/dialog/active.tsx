@@ -1099,13 +1099,41 @@ export function AccountDialog({
     <div className="fixed inset-0 z-50 flex flex-col bg-white overflow-hidden">
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
-        <div>
-          <h1 className="text-base font-bold leading-tight">
-            {mode === "edit" ? "Edit Account" : "Create New Account"}
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {STEPS[step].description}
-          </p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="min-w-0">
+            <h1 className="text-base font-bold leading-tight">
+              {mode === "edit" ? "Edit Account" : "Create New Account"}
+            </h1>
+            {mode === "edit" && formData.company_name && (
+              <p className="text-xs text-muted-foreground mt-0.5 font-mono uppercase">
+                {formData.company_name}
+              </p>
+            )}
+            {!(mode === "edit" && formData.company_name) && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {STEPS[step].description}
+              </p>
+            )}
+          </div>
+          {/* Viber button — edit mode with a contact number */}
+          {mode === "edit" && formData.contact_number.length > 0 && formData.contact_number[0] && (
+            <button
+              type="button"
+              title={`Open Viber: ${formData.contact_number[0]}`}
+              onClick={() => {
+                import("@/utils/viber").then(({ openViberChat }) => {
+                  openViberChat(formData.contact_number[0]);
+                });
+              }}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-all hover:opacity-80 active:scale-95"
+              style={{ background: "#7360F2" }}
+            >
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white" aria-hidden="true">
+                <path d="M11.995 2C6.475 2 2 6.475 2 11.995c0 1.88.5 3.64 1.37 5.17L2 22l4.97-1.35A9.942 9.942 0 0011.995 22C17.515 22 22 17.515 22 11.995S17.515 2 11.995 2zm4.73 13.77c-.2.56-.98 1.03-1.61 1.16-.43.09-.99.16-2.88-.62-2.42-.99-3.98-3.44-4.1-3.6-.12-.16-.98-1.3-.98-2.49s.62-1.77.84-2.01c.22-.24.48-.3.64-.3s.32.003.46.008c.15.007.35-.057.54.414.2.48.68 1.66.74 1.78.06.12.1.26.02.42-.08.16-.12.26-.24.4-.12.14-.25.31-.36.42-.12.12-.24.25-.1.49.14.24.62 1.02 1.33 1.65.92.82 1.69 1.07 1.93 1.19.24.12.38.1.52-.06.14-.16.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.4.66 1.64.78.24.12.4.18.46.28.06.1.06.58-.14 1.14z"/>
+              </svg>
+              Open Viber
+            </button>
+          )}
         </div>
         <Button
           type="button"

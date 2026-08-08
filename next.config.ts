@@ -31,7 +31,7 @@ const nextConfig: NextConfig = {
       tls: './node_modules/next/dist/esm/lib/empty.js',
     },
   },
-  serverExternalPackages: ['mongodb', 'mongoose', '@grpc/grpc-js', 'exceljs', 'fast-csv', '@fast-csv/format', '@fast-csv/parse', 'archiver', 'cloudinary', '@grpc/proto-loader', 'fs-constants', 'tar-stream'],
+  serverExternalPackages: ['mongodb', 'mongoose', '@grpc/grpc-js', 'exceljs', 'fast-csv', '@fast-csv/format', '@fast-csv/parse', 'archiver', 'cloudinary', '@grpc/proto-loader', 'fs-constants', 'tar-stream', 'nodemailer', 'imapflow', 'mailparser'],
 };
 
 export default nextConfig;

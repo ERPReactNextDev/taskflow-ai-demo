@@ -8,7 +8,7 @@ import { useChatUnread } from "@/hooks/use-chat-unread";
 import {
   CalendarClock, Clock, LayoutDashboard, Trophy,
   Database, ClipboardList, BarChart2, CalendarDays,
-  Settings, LifeBuoy, X, Grid3X3, MessageSquare,
+  Settings, LifeBuoy, X, Grid3X3, MessageSquare, Mail,
 } from "lucide-react";
 
 // ─── Module routes — /modules/* pages handle role-based redirect internally ──
@@ -25,6 +25,7 @@ const MODULE_ROUTES: Record<string, string> = {
   "system-settings":        "/modules/system-settings",
   "help-support":           "/modules/help-support",
   "team-client-chat":       "/modules/team-client-chat",
+  "email":                  "/modules/email",
 };
 
 function resolveRoute(moduleKey: string): string {
@@ -53,6 +54,13 @@ const APPS = [
     description: "Real-time messaging for team collaboration and client communication",
     icon: <MessageSquare className="w-5 h-5 text-purple-600" />,
     iconBg: "bg-purple-50",
+  },
+  {
+    key: "email",
+    name: "Email",
+    description: "Full Outlook-style email client connected to your cPanel mail server",
+    icon: <Mail className="w-5 h-5 text-sky-600" />,
+    iconBg: "bg-sky-50",
   },
   {
     key: "sales-dashboard",
