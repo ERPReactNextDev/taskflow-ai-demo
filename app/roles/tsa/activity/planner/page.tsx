@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 
 import { NewTask } from "@/components/roles/tsa/activity/planner/new-task/new";
 import { Progress } from "@/components/roles/tsa/activity/planner/progress/progress";
+import { PENDING_EMAIL_ACTIVITY_KEY, type PendingEmailActivityPayload } from "@/components/email/email-quotation-dialog";
 import { Scheduled } from "@/components/roles/tsa/activity/planner/scheduled/scheduled";
 import { Completed } from "@/components/roles/tsa/activity/planner/completed/completed";
 import { Delivered } from "@/components/roles/tsa/activity/planner/delivered/delivered";
@@ -488,6 +489,11 @@ function DashboardContent() {
 
   const [clearCacheOpen, setClearCacheOpen] = useState(false);
 
+  // ── Pending email activity from email module ──────────────────────────────
+  // Set when user clicks "Add to Activity" in the email Quotation dialog.
+  // Consumed once on mount — cleared immediately to prevent duplicates.
+  const [pendingEmailActivity, setPendingEmailActivity] = useState<PendingEmailActivityPayload | null>(null);
+
   // ── Quotation Aging Reminders ─────────────────────────────────────────────
   const [agingReminders,  setAgingReminders]  = useState<AgingReminder[]>([]);
   const [loadingAging,    setLoadingAging]    = useState(false);
@@ -637,6 +643,29 @@ function DashboardContent() {
       catch { localStorage.removeItem(COLLAPSE_KEY); }
     }
   }, []);
+
+  // ── Consume pending email activity from sessionStorage on mount ───────────
+  // Runs once. Reads payload set by EmailQuotationDialog, then clears it
+  // immediately so page refresh never creates a duplicate row.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(PENDING_EMAIL_ACTIVITY_KEY);
+      if (raw) {
+        const payload = JSON.parse(raw) as PendingEmailActivityPayload;
+        setPendingEmailActivity(payload);
+        // Clear immediately — single consumption only
+        sessionStorage.removeItem(PENDING_EMAIL_ACTIVITY_KEY);
+        sileo.success({
+          title: "Email Activity Ready",
+          description: `Click "+ Create" on ${payload.company_name} to start the quotation.`,
+          duration: 5000,
+          position: "top-right",
+        });
+      }
+    } catch {
+      sessionStorage.removeItem(PENDING_EMAIL_ACTIVITY_KEY);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Fetch last touch summary (optimized) ────────────────────────────────
   const fetchLastTouchSummary = useCallback(async () => {
@@ -854,6 +883,8 @@ function DashboardContent() {
     contact: userDetails.contact,
     tsmname: userDetails.tsmname,
     managername: userDetails.managername,
+    tsm: userDetails.tsm,
+    manager: userDetails.manager,
     target_quota: userDetails.target_quota,
     dateCreatedFilterRange,
     setDateCreatedFilterRangeAction: setDateCreatedFilterRangeAction as any,
@@ -1196,7 +1227,7 @@ function DashboardContent() {
                       isOpen={collapseState.inProgress}
                       onToggle={() => toggleCollapse("inProgress")}
                     >
-                      <Progress {...sharedProps} onCountChange={setProgressCount} />
+                      <Progress {...sharedProps} onCountChange={setProgressCount} pendingEmailActivity={pendingEmailActivity} />
                     </PlannerCard>
 
                     {/* ── Scheduled ── */}

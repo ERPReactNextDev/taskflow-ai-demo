@@ -27,6 +27,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     address,
     agent,
     is_new_activity,
+    // Email bridge — nullable soft link
+    source_email_message_id,
   } = req.body;
 
   if (!activity_reference_number) {
@@ -113,6 +115,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         scheduled_date: scheduled_date || new Date().toISOString().split("T")[0],
         date_created: new Date().toISOString(),
         date_updated: new Date().toISOString(),
+        // Email bridge — only set when activity originates from email module
+        ...(source_email_message_id ? { source_email_message_id } : {}),
       };
 
       const { data, error } = await supabase

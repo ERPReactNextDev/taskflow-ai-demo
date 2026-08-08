@@ -94,6 +94,9 @@ export default async function handler(
       agent_name,
       tsmname,
       managername,
+
+      // Email bridge — nullable, only set when activity originates from email
+      source_email_message_id,
     } = req.body;
 
     /* ================= VALIDATION ================= */

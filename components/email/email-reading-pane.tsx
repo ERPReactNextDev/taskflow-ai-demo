@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
-  ChevronLeft, Reply, ReplyAll, Forward, Star, Trash2, MoreHorizontal,
+  ChevronLeft, Reply, ReplyAll, Forward, Star, Trash2,
   Download, Paperclip, Loader2, LayoutPanelLeft, LayoutPanelTop,
-  FileText, Calendar, ClipboardList, UserRound, ExternalLink,
+  FileText, Calendar, ClipboardList, UserRound, Link2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { cn } from "@/lib/utils";
 import type { EmailMessage, EmailAttachment } from "@/types/email";
+import { EmailQuotationDialog } from "./email-quotation-dialog";
+import { useUser } from "@/contexts/UserContext";
 
 const TZ = "Asia/Manila";
 
@@ -49,8 +51,106 @@ export function EmailReadingPane({
   onReply, onReplyAll, onForward, onFlag, onDelete,
   onToggleLayout, layout, showBack, onBack,
 }: EmailReadingPaneProps) {
+  const { userId: contextUserId, user: contextUser } = useUser();
+  const resolvedUserId = userId ?? contextUserId;
+  // ReferenceID is what the accounts table stores — e.g. "DS-2024-001"
+  // user.ReferenceID from UserContext, falls back to resolvedUserId if not yet loaded
+  const referenceid: string = (contextUser?.ReferenceID as string) ?? resolvedUserId ?? "";
+
   const [downloadingPart, setDownloadingPart] = useState<string | null>(null);
-  const [showMore, setShowMore] = useState(false);
+
+  // ── Quotation dialog state ─────────────────────────────────────────────────
+  const [quotationDialogOpen, setQuotationDialogOpen] = useState(false);
+
+  // ── Floating quotation panel ───────────────────────────────────────────────
+  const [quotationPanelOpen, setQuotationPanelOpen] = useState(false);
+  const [existingQuotations, setExistingQuotations] = useState<Array<{
+    id: string;
+    company_name: string;
+    quotation_number: string;
+    quotation_amount: number | null;
+    status: string;
+    date_created: string;
+    activity_reference_number: string;
+    tsm_approved_status?: string;
+  }>>([]);
+  const [loadingQuotations, setLoadingQuotations] = useState(false);
+
+  // Extract company name from sender — try to match against known accounts
+  const senderName = message?.from?.name ?? "";
+  const senderAddress = message?.from?.address ?? "";
+
+  // Fetch existing quotations for the sender's company when panel opens
+  const fetchExistingQuotations = useCallback(async (companySearch: string) => {
+    if (!referenceid || !companySearch) { setExistingQuotations([]); return; }
+    setLoadingQuotations(true);
+    try {
+      const params = new URLSearchParams({
+        referenceid,
+        search: companySearch,
+        limit: "10",
+        page: "1",
+      });
+      const res = await fetch(`/api/activity/tsa/quotation/fetch?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setExistingQuotations(data.activities ?? []);
+      }
+    } catch { /* non-critical */ }
+    finally { setLoadingQuotations(false); }
+  }, [referenceid]);
+
+  // Auto-fetch when panel is opened
+  useEffect(() => {
+    if (quotationPanelOpen && message) {
+      // Search by sender name or email domain
+      const searchTerm = senderName || senderAddress.split("@")[0] || "";
+      fetchExistingQuotations(searchTerm);
+    }
+  }, [quotationPanelOpen, message, senderName, senderAddress, fetchExistingQuotations]);
+
+  // Auto-open panel whenever a message is selected
+  useEffect(() => {
+    if (message) {
+      setQuotationPanelOpen(true);
+    } else {
+      setQuotationPanelOpen(false);
+    }
+  }, [message?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Linked activity state (for "🔗 Linked Activity" badge) ────────────────
+  const [linkedActivities, setLinkedActivities] = useState<Array<{
+    id: string;
+    activity_reference_number: string;
+    company_name: string;
+    status: string;
+  }>>([]);
+  const [loadingLinked, setLoadingLinked] = useState(false);
+
+  // Build a stable message_id key for the current open email
+  // Format: "uid:<folder>:<uid>" — purely a reference pointer stored in activity table
+  const emailMessageId = message
+    ? `uid:${folder}:${message.uid}`
+    : null;
+
+  // Fetch linked activities whenever the open message changes
+  const fetchLinkedActivities = useCallback(async () => {
+    if (!emailMessageId || !referenceid) { setLinkedActivities([]); return; }
+    setLoadingLinked(true);
+    try {
+      const params = new URLSearchParams({ message_id: emailMessageId });
+      const res = await fetch(`/api/email/linked-activity?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLinkedActivities(data.activities ?? []);
+      }
+    } catch { /* non-critical */ }
+    finally { setLoadingLinked(false); }
+  }, [emailMessageId, referenceid]);
+
+  useEffect(() => {
+    fetchLinkedActivities();
+  }, [fetchLinkedActivities]);
 
   const handleDownloadAttachment = async (att: EmailAttachment) => {
     if (!accountId || !userId) return;
@@ -138,6 +238,21 @@ export function EmailReadingPane({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Quotation dialog */}
+      {quotationDialogOpen && emailMessageId && referenceid && (
+        <EmailQuotationDialog
+          open={quotationDialogOpen}
+          onClose={() => setQuotationDialogOpen(false)}
+          referenceid={referenceid}
+          plannerUrl={`/roles/tsa/activity/planner`}
+          emailMessageId={emailMessageId}
+          emailSubject={message.subject ?? ""}
+          emailFrom={fromText}
+          emailDate={message.headers?.date ?? message.date ?? null}
+          emailSenderAddress={senderAddress}
+        />
+      )}
+
       {/* Action bar */}
       <div className="h-12 px-3 flex items-center justify-between bg-white border-b border-gray-200 shrink-0">
         <div className="flex items-center gap-1">
@@ -159,14 +274,50 @@ export function EmailReadingPane({
         </div>
 
         <div className="flex items-center gap-1">
-          {/* Sales integrations — read-only soft references */}
-          <SalesBtn icon={<FileText className="w-3.5 h-3.5" />} label="Quotation"
-            onClick={() => window.open(`/modules/sales-operations?prefill_company=${encodeURIComponent(fromText)}`, "_blank")} />
+          {/* ── Linked activity badge — shown when this email already has a linked activity ── */}
+          {loadingLinked && (
+            <span className="px-2 py-1 text-[10px] text-gray-400 flex items-center gap-1">
+              <Loader2 className="w-3 h-3 animate-spin" />
+            </span>
+          )}
+          {!loadingLinked && linkedActivities.length > 0 && (
+            <div className="flex items-center gap-1 mr-1">
+              <button
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
+                title={`${linkedActivities.length} linked activity — ${linkedActivities[0].company_name}`}
+                onClick={() => {
+                  // Navigate to planner filtered to that company
+                  const act = linkedActivities[0];
+                  window.open(
+                    `/roles/tsa/activity/planner?highlight=${encodeURIComponent(act.activity_reference_number)}`,
+                    "_blank"
+                  );
+                }}
+              >
+                <Link2 className="w-3 h-3" />
+                <span className="hidden xl:inline">
+                  {linkedActivities.length === 1
+                    ? `1 Linked Activity`
+                    : `${linkedActivities.length} Linked`}
+                </span>
+                <span className="xl:hidden">{linkedActivities.length}</span>
+              </button>
+            </div>
+          )}
+
+          {/* ── Sales integration buttons ── */}
+          {/* Quotation: opens the company-picker dialog then redirects to planner */}
+          <SalesBtn
+            icon={<FileText className="w-3.5 h-3.5" />}
+            label="Quotation"
+            onClick={() => setQuotationDialogOpen(true)}
+            highlight={linkedActivities.length === 0}
+          />
           <SalesBtn icon={<Calendar className="w-3.5 h-3.5" />} label="Meeting"
-            onClick={() => window.open(`/modules/client-meetings?prefill_email=${encodeURIComponent(message.from?.address ?? "")}`, "_blank")} />
+            onClick={() => window.open(`/modules/client-meetings?prefill_email=${encodeURIComponent(senderAddress)}`, "_blank")} />
           <SalesBtn icon={<ClipboardList className="w-3.5 h-3.5" />} label="Task" onClick={() => {}} />
           <SalesBtn icon={<UserRound className="w-3.5 h-3.5" />} label="Client 360"
-            onClick={() => window.open(`/modules/client-masterlist?search=${encodeURIComponent(message.from?.address ?? "")}`, "_blank")} />
+            onClick={() => window.open(`/modules/client-masterlist?search=${encodeURIComponent(senderAddress)}`, "_blank")} />
           <div className="w-px h-5 bg-gray-200 mx-1" />
           <button
             onClick={onToggleLayout}
@@ -223,6 +374,37 @@ export function EmailReadingPane({
             </div>
           )}
 
+          {/* ── Linked Activity info block — visible when this email has been actioned ── */}
+          {linkedActivities.length > 0 && (
+            <div className="mb-5 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-blue-700">
+                <Link2 className="w-3.5 h-3.5" />
+                {linkedActivities.length === 1 ? "1 Linked Activity" : `${linkedActivities.length} Linked Activities`}
+              </div>
+              {linkedActivities.map((act) => (
+                <div key={act.id} className="flex items-center justify-between gap-2">
+                  <div className="text-xs text-blue-800">
+                    <span className="font-semibold">{act.company_name}</span>
+                    {act.status && (
+                      <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-blue-100 rounded-sm font-mono uppercase">
+                        {act.status}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    className="text-[10px] text-blue-600 hover:underline flex items-center gap-1 shrink-0"
+                    onClick={() => window.open(
+                      `/roles/tsa/activity/planner?highlight=${encodeURIComponent(act.activity_reference_number)}`,
+                      "_blank"
+                    )}
+                  >
+                    View in Planner →
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* HTML body */}
           {message.html ? (
             <div
@@ -235,6 +417,116 @@ export function EmailReadingPane({
           )}
         </div>
       </div>
+
+      {/* ── Floating Quotation Panel — bottom-right corner ─────────────────
+          Shows existing quotations for this sender's company.
+          Appears when user clicks the Quotation button.
+      ── */}
+      {quotationPanelOpen && (
+        <div
+          className="fixed bottom-4 right-4 z-50 w-80 bg-white border border-gray-200 shadow-2xl rounded-none flex flex-col"
+          style={{ maxHeight: "420px" }}
+        >
+          {/* Panel header */}
+          <div className="flex items-center justify-between px-3 py-2.5 border-b bg-zinc-900 text-white shrink-0">
+            <div className="flex items-center gap-2">
+              <FileText className="w-3.5 h-3.5" />
+              <span className="text-xs font-bold uppercase tracking-wide">Existing Quotations</span>
+              {existingQuotations.length > 0 && (
+                <span className="text-[10px] bg-white text-zinc-900 font-bold px-1.5 py-0.5 rounded-sm">
+                  {existingQuotations.length}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setQuotationPanelOpen(false)}
+              className="text-gray-400 hover:text-white transition-colors text-sm leading-none"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Sender info */}
+          <div className="px-3 py-2 border-b bg-gray-50 shrink-0">
+            <p className="text-[10px] text-gray-500 truncate">
+              <span className="font-semibold text-gray-700">Client:</span> {senderName || senderAddress}
+            </p>
+          </div>
+
+          {/* Quotation list */}
+          <div className="flex-1 overflow-y-auto">
+            {loadingQuotations ? (
+              <div className="flex items-center justify-center py-8 gap-2 text-xs text-gray-400">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+              </div>
+            ) : existingQuotations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-2 text-xs text-gray-400">
+                <FileText className="w-6 h-6 opacity-20" />
+                <p>No existing quotations found</p>
+                <p className="text-[10px] text-center px-4 text-gray-300">
+                  Click "+ Add to Activity" above to create one
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {existingQuotations.map((q) => {
+                  const isApproved = q.tsm_approved_status === "Approved";
+                  const isDeclined = q.tsm_approved_status === "Decline";
+                  return (
+                    <div
+                      key={q.id}
+                      className="px-3 py-2.5 text-xs hover:bg-gray-50 transition-colors cursor-pointer"
+                      onClick={() => {
+                        window.open(
+                          `/roles/tsa/activity/revised-quotation?highlight=${encodeURIComponent(q.quotation_number)}&openEdit=${encodeURIComponent(q.activity_reference_number)}`,
+                          "_blank"
+                        );
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <span className="font-semibold text-gray-900 truncate flex-1">
+                          {q.company_name}
+                        </span>
+                        {q.tsm_approved_status && q.tsm_approved_status !== "-" && (
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 shrink-0 rounded-sm ${
+                            isApproved ? "bg-green-100 text-green-700" :
+                            isDeclined ? "bg-red-100 text-red-700" :
+                            "bg-amber-100 text-amber-700"
+                          }`}>
+                            {q.tsm_approved_status}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <span className="font-mono text-[10px] uppercase">{q.quotation_number}</span>
+                        {q.quotation_amount != null && (
+                          <span className="font-semibold text-gray-700">
+                            ₱{parseFloat(String(q.quotation_amount)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-gray-400 mt-0.5">
+                        {new Date(q.date_created).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Panel footer — create new */}
+          <div className="px-3 py-2 border-t shrink-0">
+            <button
+              className="w-full text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 py-1.5 transition-colors rounded-none border border-blue-200"
+              onClick={() => setQuotationDialogOpen(true)}
+            >
+              + Create New Quotation from this Email
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -269,13 +561,18 @@ function ActionBtn({ icon, label, onClick, danger }: { icon: React.ReactNode; la
   );
 }
 
-function SalesBtn({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+function SalesBtn({ icon, label, onClick, highlight }: { icon: React.ReactNode; label: string; onClick: () => void; highlight?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={label}
-      className="px-2 py-1 rounded-lg text-xs font-medium text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center gap-1"
+      className={cn(
+        "px-2 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1",
+        highlight
+          ? "text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200"
+          : "text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+      )}
     >
       {icon}
       <span className="hidden xl:inline">{label}</span>

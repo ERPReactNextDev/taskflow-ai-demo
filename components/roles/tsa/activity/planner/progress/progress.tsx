@@ -10,7 +10,7 @@ import {
 import {
   CheckCircle2Icon, Trash, Check, LoaderPinwheel,
   PhoneOutgoing, PackageCheck, ReceiptText, Activity,
-  MoreVertical, MessageSquare, Ban,
+  MoreVertical, MessageSquare, Ban, Mail,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -31,6 +31,7 @@ import { type DateRange } from "react-day-picker";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import type { PendingEmailActivityPayload } from "@/components/email/email-quotation-dialog";
 
 // ─── Interfaces (unchanged) ───────────────────────────────────────────────────
 interface SupervisorDetails {
@@ -63,6 +64,7 @@ interface Activity {
   address: string;
   contact_person: string;
   signature: string | null;
+  source_email_message_id?: string | null;
 }
 
 interface HistoryItem {
@@ -95,12 +97,16 @@ interface NewTaskProps {
   contact: string;
   tsmname: string;
   managername: string;
+  tsm?: string;
+  manager?: string;
   dateCreatedFilterRange: DateRange | undefined;
   setDateCreatedFilterRangeAction: React.Dispatch<React.SetStateAction<DateRange | undefined>>;
   managerDetails: SupervisorDetails | null;
   tsmDetails: SupervisorDetails | null;
   signature: string | null;
   onCountChange?: (count: number) => void;
+  // Injected from email module — renders a pinned row at top of In Progress
+  pendingEmailActivity?: PendingEmailActivityPayload | null;
 }
 
 const EXCLUDED_STATUSES = ["Completed", "Delivered"];
@@ -114,12 +120,15 @@ export const Progress: React.FC<NewTaskProps> = ({
   contact,
   tsmname,
   managername,
+  tsm,
+  manager,
   dateCreatedFilterRange,
   setDateCreatedFilterRangeAction,
   tsmDetails,
   managerDetails,
   signature,
   onCountChange,
+  pendingEmailActivity,
 }) => {
   // ─── Accumulated data from all fetched pages ─────────────────────────────
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -436,6 +445,103 @@ export const Progress: React.FC<NewTaskProps> = ({
         </Select>
       </div>
 
+      {/* ── Pending Email Activity Row ────────────────────────────────────────
+          Injected at the top of In Progress when user arrives from email module.
+          Renders a highlighted card with 🔗 badge + pre-filled Create button.
+      ── */}
+      {pendingEmailActivity && (
+        <div className="mb-3 border-2 border-blue-400 rounded-none bg-blue-50 shadow-sm">
+          {/* Header row */}
+          <div className="flex items-center justify-between p-2.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs font-bold font-mono uppercase truncate text-blue-900">
+                {pendingEmailActivity.company_name}
+              </span>
+              {/* 🔗 Email badge with tooltip */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-blue-200 text-blue-700 text-[10px] font-bold border border-blue-300 hover:bg-blue-300 transition-colors cursor-default shrink-0"
+                    title="View source email details"
+                  >
+                    <Mail className="w-3 h-3" />
+                    <span>Email</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 rounded-none text-xs p-3" align="start">
+                  <p className="font-bold text-blue-700 mb-1.5">📧 Source Email</p>
+                  <div className="space-y-1 text-gray-700">
+                    <div>
+                      <span className="font-semibold">Subject: </span>
+                      <span className="break-words">{pendingEmailActivity.source_email_subject || "(no subject)"}</span>
+                    </div>
+                    <div>
+                      <span className="font-semibold">From: </span>
+                      <span className="break-all">{pendingEmailActivity.source_email_from}</span>
+                    </div>
+                    {pendingEmailActivity.source_email_date && (
+                      <div>
+                        <span className="font-semibold">Date: </span>
+                        <span>{new Date(pendingEmailActivity.source_email_date).toLocaleString("en-PH", { timeZone: "Asia/Manila" })}</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-2 text-[10px] text-blue-600 italic">
+                    Click "+ Create" to start the Quotation Preparation activity.
+                  </p>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Create button — pre-fills Quotation Preparation */}
+            <div className="ml-3 shrink-0">
+              <CreateActivityDialog
+                firstname={firstname}
+                lastname={lastname}
+                target_quota={target_quota}
+                email={email}
+                contact={contact}
+                tsmname={tsmname}
+                managername={managername}
+                referenceid={referenceid}
+                tsm={tsm ?? ""}
+                manager={manager ?? ""}
+                type_client={pendingEmailActivity.type_client || ""}
+                contact_number={pendingEmailActivity.contact_number || ""}
+                email_address={pendingEmailActivity.email_address || ""}
+                activityReferenceNumber={undefined}
+                ticket_reference_number="-"
+                agent={referenceid}
+                company_name={pendingEmailActivity.company_name}
+                contact_person={pendingEmailActivity.contact_person || ""}
+                address={pendingEmailActivity.address || ""}
+                accountReferenceNumber={pendingEmailActivity.account_reference_number}
+                onCreated={fetchInitial}
+                managerDetails={managerDetails ?? null}
+                tsmDetails={tsmDetails ?? null}
+                signature={signature}
+                emailPrefill={{
+                  source_email_message_id: pendingEmailActivity.source_email_message_id,
+                  source_email_subject: pendingEmailActivity.source_email_subject,
+                  source_email_from: pendingEmailActivity.source_email_from,
+                  autoOpen: false,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Sub-info strip */}
+          <div className="px-3 pb-2 flex flex-wrap gap-1 text-[10px] text-blue-700">
+            <Badge className="text-[8px] bg-blue-100 text-blue-700 border-blue-300 uppercase">
+              {pendingEmailActivity.type_client || "Account"}
+            </Badge>
+            <span className="text-blue-500">
+              Click + Create → Quotation Preparation will be auto-selected
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="max-h-[70vh] overflow-auto space-y-8 custom-scrollbar">
         {initialLoading ? (
           <div className="flex justify-center items-center h-40">
@@ -745,6 +851,28 @@ export const Progress: React.FC<NewTaskProps> = ({
 
                     <p><strong>Date Created:</strong> {new Date(item.date_created).toLocaleDateString()}</p>
                     <p><strong>Date Updated:</strong> {new Date(item.date_updated).toLocaleDateString()}</p>
+
+                    {/* ── Source Email block — shown when activity was created from email ── */}
+                    {item.source_email_message_id && (
+                      <>
+                        <Separator className="mb-2 mt-2" />
+                        <div className="flex items-center gap-1.5 text-blue-600 font-semibold mb-1">
+                          <Mail className="w-3 h-3" />
+                          <span>Source: Email</span>
+                        </div>
+                        <div className="pl-4 space-y-0.5 text-[10px] text-gray-500">
+                          <p className="font-mono text-gray-400">{item.source_email_message_id}</p>
+                          <a
+                            href={`/general/email`}
+                            className="text-blue-500 hover:underline inline-flex items-center gap-0.5"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            Open Email Module →
+                          </a>
+                        </div>
+                      </>
+                    )}
                   </AccordionContent>
                 </AccordionItem>
               );

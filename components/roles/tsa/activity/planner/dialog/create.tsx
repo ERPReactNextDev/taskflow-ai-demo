@@ -166,6 +166,16 @@ interface CreateActivityDialogProps {
     managerDetails: SupervisorDetails | null;
     tsmDetails: SupervisorDetails | null;
     signature: string | null;
+    // ── Email prefill (optional) ───────────────────────────────────────────
+    // When set, the dialog opens pre-configured for Quotation Preparation
+    // and the activity will be linked back to the originating email.
+    emailPrefill?: {
+        source_email_message_id: string;
+        source_email_subject: string;
+        source_email_from: string;
+        /** Auto-open the sheet immediately on mount */
+        autoOpen?: boolean;
+    };
 }
 
 function SpinnerEmpty({ onCancel }: { onCancel?: () => void }) {
@@ -213,7 +223,8 @@ export function CreateActivityDialog({
     accountReferenceNumber,
     managerDetails,
     tsmDetails,
-    signature
+    signature,
+    emailPrefill,
 
 }: CreateActivityDialogProps) {
     const STORAGE_KEY = `create-activity-${company_name}-${referenceid}`;
@@ -239,6 +250,8 @@ export function CreateActivityDialog({
     const [showConfirmCancel, setShowConfirmCancel] = useState(false);
     // STEPPER
     const [step, setStep] = useState(1);
+    // Email tracking — saved to activity table when present
+    const [sourceEmailMessageId, setSourceEmailMessageId] = useState(emailPrefill?.source_email_message_id ?? "");
     // FORM STATES (all required except callback)
     const [activityRef, setActivityRef] = useState(activityReferenceNumber || "");
     const [accountRef, setAccountRef] = useState(accountReferenceNumber || "");
@@ -608,6 +621,28 @@ export function CreateActivityDialog({
         setDateCreated(new Date().toISOString());
     }, []);
 
+    // ── Email prefill: auto-open sheet + pre-select Quotation Preparation ──
+    useEffect(() => {
+        if (!emailPrefill) return;
+        // Keep source_email_message_id in sync if the prop changes
+        setSourceEmailMessageId(emailPrefill.source_email_message_id);
+        if (emailPrefill.autoOpen && !sheetOpen) {
+            setActivityRef(activityReferenceNumber || "");
+            setAccountRef(accountReferenceNumber || "");
+            setTypeActivity("Quotation Preparation");
+            setStartDate(new Date().toISOString());
+            // Pre-fill initial_notes with email subject / from
+            if (!remarks) {
+                setRemarks(
+                    `Created from email:\nSubject: ${emailPrefill.source_email_subject}\nFrom: ${emailPrefill.source_email_from}`
+                );
+            }
+            setSheetOpen(true);
+        }
+    // Only run once when emailPrefill is first set
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [emailPrefill?.source_email_message_id, emailPrefill?.autoOpen]);
+
     const initialState = {
         activityRef: activityReferenceNumber || "",
         accountRef: accountReferenceNumber || "",
@@ -797,6 +832,17 @@ export function CreateActivityDialog({
 
         const agent_name = `${firstname ?? ""} ${lastname ?? ""}`.trim();
 
+        // Auto-generate activity reference number if not set
+        // (happens when creating a brand-new activity from the email flow)
+        let resolvedActivityRef = activityRef;
+        if (!resolvedActivityRef) {
+            const words = (company_name || "XX").trim().split(" ");
+            const f = words[0]?.charAt(0).toUpperCase() ?? "X";
+            const l = words[words.length - 1]?.charAt(0).toUpperCase() ?? "X";
+            resolvedActivityRef = `${f}${l}-NCR-${String(Date.now()).slice(-10)}`;
+            setActivityRef(resolvedActivityRef);
+        }
+
         // Debug logging
         console.log("[Create] Product flags before save:", {
             productIsPromo,
@@ -805,7 +851,7 @@ export function CreateActivityDialog({
         });
 
         const newActivity: Activity = {
-            activity_reference_number: activityRef,
+            activity_reference_number: resolvedActivityRef,
             account_reference_number: accountRef,
             type_client,
             company_name,
@@ -921,7 +967,7 @@ export function CreateActivityDialog({
             // Update status AND scheduled_date if available
             // Include all activity data for new activity creation (Cluster/OB Calls flow)
             const statusPayload = {
-                activity_reference_number: activityRef,
+                activity_reference_number: resolvedActivityRef,
                 status,
                 scheduled_date,
                 // Additional fields for new activity creation
@@ -939,6 +985,8 @@ export function CreateActivityDialog({
                 address: address || newActivity.address,
                 agent: agent || newActivity.agent,
                 is_new_activity: true,
+                // Email bridge — write to activity table when originating from email
+                ...(sourceEmailMessageId ? { source_email_message_id: sourceEmailMessageId } : {}),
             };
             console.log("Status API Payload:", statusPayload);
 
@@ -1134,9 +1182,18 @@ export function CreateActivityDialog({
                         onClick={() => {
                             setActivityRef(activityReferenceNumber || "");
                             setAccountRef(accountReferenceNumber || "");
+                            // If coming from email, pre-select Quotation Preparation
+                            if (emailPrefill) {
+                                setTypeActivity("Quotation Preparation");
+                                setStartDate(new Date().toISOString());
+                                if (!remarks) {
+                                    setRemarks(
+                                        `Created from email:\nSubject: ${emailPrefill.source_email_subject}\nFrom: ${emailPrefill.source_email_from}`
+                                    );
+                                }
+                            }
                             setSheetOpen(true);
-                        }}
-                    >
+                        }}                    >
                         <Plus /> Create
                     </Button>
                 </SheetTrigger>
@@ -1145,7 +1202,10 @@ export function CreateActivityDialog({
                     <SheetHeader>
                         <SheetTitle>Create New Activity for <br />{company_name}</SheetTitle>
                         <SheetDescription>
-                            Fill out the steps to create a new activity.
+                            {emailPrefill
+                                ? `From email: "${emailPrefill.source_email_subject}"`
+                                : "Fill out the steps to create a new activity."
+                            }
                         </SheetDescription>
                         {startDate && (
                             <div className="fixed bottom-20 right-100 z-50 bg-black/30 text-white rounded-xs px-4 py-4 font-mono font-semibold text-lg select-none flex items-center space-x-2 cursor-default min-w-[120px] justify-center">
