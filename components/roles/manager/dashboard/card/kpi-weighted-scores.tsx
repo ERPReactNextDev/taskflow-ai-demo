@@ -105,18 +105,18 @@ function soToSIRating(pct: number): number {
   if (pct >= 50.01) return 3; if (pct >= 40.01) return 2; return 1;
 }
 function responseTimeRating(hours: number): number {
-  if (hours <= 0) return 1;
+  if (hours <= 0) return 5; // no data = no violations = perfect
   const mins = hours * 60;
   if (mins <= 10) return 5; if (mins <= 20) return 4;
   if (mins <= 30) return 3; if (mins <= 40) return 2; return 1;
 }
 function quotationHTRating(hours: number): number {
-  if (hours <= 0) return 1;
+  if (hours <= 0) return 5; // no data = no violations = perfect
   if (hours <= 8) return 5; if (hours <= 9) return 4;
   if (hours <= 10) return 3; if (hours <= 11) return 2; return 1;
 }
 function nonQuotationHTRating(hours: number): number {
-  if (hours <= 0) return 1;
+  if (hours <= 0) return 5; // no data = no violations = perfect
   if (hours <= 24) return 5; if (hours <= 30) return 4;
   if (hours <= 35) return 3; if (hours <= 40) return 2; return 1;
 }
@@ -163,11 +163,11 @@ export function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: numbe
   const naPct     = Math.min(100, d.newAccountTarget > 0 ? (d.newAccountCount / d.newAccountTarget) * 100 : 0);
   const naR       = standardRating(naPct);
   const rtRating  = responseTimeRating(d.avgResponseTime);
-  const rtAchieve = d.avgResponseTime > 0 ? Math.min(((10 / 60) / d.avgResponseTime) * 100, 100) : 0;
+  const rtAchieve = d.avgResponseTime > 0 ? Math.min(((10 / 60) / d.avgResponseTime) * 100, 100) : 100;
   const qhtRating = quotationHTRating(d.avgQuotationHT);
-  const qhtAchieve= d.avgQuotationHT > 0 ? Math.min((8 / d.avgQuotationHT) * 100, 100) : 0;
+  const qhtAchieve= d.avgQuotationHT > 0 ? Math.min((8 / d.avgQuotationHT) * 100, 100) : 100;
   const nqhtRating= nonQuotationHTRating(d.avgNonQuotationHT);
-  const nqhtAchieve = d.avgNonQuotationHT > 0 ? Math.min((24 / d.avgNonQuotationHT) * 100, 100) : 0;
+  const nqhtAchieve = d.avgNonQuotationHT > 0 ? Math.min((24 / d.avgNonQuotationHT) * 100, 100) : 100;
   const csrRating = Math.round((rtRating + qhtRating + nqhtRating) / 3);
   const csrAchieve = (rtAchieve + qhtAchieve + nqhtAchieve) / 3;
 

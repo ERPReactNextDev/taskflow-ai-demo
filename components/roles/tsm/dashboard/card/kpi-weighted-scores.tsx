@@ -102,11 +102,11 @@ function soToSIRating(pct: number): number {
 
 /**
  * Response Time rating — value in hours, target ≤10 min (0.1667 hrs)
- * No data (0) → 1
+ * No data (0) → 5 (no tickets received = perfect compliance)
  * ≤10min→5 | 11-20min→4 | 21-30min→3 | 31-40min→2 | 41min+→1
  */
 function responseTimeRating(hours: number): number {
-  if (hours <= 0) return 1; // no data
+  if (hours <= 0) return 5; // no data = no violations = perfect
   const mins = hours * 60;
   if (mins <= 10) return 5;
   if (mins <= 20) return 4;
@@ -117,11 +117,11 @@ function responseTimeRating(hours: number): number {
 
 /**
  * Quotation HT rating — value in hours, target ≤8 hrs
- * No data (0) → 1
+ * No data (0) → 5 (no quotation tickets = perfect compliance)
  * ≤8hrs→5 | 8.01-9→4 | 9.01-10→3 | 10.01-11→2 | 11+→1
  */
 function quotationHTRating(hours: number): number {
-  if (hours <= 0) return 1; // no data
+  if (hours <= 0) return 5; // no data = no violations = perfect
   if (hours <= 8) return 5;
   if (hours <= 9) return 4;
   if (hours <= 10) return 3;
@@ -131,11 +131,11 @@ function quotationHTRating(hours: number): number {
 
 /**
  * Non-Quotation HT rating — value in hours, target ≤24 hrs
- * No data (0) → 1
+ * No data (0) → 5 (no non-quotation tickets = perfect compliance)
  * ≤24hrs→5 | 25-30→4 | 31-35→3 | 36-40→2 | 41+→1
  */
 function nonQuotationHTRating(hours: number): number {
-  if (hours <= 0) return 1; // no data
+  if (hours <= 0) return 5; // no data = no violations = perfect
   if (hours <= 24) return 5;
   if (hours <= 30) return 4;
   if (hours <= 35) return 3;
@@ -191,13 +191,13 @@ function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
 
   // Calculate CSR metrics
   const rtRating = responseTimeRating(d.avgResponseTime);
-  const rtAchievePct = d.avgResponseTime > 0 ? Math.min(((10 / 60) / d.avgResponseTime) * 100, 100) : 0;
+  const rtAchievePct = d.avgResponseTime > 0 ? Math.min(((10 / 60) / d.avgResponseTime) * 100, 100) : 100;
 
   const qhtRating = quotationHTRating(d.avgQuotationHT);
-  const qhtAchievePct = d.avgQuotationHT > 0 ? Math.min((8 / d.avgQuotationHT) * 100, 100) : 0;
+  const qhtAchievePct = d.avgQuotationHT > 0 ? Math.min((8 / d.avgQuotationHT) * 100, 100) : 100;
 
   const nqhtRating = nonQuotationHTRating(d.avgNonQuotationHT);
-  const nqhtAchievePct = d.avgNonQuotationHT > 0 ? Math.min((24 / d.avgNonQuotationHT) * 100, 100) : 0;
+  const nqhtAchievePct = d.avgNonQuotationHT > 0 ? Math.min((24 / d.avgNonQuotationHT) * 100, 100) : 100;
 
   const csrRating = Math.round((rtRating + qhtRating + nqhtRating) / 3);
   const csrAchievePct = (rtAchievePct + qhtAchievePct + nqhtAchievePct) / 3;

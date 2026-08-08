@@ -61,9 +61,9 @@ function standardRating(pct: number)         { if (pct>=91) return 5; if (pct>=8
 function callsToQuoteRating(pct: number)      { if (pct>=20) return 5; if (pct>=14.01) return 4; if (pct>=12.01) return 3; if (pct>=10.01) return 2; return 1; }
 function quoteToSORating(pct: number)         { if (pct>=30) return 5; if (pct>=25.01) return 4; if (pct>=20.01) return 3; if (pct>=15.01) return 2; return 1; }
 function soToSIRating(pct: number)            { if (pct>=70) return 5; if (pct>=60.01) return 4; if (pct>=50.01) return 3; if (pct>=40.01) return 2; return 1; }
-function responseTimeRating(h: number)        { if (h<=0) return 1; const m=h*60; if (m<=10) return 5; if (m<=20) return 4; if (m<=30) return 3; if (m<=40) return 2; return 1; }
-function quotationHTRating(h: number)         { if (h<=0) return 1; if (h<=8) return 5; if (h<=9) return 4; if (h<=10) return 3; if (h<=11) return 2; return 1; }
-function nonQuotationHTRating(h: number)      { if (h<=0) return 1; if (h<=24) return 5; if (h<=30) return 4; if (h<=35) return 3; if (h<=40) return 2; return 1; }
+function responseTimeRating(h: number)        { if (h<=0) return 5; const m=h*60; if (m<=10) return 5; if (m<=20) return 4; if (m<=30) return 3; if (m<=40) return 2; return 1; }
+function quotationHTRating(h: number)         { if (h<=0) return 5; if (h<=8) return 5; if (h<=9) return 4; if (h<=10) return 3; if (h<=11) return 2; return 1; }
+function nonQuotationHTRating(h: number)      { if (h<=0) return 5; if (h<=24) return 5; if (h<=30) return 4; if (h<=35) return 3; if (h<=40) return 2; return 1; }
 
 function scoreLabel(s: number): { label: string; color: string; bg: string } {
   if (s>=5)   return { label:"Always Demonstrated",       color:"text-yellow-700", bg:"bg-yellow-50"  };
@@ -95,9 +95,9 @@ function computeKpi(d: AgentKpiData): { rows: KpiRow[]; totalScore: number } {
   const convA     = (Math.min(100,(c2qRaw/20)*100)+Math.min(100,(q2soPct/30)*100)+Math.min(100,(s2siPct/70)*100))/3;
   const cvPct     = Math.min(100, d.clientVisitsTarget>0 ? (d.clientVisitsCount/d.clientVisitsTarget)*100 : 0);
   const naPct     = Math.min(100, d.newAccountTarget>0   ? (d.newAccountCount/d.newAccountTarget)*100     : 0);
-  const rtR=responseTimeRating(d.avgResponseTime); const rtA=d.avgResponseTime>0?Math.min(((10/60)/d.avgResponseTime)*100,100):0;
-  const qhtR=quotationHTRating(d.avgQuotationHT);   const qhtA=d.avgQuotationHT>0?Math.min((8/d.avgQuotationHT)*100,100):0;
-  const nqhtR=nonQuotationHTRating(d.avgNonQuotationHT); const nqhtA=d.avgNonQuotationHT>0?Math.min((24/d.avgNonQuotationHT)*100,100):0;
+  const rtR=responseTimeRating(d.avgResponseTime); const rtA=d.avgResponseTime>0?Math.min(((10/60)/d.avgResponseTime)*100,100):100;
+  const qhtR=quotationHTRating(d.avgQuotationHT);   const qhtA=d.avgQuotationHT>0?Math.min((8/d.avgQuotationHT)*100,100):100;
+  const nqhtR=nonQuotationHTRating(d.avgNonQuotationHT); const nqhtA=d.avgNonQuotationHT>0?Math.min((24/d.avgNonQuotationHT)*100,100):100;
   const csrR=Math.round((rtR+qhtR+nqhtR)/3); const csrA=(rtA+qhtA+nqhtA)/3;
   const rows: KpiRow[] = [
     { label:"Sales Performance",          weight:0.5,  achievementPct:salesPct,       rating:standardRating(salesPct), weightedScore:0.5*standardRating(salesPct),  detail:`Actual: ${fmtPeso(d.totalActualSales)} / Target: ${fmtPeso(d.runningTarget)}` },
