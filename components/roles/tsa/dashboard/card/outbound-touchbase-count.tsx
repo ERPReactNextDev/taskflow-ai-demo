@@ -62,31 +62,31 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
   useEffect(() => { fetchBreakdown(); }, [fetchBreakdown]);
 
   const totalCalls = successfulCount + unsuccessfulCount;
-  const percentage = target > 0 ? Math.round((totalCalls / target) * 100) : 0;
+  const percentage = target > 0 ? Math.round((successfulCount / target) * 100) : 0;
 
   return (
     <Card className="bg-white z-10 text-black flex flex-col">
       <CardContent className="flex-1 flex flex-col items-start justify-start p-6 gap-2">
 
         <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
-          TOTAL OB CALLS
+          OB Calls (Successful)
         </div>
 
-        {/* Total */}
+        {/* Successful count as main number */}
         <div className="text-4xl font-extrabold text-gray-900">
-          {loadingBreakdown ? <Spinner className="w-8 h-8" /> : totalCalls}
+          {loadingBreakdown ? <Spinner className="w-8 h-8" /> : successfulCount}
         </div>
 
-        {/* Successful / Unsuccessful breakdown */}
+        {/* Unsuccessful + total breakdown */}
         {!loadingBreakdown && totalCalls > 0 && (
           <div className="flex flex-col gap-1.5 w-full">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-600">✓ Successful</span>
-              <span className="text-sm font-bold text-green-600">{successfulCount}</span>
-            </div>
-            <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-600">✗ Unsuccessful</span>
               <span className="text-sm font-bold text-red-500">{unsuccessfulCount}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-400">Total (incl. unsuccessful)</span>
+              <span className="text-sm font-bold text-gray-400">{totalCalls}</span>
             </div>
           </div>
         )}

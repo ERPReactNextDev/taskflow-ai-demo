@@ -62,27 +62,41 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
     if (!referenceid) return;
     setLoadingTeamTarget(true);
     try {
-      // Derive the month/year from the date range (or current month/year)
+      // Derive year from the date range (or current year)
       const refDate = dateRange?.from ?? new Date();
-      const monthName = [
-        "January","February","March","April","May","June",
-        "July","August","September","October","November","December",
-      ][refDate.getMonth()];
       const year = refDate.getFullYear().toString();
 
-      // API returns { targets: { [referenceid]: { [month]: number } } }
-      // Pass only tsm + year — then filter to the correct month client-side
       const params = new URLSearchParams({ tsm: referenceid, year });
       const res    = await fetch(`/api/tsm-agent-ob-target?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
       if (data.success) {
-        // Sum each agent's target for the target month only
+        // Build the set of months covered by the date range
+        const fromDate = dateRange?.from ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        const toDate   = dateRange?.to   ?? new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
+
+        const MONTH_NAMES = [
+          "January","February","March","April","May","June",
+          "July","August","September","October","November","December",
+        ];
+
+        // Collect all month names between from and to
+        const coveredMonths = new Set<string>();
+        const cur = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+        while (cur <= toDate) {
+          coveredMonths.add(MONTH_NAMES[cur.getMonth()]);
+          cur.setMonth(cur.getMonth() + 1);
+        }
+
+        // Sum each agent's target across all covered months
         const total = Object.values(data.targets ?? {}).reduce(
           (acc: number, agentMonths) => {
-            const monthVal = (agentMonths as Record<string, number>)[monthName] ?? 0;
-            return acc + (Number(monthVal) || 0);
+            const monthsTotal = Array.from(coveredMonths).reduce((mAcc, month) => {
+              const monthVal = (agentMonths as Record<string, number>)[month] ?? 0;
+              return mAcc + (Number(monthVal) || 0);
+            }, 0);
+            return acc + monthsTotal;
           },
           0
         );
@@ -142,7 +156,7 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
   }, [isRefreshing, fetchTeamTarget, fetchBreakdown]);
 
   const totalCalls = successfulCount + unsuccessfulCount;
-  const percentage = teamTarget > 0 ? Math.round((totalCalls / teamTarget) * 100) : 0;
+  const percentage = teamTarget > 0 ? Math.round((successfulCount / teamTarget) * 100) : 0;
 
   const handleSettings = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -158,7 +172,7 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
         {/* Header */}
         <div className="flex items-center justify-between w-full">
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
-            Total OB Calls
+            OB Calls (Successful)
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -183,21 +197,21 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
           </div>
         </div>
 
-        {/* Total count */}
+        {/* Main count — Successful only */}
         <div className="text-4xl font-extrabold text-gray-900">
-          {loading || loadingBreakdown ? <Spinner className="w-8 h-8" /> : totalCalls}
+          {loading || loadingBreakdown ? <Spinner className="w-8 h-8" /> : successfulCount}
         </div>
 
         {/* Breakdown: Successful / Unsuccessful */}
         {!loading && !loadingBreakdown && totalCalls > 0 && (
           <div className="flex flex-col gap-1.5 w-full">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-600">✓ Successful</span>
-              <span className="text-sm font-bold text-green-600">{successfulCount}</span>
-            </div>
-            <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-600">✗ Unsuccessful</span>
               <span className="text-sm font-bold text-red-500">{unsuccessfulCount}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-400">Total (incl. unsuccessful)</span>
+              <span className="text-sm font-bold text-gray-400">{totalCalls}</span>
             </div>
           </div>
         )}
@@ -231,7 +245,13 @@ export const OutboundTouchbaseCountCard: React.FC<OutboundTouchbaseCountCardProp
         {/* Sub-label */}
         {teamTarget > 0 && (
           <p className="text-[10px] text-gray-400 leading-tight">
-            Team monthly target · {currentMonthName()}
+            Team target · {dateRange?.from
+              ? dateRange.from.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "Asia/Manila" })
+              : currentMonthName()}
+            {dateRange?.to && dateRange.from &&
+              dateRange.to.getMonth() !== dateRange.from.getMonth()
+                ? ` – ${dateRange.to.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" })}`
+                : ""}
           </p>
         )}
 

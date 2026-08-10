@@ -514,14 +514,9 @@ export async function GET(req: Request) {
     const manilaMonthStart = `${mYear}-${mMonth}-01`;
     const manilaMonthEnd   = `${mYear}-${mMonth}-${String(new Date(Number(mYear), Number(mMonth), 0).getDate()).padStart(2, "0")}`;
 
-    // SI always uses full month boundaries derived from the 'from' date (or current month if not provided).
-    // SI total is never filtered by the selected date range     always the full month.
-    const siRefDate = from ? new Date(`${from}T00:00:00+08:00`) : now;
-    const siYear    = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 4);
-    const siMonth   = siRefDate.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(5, 7);
-    const siMonthDays = new Date(Number(siYear), Number(siMonth), 0).getDate();
-    const siStart   = `${siYear}-${siMonth}-01`;
-    const siEnd     = `${siYear}-${siMonth}-${String(siMonthDays).padStart(2, "0")}`;
+    // SI uses delivery_date within the selected date range (same as tsm-history-si).
+    const siStart = from ? `${from}` : manilaMonthStart;
+    const siEnd   = to   ? `${to}`   : manilaMonthEnd;
 
     // SO uses full +08:00 timestamp bounds     same as tsm-history-so and tsm-agent-so
     const soStartISO = from ? `${from}T00:00:00+08:00` : `${manilaMonthStart}T00:00:00+08:00`;

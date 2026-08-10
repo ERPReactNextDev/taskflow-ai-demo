@@ -75,7 +75,7 @@ export const AdminOutboundTouchbaseCountCard: React.FC<AdminOutboundTouchbaseCou
         {/* Header */}
         <div className="flex items-center justify-between w-full">
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
-            Total OB Calls
+            OB Calls (Successful)
           </div>
           <button
             onClick={() => router.push("/roles/admin/ob-breakdown")}
@@ -88,21 +88,21 @@ export const AdminOutboundTouchbaseCountCard: React.FC<AdminOutboundTouchbaseCou
           </button>
         </div>
 
-        {/* Total */}
+        {/* Main count — Successful only */}
         <div className="text-4xl font-extrabold text-gray-900">
-          {loading || loadingBreakdown ? <Spinner className="w-8 h-8" /> : totalCalls.toLocaleString()}
+          {loading || loadingBreakdown ? <Spinner className="w-8 h-8" /> : successfulCount.toLocaleString()}
         </div>
 
-        {/* Successful / Unsuccessful breakdown */}
+        {/* Unsuccessful + total breakdown */}
         {!loading && !loadingBreakdown && totalCalls > 0 && (
           <div className="flex flex-col gap-1.5 w-full">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-600">✓ Successful</span>
-              <span className="text-sm font-bold text-green-600">{successfulCount.toLocaleString()}</span>
-            </div>
-            <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-600">✗ Unsuccessful</span>
               <span className="text-sm font-bold text-red-500">{unsuccessfulCount.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-400">Total (incl. unsuccessful)</span>
+              <span className="text-sm font-bold text-gray-400">{totalCalls.toLocaleString()}</span>
             </div>
           </div>
         )}

@@ -150,6 +150,34 @@ export default async function handler(
 
     console.log("db-coverage: covered count", coveredCount, "total count", filteredAccounts.length);
 
+    // 5. If detail=true, return per-company breakdown
+    const detail = req.query.detail === "true";
+    if (detail) {
+      const withActivity: string[] = [];
+      const noActivity:   string[] = [];
+
+      for (const acc of filteredAccounts) {
+        const isCovered =
+          (acc.account_reference_number && touchedAccountRefs.has(acc.account_reference_number.toString().trim())) ||
+          (acc.company_name && touchedCompanyNames.has(normalizeCompany(acc.company_name)));
+
+        const name = (acc.company_name || "").trim() || "—";
+        if (isCovered) withActivity.push(name);
+        else noActivity.push(name);
+      }
+
+      withActivity.sort((a, b) => a.localeCompare(b));
+      noActivity.sort((a, b) => a.localeCompare(b));
+
+      return res.status(200).json({
+        success: true,
+        coveredCount,
+        totalCount: filteredAccounts.length,
+        withActivity,
+        noActivity,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       coveredCount,

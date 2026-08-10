@@ -51,15 +51,25 @@ export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbas
     if (!referenceid) return;
     setLoadingTeamTarget(true);
     try {
-      const refDate   = dateRange?.from ?? new Date();
-      const monthName = MONTH_NAMES[refDate.getMonth()];
-      const year      = refDate.getFullYear().toString();
+      const refDate = dateRange?.from ?? new Date();
+      const year    = refDate.getFullYear().toString();
 
       const tsmRes = await fetch(`/api/manager-fetch-tsms?manager=${encodeURIComponent(referenceid)}`);
       if (!tsmRes.ok) throw new Error(`HTTP ${tsmRes.status}`);
       const tsmData = await tsmRes.json();
       const tsms: string[] = (tsmData.tsms ?? []).map((t: any) => t.referenceid as string);
       if (tsms.length === 0) { setTeamTarget(0); return; }
+
+      // Build the set of months covered by the date range
+      const fromDate = dateRange?.from ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      const toDate   = dateRange?.to   ?? new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
+
+      const coveredMonths = new Set<string>();
+      const cur = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+      while (cur <= toDate) {
+        coveredMonths.add(MONTH_NAMES[cur.getMonth()]);
+        cur.setMonth(cur.getMonth() + 1);
+      }
 
       const results = await Promise.all(
         tsms.map((tsm) =>
@@ -72,7 +82,9 @@ export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbas
       for (const data of results) {
         if (!data.success) continue;
         for (const agentMonths of Object.values(data.targets ?? {})) {
-          total += Number((agentMonths as Record<string, number>)[monthName] ?? 0) || 0;
+          for (const month of Array.from(coveredMonths)) {
+            total += Number((agentMonths as Record<string, number>)[month] ?? 0) || 0;
+          }
         }
       }
       setTeamTarget(total);
@@ -124,7 +136,7 @@ export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbas
   useEffect(() => { fetchBreakdown();  }, [fetchBreakdown]);
 
   const totalCalls       = successfulCount + unsuccessfulCount;
-  const percentage       = teamTarget > 0 ? Math.round((totalCalls / teamTarget) * 100) : 0;
+  const percentage       = teamTarget > 0 ? Math.round((successfulCount / teamTarget) * 100) : 0;
   const currentMonthName = MONTH_NAMES[new Date().getMonth()];
 
   const handleSettings = (e: React.MouseEvent) => {
@@ -141,7 +153,7 @@ export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbas
         {/* Header */}
         <div className="flex items-center justify-between w-full">
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-600">
-            Total OB Calls
+            OB Calls (Successful)
           </div>
           <button
             onClick={handleSettings}
@@ -154,21 +166,21 @@ export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbas
           </button>
         </div>
 
-        {/* Total */}
+        {/* Main count — Successful only */}
         <div className="text-4xl font-extrabold text-gray-900">
-          {loading || loadingBreakdown ? <Spinner className="w-8 h-8" /> : totalCalls}
+          {loading || loadingBreakdown ? <Spinner className="w-8 h-8" /> : successfulCount}
         </div>
 
-        {/* Successful / Unsuccessful breakdown */}
+        {/* Unsuccessful + total breakdown */}
         {!loading && !loadingBreakdown && totalCalls > 0 && (
           <div className="flex flex-col gap-1.5 w-full">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-600">✓ Successful</span>
-              <span className="text-sm font-bold text-green-600">{successfulCount}</span>
-            </div>
-            <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-600">✗ Unsuccessful</span>
               <span className="text-sm font-bold text-red-500">{unsuccessfulCount}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-400">Total (incl. unsuccessful)</span>
+              <span className="text-sm font-bold text-gray-400">{totalCalls}</span>
             </div>
           </div>
         )}
@@ -197,7 +209,13 @@ export const ManagerOutboundTouchbaseCountCard: React.FC<ManagerOutboundTouchbas
 
         {teamTarget > 0 && (
           <p className="text-[10px] text-gray-400 leading-tight">
-            Team monthly target · {currentMonthName}
+            Team target · {dateRange?.from
+              ? dateRange.from.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "Asia/Manila" })
+              : currentMonthName}
+            {dateRange?.to && dateRange.from &&
+              dateRange.to.getMonth() !== dateRange.from.getMonth()
+                ? ` – ${dateRange.to.toLocaleDateString("en-US", { month: "long", timeZone: "Asia/Manila" })}`
+                : ""}
           </p>
         )}
 
