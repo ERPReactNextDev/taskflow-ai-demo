@@ -58,12 +58,13 @@ export async function GET(req: Request) {
     const yearStart = `${year}-01-01T00:00:00+08:00`;
     const yearEnd   = `${year}-12-31T23:59:59.999+08:00`;
 
-    // 2. Fetch all Outbound - Touchbase records for those agents for the year
+    // 2. Fetch all Outbound - Touchbase SUCCESSFUL records for those agents for the year
     const query = supabase
       .from("history")
       .select("referenceid, date_created")
       .in("referenceid", agentIds)
       .eq("source", "Outbound - Touchbase")
+      .eq("call_status", "Successful")
       .gte("date_created", yearStart)
       .lte("date_created", yearEnd);
 
