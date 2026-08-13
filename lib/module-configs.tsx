@@ -182,14 +182,14 @@ export const SALES_OPERATIONS_CONFIG: ModuleConfig = {
     ],
     tsm: [
       { label: "Sales Activity Planner",   url: "/roles/tsm/activity/planner",             icon: Target },
+      { label: "🎯 Top 50 Priority",       url: "/roles/tsm/activity/top50",               icon: Trophy },
       { label: "Pending Quotations",       url: "/roles/tsm/activity/quotation/pending",   icon: CalendarDays },
       { label: "Approved Quotations",      url: "/roles/tsm/activity/quotation/approved",  icon: CalendarDays },
       { label: "Quotation Aging Tracker",  url: "/roles/tsm/activity/quotation/aging",     icon: ClipboardList },
       { label: "Declined Quotations",      url: "/roles/tsm/activity/quotation/declined",  icon: XCircle },
       { label: "Special Pricing Requests", url: "/roles/tsm/activity/spf",                 icon: Mail },
       { label: "Field Activity Logs",      url: "/roles/tsm/activity/ccg",                 icon: Compass },
-    ],
-    manager: [
+    ],    manager: [
       { label: "Sales Activity Planner",   url: "/roles/manager/activity/planner",                          icon: Target },
       { label: "Pending Approval",         url: "/roles/manager/activity/quotation/pending-quotation",      icon: CalendarDays },
       { label: "Approved Quotations",      url: "/roles/manager/activity/quotation/approval-quotation",     icon: CalendarDays },

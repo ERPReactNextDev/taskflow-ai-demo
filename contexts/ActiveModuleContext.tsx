@@ -31,6 +31,7 @@ const URL_MODULE_MAP: Array<{ prefix: string; module: ModuleKey }> = [
   { prefix: "/roles/tsa/activity/ccg",                  module: "sales-operations" },
   { prefix: "/roles/tsa/activity/engineering",          module: "sales-operations" },
   { prefix: "/roles/tsm/activity/planner",              module: "sales-operations" },
+  { prefix: "/roles/tsm/activity/top50",                module: "sales-operations" },
   { prefix: "/roles/tsm/activity/quotation",            module: "sales-operations" },
   { prefix: "/roles/tsm/activity/spf",                  module: "sales-operations" },
   { prefix: "/roles/tsm/activity/ccg",                  module: "sales-operations" },

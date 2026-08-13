@@ -9,6 +9,7 @@ import {
   CalendarCheck2,
   LoaderPinwheel,
   TrendingUp,
+  Lock,
 } from "lucide-react";
 import {
   Tooltip,
@@ -165,6 +166,20 @@ export const NewTask: React.FC<NewTaskProps> = ({
 
   const endorsedSoundRef = useRef<HTMLAudioElement | null>(null);
   const playedTicketIdsRef = useRef<Set<string>>(new Set());
+
+  // ─── Top 50 lock state ────────────────────────────────────────────────────
+  const [top50Locked, setTop50Locked] = useState(false);
+  const [loadingTop50Lock, setLoadingTop50Lock] = useState(false);
+
+  useEffect(() => {
+    if (!referenceid) return;
+    setLoadingTop50Lock(true);
+    fetch(`/api/activity/tsa/planner/top50-status?referenceid=${encodeURIComponent(referenceid)}`)
+      .then((r) => r.ok ? r.json() : { allClearTop50: true })
+      .then((data) => setTop50Locked(!data.allClearTop50))
+      .catch(() => setTop50Locked(false))
+      .finally(() => setLoadingTop50Lock(false));
+  }, [referenceid]);
 
   // ─── Fetch existing activities for block-check ────────────────────────────
 
@@ -532,12 +547,15 @@ export const NewTask: React.FC<NewTaskProps> = ({
 
   const filteredAccounts = useMemo(() => {
     if (!searchTerm.trim()) return [];
+    // When Top 50 lock is active, exclude top 50 clients from search results
+    const LOCKED_TYPES = top50Locked ? ["top 50"] : [];
     return activeAccounts.filter(
       (acc) =>
         acc.status?.toLowerCase() === "active" &&
+        !LOCKED_TYPES.includes(acc.type_client?.toLowerCase() ?? "") &&
         acc.company_name.toLowerCase().includes(searchTerm.toLowerCase()),
     );
-  }, [activeAccounts, searchTerm]);
+  }, [activeAccounts, searchTerm, top50Locked]);
 
   const accountsWithActivity = useMemo(() => {
     const s = new Set<string>();
@@ -855,6 +873,28 @@ export const NewTask: React.FC<NewTaskProps> = ({
               <Plus /> Add
             </Button>
           </div>
+
+          {/* Top 50 lock warning */}
+          {!loadingTop50Lock && top50Locked && (
+            <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-300 rounded-none text-xs">
+              <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-700">
+                  🔒 Top 50 clients are LOCKED here — process them FIRST in the Scheduled card
+                </p>
+                <p className="text-amber-600 mt-0.5 text-[10px]">
+                  Top 50 clients are hidden from search results until all are processed this month.
+                  Only Next 30, Balance 20, New Client, and TSA Client are searchable now.
+                </p>
+              </div>
+            </div>
+          )}
+          {!loadingTop50Lock && !top50Locked && (
+            <p className="text-[10px] text-green-600 flex items-center gap-1">
+              <CheckCircle2Icon className="w-3 h-3" />
+              ✅ All Top 50 processed — all clients available
+            </p>
+          )}
 
           {/* Search results — only visible when searching */}
           {searchTerm.trim() && (

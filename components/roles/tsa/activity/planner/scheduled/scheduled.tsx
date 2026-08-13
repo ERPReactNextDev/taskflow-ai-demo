@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
-import { LoaderPinwheel, CheckCircle2, AlertCircle, PhoneOutgoing, PackageCheck, ReceiptText, Activity, ThumbsUp, Check, Repeat, MoreVertical, ThumbsDown, Dot, Filter, MessageSquare } from "lucide-react";
+import { LoaderPinwheel, CheckCircle2, AlertCircle, PhoneOutgoing, PackageCheck, ReceiptText, Activity, ThumbsUp, Check, Repeat, MoreVertical, ThumbsDown, Dot, Filter, MessageSquare, Lock, TrendingUp } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,32 @@ function generateActivityRef(companyName: string, region: string): string {
   const lastInitial = words[words.length - 1]?.charAt(0).toUpperCase() || "X";
   const uniqueNumber = String(Date.now()).slice(-10);
   return `${firstInitial}${lastInitial}-${region}-${uniqueNumber}`;
+}
+
+function fmtPeso(n: number): string {
+  return n.toLocaleString("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 });
+}
+
+// ─── Top 50 Forecast types ─────────────────────────────────────────────────────
+
+interface Top50Account {
+  account_reference_number: string;
+  company_name: string;
+  type_client: string;
+  status: string;
+}
+
+interface ForecastEntry {
+  latestSale: number;
+  forecastAmount: number;
+  currentMonthSales: number;
+}
+
+interface Top50StatusData {
+  top50Accounts: Top50Account[];
+  pendingTop50: Top50Account[];
+  allClearTop50: boolean;
+  forecastMap: Record<string, ForecastEntry>;
 }
 
 function getStatusStyles(status: string, isFutureDate: boolean) {
@@ -210,6 +236,27 @@ export const Scheduled: React.FC<ScheduledProps> = ({
   const [displayedTodayCount, setDisplayedTodayCount] = useState(CLUSTER_BATCH_SIZE);
   const [displayedAvailableCount, setDisplayedAvailableCount] = useState(CLUSTER_BATCH_SIZE);
 
+  // ─── Top 50 Priority State ────────────────────────────────────────────────
+  const [top50Status, setTop50Status] = useState<Top50StatusData | null>(null);
+  const [loadingTop50, setLoadingTop50] = useState(false);
+
+  const fetchTop50Status = useCallback(async () => {
+    if (!referenceid) return;
+    setLoadingTop50(true);
+    try {
+      const res = await fetch(
+        `/api/activity/tsa/planner/top50-status?referenceid=${encodeURIComponent(referenceid)}`
+      );
+      if (!res.ok) throw new Error("Failed to fetch Top 50 status");
+      const data: Top50StatusData = await res.json();
+      setTop50Status(data);
+    } catch (err) {
+      console.error("[Top50Status]", err);
+    } finally {
+      setLoadingTop50(false);
+    }
+  }, [referenceid]);
+
   const todayStr = toLocalDateString(new Date());
 
   // ─── Debounce search ───────────────────────────────────────────────────────
@@ -308,6 +355,7 @@ export const Scheduled: React.FC<ScheduledProps> = ({
 
     fetchActivitiesRef.current();
     fetchAccounts();
+    fetchTop50Status();
 
     const activityChannel = supabase
       .channel(`activity-${referenceid}`)
@@ -323,7 +371,7 @@ export const Scheduled: React.FC<ScheduledProps> = ({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "history", filter: `referenceid=eq.${referenceid}` },
-        () => fetchActivitiesRef.current(),
+        () => { fetchActivitiesRef.current(); fetchTop50Status(); },
       )
       .subscribe();
 
@@ -331,7 +379,7 @@ export const Scheduled: React.FC<ScheduledProps> = ({
       supabase.removeChannel(activityChannel);
       supabase.removeChannel(historyChannel);
     };
-  }, [referenceid, fetchAccounts]);
+  }, [referenceid, fetchAccounts, fetchTop50Status]);
 
   // Re-fetch when search term changes
   useEffect(() => {
@@ -479,11 +527,13 @@ export const Scheduled: React.FC<ScheduledProps> = ({
         });
         setAccounts((prev) => prev.filter((acc) => acc.id !== account.id));
         fetchActivitiesRef.current();
+        // Re-check Top 50 status after creating an activity for a Top 50 account
+        fetchTop50Status();
       } catch (err) {
         console.error("Error updating next available date:", err);
       }
     },
-    [],
+    [fetchTop50Status],
   );
 
   // ─── Dialog handlers ───────────────────────────────────────────────────────
@@ -932,8 +982,184 @@ export const Scheduled: React.FC<ScheduledProps> = ({
 
         <Separator className="my-4" />
 
+        {/* ─── TOP 50 PRIORITY LOCK BANNER ────────────────────────────────── */}
+        {loadingTop50 && (
+          <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+            <Spinner className="w-3 h-3" /> Checking Top 50 priority status...
+          </div>
+        )}
+
+        {!loadingTop50 && top50Status && !top50Status.allClearTop50 && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-300 rounded-none">
+            <div className="flex items-center gap-2 mb-1">
+              <Lock className="w-4 h-4 text-red-600 shrink-0" />
+              <span className="text-xs font-black uppercase tracking-wider text-red-700">
+                Top 50 Priority Lock Active
+              </span>
+              <Badge className="bg-red-600 text-white text-[9px]">
+                {top50Status.pendingTop50.length} pending
+              </Badge>
+            </div>
+            <p className="text-[11px] text-red-600">
+              You have {top50Status.pendingTop50.length} Top 50 client{top50Status.pendingTop50.length !== 1 ? "s" : ""} with no Outbound Call this month.
+              Process them first — other clusters are hidden until all Top 50 are cleared.
+            </p>
+          </div>
+        )}
+
+        {!loadingTop50 && top50Status?.allClearTop50 && top50Status.top50Accounts.length > 0 && (
+          <div className="mb-4 p-2.5 bg-green-50 border border-green-200 rounded-none flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+            <span className="text-xs font-semibold text-green-700">
+              ✅ All Top 50 clients processed this month — all clusters available
+            </span>
+          </div>
+        )}
+
+        {/* ─── TOP 50 PENDING ROWS (Priority Lock — shown first) ───────────── */}
+        {!loadingTop50 && top50Status && !top50Status.allClearTop50 && top50Status.pendingTop50.length > 0 && (() => {
+          const pendingRefs = new Set(top50Status.pendingTop50.map((a) => a.account_reference_number));
+          // Match pending Top 50 against loaded accounts for the Create button
+          const pendingAccounts = accounts.filter(
+            (acc) => acc.type_client?.toLowerCase() === "top 50" &&
+              acc.account_reference_number && pendingRefs.has(acc.account_reference_number)
+          );
+          // Fall back to top50Status data if accounts hasn't loaded yet
+          const pendingRows = pendingAccounts.length > 0
+            ? pendingAccounts
+            : top50Status.pendingTop50.map((p) => ({ ...p, id: p.account_reference_number, contact_number: "", email_address: "", contact_person: "", address: "", region: "NCR", next_available_date: null, tsm: "", manager: "" } as Account));
+
+          return (
+            <section className="mb-6">
+              <h2 className="text-xs font-black mb-3 text-red-700 uppercase tracking-wider flex items-center gap-2">
+                <Lock className="w-3.5 h-3.5" />
+                Top 50 — Pending Outbound Call ({pendingRows.length})
+              </h2>
+
+              <Accordion type="single" collapsible className="w-full space-y-1">
+                {pendingRows.map((account) => {
+                  const forecast = top50Status.forecastMap[account.account_reference_number];
+                  const forecastPct = forecast && forecast.forecastAmount > 0
+                    ? Math.min(Math.round((forecast.currentMonthSales / forecast.forecastAmount) * 100), 100)
+                    : 0;
+
+                  return (
+                    <AccordionItem
+                      key={account.account_reference_number}
+                      value={account.account_reference_number}
+                      className="border-2 border-red-400 rounded-none bg-red-50"
+                    >
+                      <div className="flex justify-between items-start p-2 select-none gap-2">
+                        <AccordionTrigger className="flex-1 text-xs font-bold font-mono text-red-800 text-left">
+                          <div className="flex flex-col gap-1 text-left">
+                            <span>{account.company_name}</span>
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              <Badge className="bg-red-600 text-white text-[8px] font-bold px-1.5 py-0.5">
+                                TOP 50
+                              </Badge>
+                              <Badge className="bg-red-100 text-red-700 border border-red-300 text-[8px] px-1.5 py-0.5">
+                                ⚠️ NO OUTBOUND CALL THIS MONTH — TOP 50 PRIORITY
+                              </Badge>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <div className="shrink-0 mt-1">
+                          {"contact_number" in account && (account as Account).id ? (
+                            <CreateActivityDialog
+                              firstname={firstname}
+                              lastname={lastname}
+                              target_quota={target_quota}
+                              email={email}
+                              contact={contact}
+                              tsmname={tsmname}
+                              managername={managername}
+                              referenceid={referenceid}
+                              tsm={(account as Account).tsm ?? ""}
+                              manager={(account as Account).manager ?? ""}
+                              type_client="top 50"
+                              contact_number={(account as Account).contact_number}
+                              email_address={(account as Account).email_address}
+                              activityReferenceNumber={generateActivityRef(account.company_name, (account as Account).region || "NCR")}
+                              ticket_reference_number="-"
+                              agent={`${firstname} ${lastname}`}
+                              company_name={account.company_name}
+                              contact_person={(account as Account).contact_person}
+                              address={(account as Account).address}
+                              accountReferenceNumber={account.account_reference_number}
+                              onCreated={createActivityHandler(account as Account)}
+                              managerDetails={managerDetails ?? null}
+                              tsmDetails={tsmDetails ?? null}
+                              signature={signature}
+                            />
+                          ) : (
+                            <span className="text-[10px] text-red-400 italic">Load account to create</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <AccordionContent className="px-3 pb-3 text-xs space-y-2">
+                        {/* Forecast section */}
+                        {forecast ? (
+                          <div className="bg-white border border-red-200 rounded-none p-2.5 space-y-1.5">
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-gray-600">
+                              <TrendingUp className="w-3 h-3" /> Sales Forecast
+                            </div>
+                            {forecast.latestSale > 0 ? (
+                              <>
+                                <div className="flex justify-between text-[11px]">
+                                  <span className="text-gray-500">Latest Sale:</span>
+                                  <span className="font-semibold text-gray-800">{fmtPeso(forecast.latestSale)}</span>
+                                </div>
+                                <div className="flex justify-between text-[11px]">
+                                  <span className="text-gray-500">Forecast (this month):</span>
+                                  <span className="font-bold text-blue-700">{fmtPeso(forecast.forecastAmount)}</span>
+                                </div>
+                                <div className="flex justify-between text-[11px]">
+                                  <span className="text-gray-500">Achieved so far:</span>
+                                  <span className="font-semibold text-green-700">{fmtPeso(forecast.currentMonthSales)}</span>
+                                </div>
+                                <div className="mt-1">
+                                  <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
+                                    <span>Progress to forecast</span>
+                                    <span>{forecastPct}%</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 h-1.5 rounded-full">
+                                    <div
+                                      className="h-1.5 rounded-full transition-all"
+                                      style={{
+                                        width: `${forecastPct}%`,
+                                        backgroundColor: forecastPct >= 100 ? "#16a34a" : forecastPct >= 50 ? "#3b82f6" : "#f59e0b",
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <p className="text-[10px] text-gray-400 italic">No prior sales — forecast = ₱0</p>
+                            )}
+                          </div>
+                        ) : null}
+
+                        {"contact_number" in account && (
+                          <>
+                            <p><strong>Contact:</strong> {(account as Account).contact_number || "—"}</p>
+                            <p><strong>Email:</strong> {(account as Account).email_address || "—"}</p>
+                            <p><strong>Address:</strong> {(account as Account).address || "—"}</p>
+                          </>
+                        )}
+                        <p className="text-[9px] font-mono text-gray-400">{account.account_reference_number}</p>
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
+            </section>
+          );
+        })()}
+
         {/* ─── OB Calls Account for Today ─────────────────────────────────── */}
-        {totalTodayCount > 0 && firstTodayCluster && (() => {
+        {/* HIDDEN when Top 50 lock is active */}
+        {(!top50Status || top50Status.allClearTop50) && totalTodayCount > 0 && firstTodayCluster && (() => {
           const todayAccounts = groupedToday[firstTodayCluster];
           const displayed = todayAccounts.slice(0, displayedTodayCount);
           return (
@@ -1010,7 +1236,18 @@ export const Scheduled: React.FC<ScheduledProps> = ({
         })()}
 
         {/* ─── Available OB Calls ──────────────────────────────────────────── */}
-        {totalAvailableCount > 0 && firstAvailableCluster && (() => {
+        {/* HIDDEN when Top 50 lock is active — show lock message instead */}
+        {top50Status && !top50Status.allClearTop50 && totalAvailableCount > 0 && (
+          <section>
+            <h2 className="text-xs font-bold mb-3 text-gray-600">Available OB Calls</h2>
+            <div className="flex items-center gap-2 p-3 bg-gray-100 border border-gray-300 rounded-none text-xs text-gray-600">
+              <Lock className="w-3.5 h-3.5 shrink-0 text-gray-500" />
+              🔒 Clusters hidden — finish all pending Top 50 in the list above first
+            </div>
+          </section>
+        )}
+
+        {(!top50Status || top50Status.allClearTop50) && totalAvailableCount > 0 && firstAvailableCluster && (() => {
           const availableAccounts = groupedNull[firstAvailableCluster];
           const displayed = availableAccounts.slice(0, displayedAvailableCount);
           return (
